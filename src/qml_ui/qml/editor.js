@@ -51,12 +51,14 @@ function blockIndexAt(blocks, caret) {
 }
 
 // ── 줄 드래그 ──
-// 슬라이드는 2줄을 기준으로 한다. 줄은 바로 옆 슬라이드로만 옮길 수 있다.
+// 줄은 바로 옆 슬라이드로만 옮길 수 있다.
 //   첫 줄:     앞 슬라이드 끝에 붙이기 / 앞쪽 사이에 새 슬라이드
 //   마지막 줄: 뒤 슬라이드 처음에 붙이기 / 뒤쪽 사이에 새 슬라이드
 // (한 줄짜리 슬라이드는 그 줄이 첫 줄이자 마지막 줄이라 네 가지 모두 가능)
-// 붙여서 2줄을 넘으면 넘친 줄을 같은 방향으로 연쇄해서 밀고, 맨 앞/맨 뒤까지 넘치면 새 슬라이드를 만든다.
-// keepTwo(2줄 유지)를 켜면 줄이 빠진 슬라이드는 반대쪽 이웃에서 연쇄로 당겨와 2줄을 채운다.
+// keepTwo(2줄 유지)를 켜면 슬라이드마다 2줄을 유지한다:
+//   붙여서 2줄을 넘으면 넘친 줄을 같은 방향으로 연쇄해서 밀고(맨 앞/맨 뒤까지 넘치면 새 슬라이드),
+//   줄이 빠진 슬라이드는 반대쪽 이웃에서 연쇄로 당겨와 채운다.
+// 끄면 옆 슬라이드로 옮기기만 한다 (3줄이 되면 3줄 그대로).
 
 const MAX_LINES = 2;
 
@@ -94,17 +96,16 @@ function planDrop(blocks, src, target, keepTwo) {
     // 앞으로 옮기면 소스는 첫 줄을 잃고 뒤에서 채우고, 뒤로 옮기면 마지막 줄을 잃고 앞에서 채운다
     const backward = target.type === 'line' ? target.slide < src.slide : target.at <= src.slide;
 
-    if (target.type === 'new') {
-        groups.splice(target.at, 0, [moved]);
-    } else if (backward) {
-        groups[target.slide].push(moved);
-        pushBackward(groups, target.slide);
-    } else {
-        groups[target.slide].unshift(moved);
-        pushForward(groups, target.slide);
-    }
+    if (target.type === 'new') groups.splice(target.at, 0, [moved]);
+    else if (backward) groups[target.slide].push(moved);
+    else groups[target.slide].unshift(moved);
 
+    // 2줄 유지: 넘친 슬라이드는 같은 방향으로 밀고, 줄이 빠진 슬라이드는 반대쪽에서 당겨 채운다
     if (keepTwo) {
+        if (target.type === 'line') {
+            if (backward) pushBackward(groups, target.slide);
+            else pushForward(groups, target.slide);
+        }
         const s = groups.indexOf(source);   // 앞에 새 슬라이드가 생겼을 수 있어 위치를 다시 찾는다
         if (backward) pullFromNext(groups, s);
         else pullFromPrevious(groups, s);
