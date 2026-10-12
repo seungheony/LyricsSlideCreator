@@ -68,6 +68,7 @@ ApplicationWindow {
         Behavior on opacity { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
         toastHost: toast
         dialog: dialog
+        confirmDialog: confirmDialog
         onBackRequested: win.showSearch()
     }
 
@@ -91,6 +92,7 @@ ApplicationWindow {
     }
 
     AppDialog { id: dialog }
+    ConfirmDialog { id: confirmDialog }
 
     // ── 업데이트 ──
     UpdateBanner {
@@ -127,22 +129,22 @@ ApplicationWindow {
     // ── 단축키 ──
     Shortcut {
         sequences: [StandardKey.Undo]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened
         onActivated: editorPage.undo()
     }
     Shortcut {
         sequences: [StandardKey.Redo, "Ctrl+Shift+Z"]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened
         onActivated: editorPage.redo()
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened
         onActivated: editorPage.generate()
     }
     Shortcut {
         sequence: "Escape"
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened
         onActivated: {
             // 드래그 중이면 취소, 가사 입력 중이면 입력칸에서만 빠져나오고, 아니면 검색 화면으로
             if (editorPage.dragging) editorPage.cancelDrag()
