@@ -1,6 +1,6 @@
-PyQt6
+PySide6
 requests
 beautifulsoup4
 python-pptx
-pyinstaller
+nuitka
 Pillow
