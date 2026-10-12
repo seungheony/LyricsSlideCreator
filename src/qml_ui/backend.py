@@ -13,6 +13,7 @@ from PySide6.QtQuick import QQuickImageProvider
 from src.utils.melon_api import MelonScraper
 from src.utils.ppt_engine import PPTBuilder
 from src.utils.helpers import resource_path
+from src.utils import updater
 from src.utils.version import get_version
 
 
@@ -60,6 +61,10 @@ class Backend(QObject):
     artReady = Signal(str)               # song_id
     generateFinished = Signal(str)       # JSON 객체 (path 또는 error)
     templateChanged = Signal()
+    updateAvailable = Signal(str)        # JSON 객체 (version, notes, page)
+    updateProgress = Signal(float)       # 0.0 ~ 1.0
+    updateFailed = Signal(str)           # 사용자에게 보여줄 사유
+    updateReady = Signal()               # 설치 시작됨 → 앱을 종료해야 함
 
     def __init__(self, art_provider):
         super().__init__()
@@ -68,6 +73,9 @@ class Backend(QObject):
         self._pool = ThreadPoolExecutor(max_workers=6)
         self._art_requested = set()
         self._template_path = resource_path("template.pptx")
+        self._update = None
+        # 지난 업데이트에서 남은 다운로드 파일 정리 (앱 폴더 밖에 아무것도 남기지 않는다)
+        updater.cleanup()
 
     # ── 정보 ──
     @Slot(result=str)
@@ -159,6 +167,39 @@ class Backend(QObject):
                 except Exception:
                     result = {'error': 'PPT 생성 중 예외가 발생했습니다.', 'detail': traceback.format_exc()}
             self.generateFinished.emit(json.dumps(result, ensure_ascii=False))
+        self._pool.submit(work)
+
+    # ── 업데이트 ──
+    @Slot()
+    def checkForUpdate(self):
+        def work():
+            try:
+                info = updater.find_update(get_version())
+            except Exception:
+                return  # 오프라인 등: 조용히 넘어간다
+            if info:
+                self._update = info
+                self.updateAvailable.emit(json.dumps(
+                    {k: info[k] for k in ('version', 'notes', 'page')}, ensure_ascii=False))
+        self._pool.submit(work)
+
+    @Slot()
+    def startUpdate(self):
+        info = self._update
+        if not info:
+            return
+
+        def work():
+            try:
+                path = updater.download(info, lambda done, total: self.updateProgress.emit(done / total if total else 0.0))
+                updater.install(path)
+            except updater.UpdateError as e:
+                self.updateFailed.emit(str(e))
+                return
+            except Exception as e:
+                self.updateFailed.emit(f'업데이트 중 오류가 발생했습니다.\n{e}')
+                return
+            self.updateReady.emit()
         self._pool.submit(work)
 
     def shutdown(self):

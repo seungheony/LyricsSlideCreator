@@ -1,0 +1,97 @@
+# 태그(v1.2.0, v1.2.0-beta.1 등)를 올리면 Windows/macOS 빌드 → 검증 → GitHub 릴리스 업로드
+# master 로 가는 PR과 수동 실행(workflow_dispatch)은 릴리스 없이 빌드·검증만 한다
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '시험 빌드 버전 (릴리스는 만들지 않음)'
+        required: true
+        default: '0.0.0-test.1'
+
+permissions:
+  contents: write
+
+env:
+  # Windows 빌드 서버의 기본 출력 인코딩은 한글을 못 써서 스크립트 출력이 실패할 수 있다
+  PYTHONUTF8: '1'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: Inno Setup 설치
+        if: runner.os == 'Windows'
+        run: choco install innosetup -y --no-progress
+
+      - name: 버전 결정
+        shell: bash
+        run: |
+          case "${{ github.event_name }}" in
+            push) v="${GITHUB_REF_NAME#v}" ;;
+            pull_request) v="0.0.0-pr.${{ github.event.number }}" ;;
+            *) v="${{ inputs.version }}" ;;
+          esac
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: 빌드
+        run: python scripts/build.py ${{ env.VERSION }}
+
+      - name: 검증 (Windows 설치 → 실행 → 제거)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/verify_windows.ps1 -Version ${{ env.VERSION }}
+
+      - name: 검증 (macOS 자체 점검)
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: '"dist/Lyrics Slide Creator.app/Contents/MacOS/run" --self-test'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ runner.os }}
+          path: dist/LyricsSlideCreator-*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 체크섬 생성
+        working-directory: dist
+        run: sha256sum LyricsSlideCreator-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: 릴리스 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          pre=""
+          case "$tag" in *-*) pre="--prerelease" ;; esac
+          gh release create "$tag" dist/* --repo "${{ github.repository }}" --title "$tag" --generate-notes $pre

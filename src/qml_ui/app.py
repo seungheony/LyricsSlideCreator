@@ -1,7 +1,7 @@
 import os
 import sys
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -35,6 +35,9 @@ def create_app(argv):
     backend = Backend(art_provider)
 
     engine = QQmlApplicationEngine()
+    # QML 로드 중 경고를 모아둔다 (--self-test 에서 확인)
+    engine.qml_warnings = []
+    engine.warnings.connect(lambda ws: engine.qml_warnings.extend(w.toString() for w in ws))
     engine.addImageProvider('art', art_provider)
     ctx = engine.rootContext()
     ctx.setContextProperty('backend', backend)
@@ -43,9 +46,29 @@ def create_app(argv):
     return app, engine, backend
 
 
+def self_test(app, engine):
+    """빌드 결과 점검: 화면·폰트·템플릿이 모두 로드되는지 확인하고 종료 코드로 알린다."""
+    def finish():
+        problems = list(engine.qml_warnings)
+        if not engine.rootObjects():
+            problems.append('QML 화면을 불러오지 못했습니다')
+        if 'Pretendard' not in QFontDatabase.families():
+            problems.append('Pretendard 폰트가 등록되지 않았습니다')
+        if not os.path.exists(resource_path('template.pptx')):
+            problems.append('template.pptx 가 없습니다')
+        for p in problems:
+            print(f'SELF-TEST FAIL: {p}', flush=True)
+        if not problems:
+            print('SELF-TEST OK', flush=True)
+        app.exit(1 if problems else 0)
+    QTimer.singleShot(1500, finish)
+
+
 def main():
     app, engine, backend = create_app(sys.argv)
-    if not engine.rootObjects():
+    if '--self-test' in sys.argv:
+        self_test(app, engine)
+    elif not engine.rootObjects():
         sys.exit(1)
 
     code = app.exec()
