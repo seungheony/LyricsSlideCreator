@@ -94,8 +94,17 @@ Item {
         slideList.scrollToTop()
     }
 
+    // 줄 드래그: 옆 슬라이드로만 옮기고, 넘치면 연쇄로 민다. 2줄 유지를 켜면 빈자리를 연쇄로 당겨 채운다
+    property bool keepTwo: false
+
+    // 놓으려는 위치를 허용된 동작으로 바꾼다. 허용되지 않거나 바뀌는 게 없으면 null
+    function resolveDrop(src, raw) {
+        const target = E.resolveDrop(blocks, src, raw)
+        return target && E.planDrop(blocks, src, target, keepTwo) ? target : null
+    }
+
     function moveLine(src, target) {
-        const plan = E.planMove(blocks, src, target)
+        const plan = E.planDrop(blocks, src, target, keepTwo)
         if (plan) commit(plan.groups, { focus: plan.focus })
     }
 
@@ -319,7 +328,7 @@ Item {
                     Item { Layout.fillWidth: true }
                     Text { text: "자동 나누기"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 12; Layout.rightMargin: 4 }
                     Repeater {
-                        model: [1, 2, 3]
+                        model: [1, 2]
                         delegate: Button {
                             id: splitBtn
                             required property int modelData
@@ -428,6 +437,37 @@ Item {
                         Text { id: countText; anchors.centerIn: parent; text: page.blocks.length + "장"; color: Theme.primary; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                     }
                     Item { Layout.fillWidth: true }
+                    CheckBox {
+                        id: keepTwoBox
+                        text: "2줄 유지"
+                        checked: page.keepTwo
+                        onToggled: page.keepTwo = checked
+                        hoverEnabled: true
+                        spacing: 6
+                        padding: 4
+                        Layout.rightMargin: 6
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 500
+                        ToolTip.text: "줄을 옮기면 빈자리를 뒤(또는 앞) 슬라이드에서 연쇄로 당겨와 2줄씩 유지해요"
+                        indicator: Rectangle {
+                            x: keepTwoBox.leftPadding
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 16; height: 16; radius: 4
+                            color: keepTwoBox.checked ? Theme.primary : Theme.surface
+                            border.width: keepTwoBox.checked ? 0 : 1.5
+                            border.color: keepTwoBox.hovered ? Theme.primary : Theme.border
+                            Icon { anchors.centerIn: parent; visible: keepTwoBox.checked; glyph: "check"; size: 11; color: "white" }
+                        }
+                        contentItem: Text {
+                            leftPadding: keepTwoBox.indicator.width + keepTwoBox.spacing
+                            text: keepTwoBox.text
+                            color: keepTwoBox.checked ? Theme.text : Theme.text2
+                            font.family: Theme.font
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
                     AppButton {
                         glyph: "undo"; variant: "ghost"; size: "small"
                         enabled: page.histIdx > 0
@@ -448,7 +488,7 @@ Item {
                     Layout.fillHeight: true
                     blocks: page.blocks
                     active: page.active
-                    canMove: (src, target) => E.planMove(page.blocks, src, target) !== null
+                    resolveDrop: (src, raw) => page.resolveDrop(src, raw)
                     onCutRequested: (slide, at) => page.cutSlide(slide, at)
                     onJoinRequested: (slide) => page.joinSlides(slide)
                     onRemoveRequested: (slide) => page.removeSlide(slide)
@@ -458,7 +498,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "줄을 <b>드래그</b>해서 옮기기 · 줄 사이 <b>✂</b> → 나누기 · 슬라이드 사이 → 합치기 · 클릭 → 가사로 이동"
+                    text: "첫 줄은 앞, 마지막 줄은 뒤 슬라이드로 <b>드래그</b> · 줄 사이 <b>✂</b> → 나누기 · 슬라이드 사이 → 합치기 · 클릭 → 가사로 이동"
                     textFormat: Text.StyledText
                     color: Theme.text3
                     font.family: Theme.font
