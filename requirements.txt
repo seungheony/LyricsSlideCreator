@@ -4,3 +4,4 @@ beautifulsoup4
 python-pptx
 pyinstaller
 Pillow
+pywebview
