@@ -5,9 +5,10 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
-from PyQt6.QtCore import QObject, QSize, QUrl, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QImage
-from PyQt6.QtQuick import QQuickImageProvider
+from PySide6.QtCore import QObject, QSize, QUrl, Signal, Slot
+from PySide6.QtGui import QImage
+from PySide6.QtQml import QQmlImageProviderBase
+from PySide6.QtQuick import QQuickImageProvider
 
 from src.utils.melon_api import MelonScraper
 from src.utils.ppt_engine import PPTBuilder
@@ -22,7 +23,7 @@ class AlbumArtProvider(QQuickImageProvider):
     """
 
     def __init__(self):
-        super().__init__(QQuickImageProvider.ImageType.Image)
+        super().__init__(QQmlImageProviderBase.ImageType.Image)
         self._images = {}
         self._lock = threading.Lock()
 
@@ -38,11 +39,13 @@ class AlbumArtProvider(QQuickImageProvider):
         with self._lock:
             return key in self._images
 
-    def requestImage(self, id, requested_size):
-        # 앨범아트는 작으므로(약 300px) 요청 크기와 무관하게 원본을 돌려주고, 맞춤은 QML Image에 맡긴다
+    def requestImage(self, id, size, requested_size):
         with self._lock:
             img = self._images.get(id.split('?')[0], QImage())
-        return img, img.size() if not img.isNull() else QSize(0, 0)
+        if size is not None and not img.isNull():
+            size.setWidth(img.width())
+            size.setHeight(img.height())
+        return img
 
 
 class Backend(QObject):
@@ -52,11 +55,11 @@ class Backend(QObject):
     다른 스레드에서 emit한 시그널은 Qt가 메인 스레드로 넘겨주므로 QML에서 안전하게 받을 수 있다.
     """
 
-    searchFinished = pyqtSignal(int, str)    # token, JSON 배열
-    detailFinished = pyqtSignal(int, str)    # token, JSON 객체 (error 키가 있으면 실패)
-    artReady = pyqtSignal(str)               # song_id
-    generateFinished = pyqtSignal(str)       # JSON 객체 (path 또는 error)
-    templateChanged = pyqtSignal()
+    searchFinished = Signal(int, str)    # token, JSON 배열
+    detailFinished = Signal(int, str)    # token, JSON 객체 (error 키가 있으면 실패)
+    artReady = Signal(str)               # song_id
+    generateFinished = Signal(str)       # JSON 객체 (path 또는 error)
+    templateChanged = Signal()
 
     def __init__(self, art_provider):
         super().__init__()
@@ -67,15 +70,15 @@ class Backend(QObject):
         self._template_path = resource_path("template.pptx")
 
     # ── 정보 ──
-    @pyqtSlot(result=str)
+    @Slot(result=str)
     def version(self):
         return get_version()
 
-    @pyqtSlot(result=str)
+    @Slot(result=str)
     def templateName(self):
         return os.path.basename(self._template_path)
 
-    @pyqtSlot(str, result=str)
+    @Slot(str, result=str)
     def setTemplate(self, file_url):
         path = QUrl(file_url).toLocalFile() or file_url
         if path:
@@ -84,7 +87,7 @@ class Backend(QObject):
         return os.path.basename(self._template_path)
 
     # ── 멜론 ──
-    @pyqtSlot(int, str)
+    @Slot(int, str)
     def search(self, token, keyword):
         def work():
             try:
@@ -94,7 +97,7 @@ class Backend(QObject):
             self.searchFinished.emit(token, json.dumps(results, ensure_ascii=False))
         self._pool.submit(work)
 
-    @pyqtSlot(int, str)
+    @Slot(int, str)
     def songDetail(self, token, song_id):
         def work():
             try:
@@ -108,7 +111,7 @@ class Backend(QObject):
             self.detailFinished.emit(token, json.dumps(det, ensure_ascii=False))
         self._pool.submit(work)
 
-    @pyqtSlot(str)
+    @Slot(str)
     def loadArt(self, song_id):
         """검색 결과 썸네일: 곡 상세 페이지에서 앨범아트 URL을 찾아 내려받는다."""
         if self._art.has(song_id):
@@ -133,7 +136,7 @@ class Backend(QObject):
             pass
 
     # ── PPT 생성 ──
-    @pyqtSlot(str, str)
+    @Slot(str, str)
     def generatePpt(self, chunks_json, file_url):
         chunks = json.loads(chunks_json)
         save_path = QUrl(file_url).toLocalFile() or file_url

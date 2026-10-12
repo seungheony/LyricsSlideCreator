@@ -1,33 +1,37 @@
-import sys
-import subprocess
+"""앱 버전.
+
+빌드할 때 scripts/set_version.py 가 src/utils/_build_info.py 에 버전을 기록한다.
+소스에서 바로 실행하면(개발 모드) 그 파일이 없으므로 "TEST"로 표시된다.
+
+버전 형식은 GitHub 릴리스 태그와 맞춘다: v1.2.0, v1.2.0-beta.1, (예전 형식) v1.1-beta
+"""
+import re
+
+_VERSION_RE = re.compile(r'^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-([A-Za-z]+)\.?(\d+)?)?$')
 
 
 def get_version():
-    """빌드 환경에 따라 버전 문자열을 반환한다.
-
-    - 소스 직접 실행 (not frozen): "TEST"
-    - PyInstaller 패키징 실행 (frozen):
-        - release/X.Y.Z 브랜치 → "X.Y.Z"
-        - beta/X.Y.Z 브랜치   → "X.Y.Z (beta)"
-        - 그 외 브랜치         → "DEVELOP"
-    """
-    if not getattr(sys, 'frozen', False):
+    try:
+        from src.utils._build_info import VERSION
+    except ImportError:
         return "TEST"
+    return VERSION
 
-    # 패키징 시 빌드 스크립트가 _BUILD_BRANCH를 주입할 수 있음
-    branch = getattr(sys, '_BUILD_BRANCH', None)
-    if branch is None:
-        try:
-            branch = subprocess.check_output(
-                ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-                stderr=subprocess.DEVNULL, timeout=5
-            ).decode().strip()
-        except Exception:
-            return "DEVELOP"
 
-    if branch.startswith('release/'):
-        return branch[len('release/'):]
-    elif branch.startswith('beta/'):
-        return f"{branch[len('beta/'):]} (beta)"
-    else:
-        return "DEVELOP"
+def parse_version(text):
+    """버전 문자열을 비교 가능한 튜플로 바꾼다. 형식이 맞지 않으면 None.
+
+    정식 버전이 같은 번호의 베타보다 높다: 1.2.0-beta.2 < 1.2.0
+    """
+    m = _VERSION_RE.match((text or '').strip())
+    if not m:
+        return None
+    major, minor, patch, pre, pre_num = m.groups()
+    is_release = 1 if pre is None else 0
+    return (int(major), int(minor), int(patch or 0), is_release, int(pre_num or 0))
+
+
+def is_newer(candidate, current):
+    """candidate 가 current 보다 새 버전이면 True. 개발 모드(TEST) 등 해석할 수 없으면 False."""
+    a, b = parse_version(candidate), parse_version(current)
+    return a is not None and b is not None and a > b
