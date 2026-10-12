@@ -137,7 +137,9 @@ Item {
     property var keptLongSlides: ({})
 
     function checkLongSlides() {
-        if (!keepTwo || !confirmDialog || confirmDialog.opened) return
+        // 튜토리얼이 열려 있으면 그 위에 띄우지 않고, 닫힌 뒤에 묻는다 (아래 Connections).
+        // opened는 열리는 애니메이션이 끝나야 참이라, 포커스가 빠지는 순간에도 참인 visible로 본다
+        if (!keepTwo || !confirmDialog || confirmDialog.opened || (tour && tour.visible)) return
         const longOnes = []
         blocks.forEach((b, i) => { if (b.lines.length > 2) longOnes.push(i) })
         const fresh = longOnes.filter(i => !keptLongSlides[blocks[i].lines.join("\n")])
@@ -157,6 +159,11 @@ Item {
             }
         })
         slideList.flash(fresh[0])
+    }
+
+    Connections {
+        target: page.tour
+        function onClosed() { if (page.visible && !page.lyricsFocused) page.checkLongSlides() }
     }
 
     // 3줄 이상인 슬라이드만 2줄씩 나눈다 (나머지는 그대로)

@@ -76,7 +76,7 @@ QtObject {
         return [
             { target: keepTwoRow, demo: keepTwoToggleDemo, title: "2줄 유지란?",
               body: "줄을 옆 슬라이드로 옮길 때, <b>나머지 슬라이드도 2줄씩 다시 맞춰주는</b> 옵션이에요. "
-                  + "가사 짝이 한 줄씩 어긋나 있을 때, 한 줄만 옮겨서 뒤쪽을 한 번에 바로잡을 수 있어요." },
+                  + "가사 짝이 한 줄씩 어긋나 있을 때, 한 줄만 옮겨서 뒤쪽을 한 번에 바로잡을 수 있어요. 기본으로 켜져 있어요." },
             { target: slideList, demo: dragDemo, title: "꺼져 있으면",
               body: "옮긴 줄만 움직여요. 받은 슬라이드는 3줄, 준 슬라이드는 1줄이 된 채로 남아요." },
             { target: slideList, demo: keepTwoDragDemo, title: "켜져 있으면",
