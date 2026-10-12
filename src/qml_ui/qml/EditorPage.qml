@@ -11,6 +11,7 @@ Item {
 
     property var toastHost: null
     property var dialog: null
+    property var confirmDialog: null
 
     property var song: null
     property var blocks: []          // 가사 텍스트에서 파생된 슬라이드 목록
@@ -77,8 +78,62 @@ Item {
 
     function joinSlides(idx) {
         const groups = E.linesOf(blocks)
-        groups.splice(idx, 2, groups[idx].concat(groups[idx + 1]))
-        commit(groups, { focus: idx })
+        const joined = groups[idx].concat(groups[idx + 1])
+        const apply = () => {
+            groups.splice(idx, 2, joined)
+            commit(groups, { focus: idx })
+        }
+        // 2줄 유지 중에 3줄 이상 슬라이드가 생기면 한 번 확인한다
+        if (keepTwo && joined.length > 2 && confirmDialog) {
+            confirmDialog.ask({
+                title: "3줄 이상 슬라이드가 됩니다",
+                message: (idx + 1) + "번과 " + (idx + 2) + "번 슬라이드를 합치면 " + joined.length
+                         + "줄이 됩니다. '2줄 유지' 중인데 합칠까요?",
+                confirmText: "합치기",
+                onConfirm: apply
+            })
+        } else {
+            apply()
+        }
+    }
+
+    // ── 2줄 유지 중 가사 입력 확인 ──
+    // 타이핑 중에는 방해하지 않고, 입력칸에서 벗어날 때 3줄 이상 슬라이드가 있으면 한 번 묻는다.
+    // '그대로 두기'를 고른 슬라이드는 내용이 바뀌기 전까지 다시 묻지 않는다.
+    property var keptLongSlides: ({})
+
+    function checkLongSlides() {
+        if (!keepTwo || !confirmDialog || confirmDialog.opened) return
+        const longOnes = []
+        blocks.forEach((b, i) => { if (b.lines.length > 2) longOnes.push(i) })
+        const fresh = longOnes.filter(i => !keptLongSlides[blocks[i].lines.join("\n")])
+        if (!fresh.length) return
+
+        const names = fresh.slice(0, 5).map(i => (i + 1) + "번").join(", ") + (fresh.length > 5 ? " 등" : "")
+        confirmDialog.ask({
+            title: "3줄 이상인 슬라이드가 있어요",
+            message: names + " 슬라이드가 3줄 이상입니다. '2줄 유지' 중인데 2줄씩 나눌까요?",
+            confirmText: "2줄씩 나누기",
+            cancelText: "그대로 두기",
+            onConfirm: () => splitLongSlides(),
+            onCancel: () => {
+                const kept = Object.assign({}, keptLongSlides)
+                fresh.forEach(i => { kept[blocks[i].lines.join("\n")] = true })
+                keptLongSlides = kept
+            }
+        })
+        slideList.flash(fresh[0])
+    }
+
+    // 3줄 이상인 슬라이드만 2줄씩 나눈다 (나머지는 그대로)
+    function splitLongSlides() {
+        let count = 0
+        const groups = []
+        E.linesOf(blocks).forEach(lines => {
+            if (lines.length > 2) { count++; groups.push(...E.regroup(lines, 2)) }
+            else groups.push(lines)
+        })
+        if (count) commit(groups, { message: count + "장을 2줄씩 나눴어요" })
     }
 
     function removeSlide(idx) {
@@ -390,6 +445,7 @@ Item {
                                 typingTimer.restart()
                             }
                             onCursorPositionChanged: if (!page.applying) page.syncActiveFromCaret()
+                            onActiveFocusChanged: if (!activeFocus) page.checkLongSlides()
 
                             // ⌘Z / ⇧⌘Z 는 앱 전체 히스토리로 처리
                             Keys.onPressed: (event) => {
