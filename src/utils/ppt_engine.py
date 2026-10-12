@@ -34,36 +34,36 @@ class PPTBuilder:
             try:
                 original_p = text_frame.paragraphs[0]
                 original_run = original_p.runs[0]
-                original_font = copy.deepcopy(original_run.font)
-                original_alignment = original_p.alignment
             except IndexError:
                 continue
+
+            # 문단 서식(줄 간격·정렬 등)과 글자 서식(폰트·크기·색·언어 등)을 XML째로 보관
+            original_pPr = copy.deepcopy(original_p._p.pPr)
+            original_rPr = copy.deepcopy(original_run._r.rPr)
 
             # 첫 번째 문단을 제외한 나머지 문단을 삭제
             for p in text_frame.paragraphs[1:]:
                 p._p.getparent().remove(p._p)
 
-            # 첫 번째 문단의 내용을 모두 지움
+            # 첫 번째 문단의 내용을 모두 지움 (문단 서식은 유지됨)
             p = text_frame.paragraphs[0]
             p.clear()
-            p.alignment = original_alignment
 
             lines = lyrics_chunk.split('\n')
             for i, line in enumerate(lines):
                 if i > 0:
                     p = text_frame.add_paragraph()
-                    p.alignment = original_alignment
+                    # 새 문단에도 첫 문단의 서식을 그대로 적용 (없으면 줄 간격이 기본값으로 바뀜)
+                    if original_pPr is not None:
+                        p._p.remove(p._p.get_or_add_pPr())
+                        p._p.insert(0, copy.deepcopy(original_pPr))
 
                 run = p.add_run()
                 run.text = line
-                
-                run.font.name = original_font.name
-                run.font.size = original_font.size
-                run.font.bold = original_font.bold
-                run.font.italic = original_font.italic
-                if original_font.color and hasattr(original_font.color, 'rgb') and original_font.color.rgb is not None:
-                    run.font.color.rgb = original_font.color.rgb
-            
+                if original_rPr is not None:
+                    run._r.remove(run._r.get_or_add_rPr())
+                    run._r.insert(0, copy.deepcopy(original_rPr))
+
             break
 
     def generate_slides_to_memory(self, lyrics_data):
