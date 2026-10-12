@@ -1,5 +1,6 @@
-# 태그(v1.2.0, v1.2.0-beta.1 등)를 올리면 Windows/macOS 빌드 → 검증 → GitHub 초안(Draft) 릴리스 생성
-# 초안의 파일을 직접 테스트한 뒤 GitHub에서 [Publish release]를 누르면 같은 파일이 그대로 배포된다
+# 태그를 올리면 Windows/macOS 빌드 → 검증 → GitHub 릴리스 업로드
+#   v1.2.0-beta.1 → 프리릴리스(베타 사용자에게만 업데이트 알림). 업데이트·기능 테스트용
+#   v1.2.0        → 정식 릴리스. 테스트를 마친 베타와 같은 커밋에 단다 (docs/RELEASE_CHECKLIST.md)
 # master·develop 으로 가는 PR과 수동 실행(workflow_dispatch)은 릴리스 없이 빌드·검증만 한다
 name: Release
 
@@ -84,6 +85,11 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      # 릴리스 노트 범위를 정하려고 태그 목록이 필요하다
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -93,11 +99,18 @@ jobs:
         working-directory: dist
         run: sha256sum LyricsSlideCreator-* > SHA256SUMS.txt && cat SHA256SUMS.txt
 
-      - name: 초안 릴리스 생성 (공개는 직접 테스트 후 수동)
+      - name: 릴리스 생성
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF_NAME}"
-          pre=""
-          case "$tag" in *-*) pre="--prerelease" ;; esac
-          gh release create "$tag" dist/* --repo "${{ github.repository }}" --title "$tag" --generate-notes --draft $pre
+          args=(--generate-notes)
+          case "$tag" in
+            *-*)
+              args+=(--prerelease) ;;
+            *)
+              # 정식 태그는 테스트한 베타와 같은 커밋에 달리므로 기본값(바로 이전 릴리스)이면 노트가 비어버린다
+              prev=$(python3 scripts/notes_start_tag.py "$tag")
+              if [ -n "$prev" ]; then args+=(--notes-start-tag "$prev"); fi ;;
+          esac
+          gh release create "$tag" dist/* --repo "${{ github.repository }}" --title "$tag" "${args[@]}"
