@@ -18,6 +18,7 @@ QtObject {
     property Item historyRow
     property Item templateRow
     property Item templateButton
+    property bool customTemplate: false
     property Item generateButton
 
     // 예시용 가사 줄: 지금 가사의 앞부분, 모자라면 "가사 N"
@@ -34,19 +35,28 @@ QtObject {
         return row
     }
 
-    // ── 튜토리얼 ──
-    function lyrics() {
-        tour.start([
+    // ── 튜토리얼 ── (? 버튼마다 해당 부분만, 처음 들어왔을 때는 전부 이어서)
+    function lyrics() { tour.start(lyricsSteps()) }
+    function slides() { tour.start(slidesSteps()) }
+    function keepTwoHelp() { tour.start(keepTwoSteps()) }
+    function generate() { tour.start(generateSteps()) }
+    function firstRun(onFinished) {
+        tour.start(lyricsSteps().concat(slidesSteps(), keepTwoSteps(), generateSteps()),
+                   { required: true, onFinished: onFinished })
+    }
+
+    function lyricsSteps() {
+        return [
             { target: lyricsBox, demo: lyricsDemo, title: "가사가 곧 슬라이드예요",
               body: "<b>빈 줄</b>로 구분된 덩어리 하나가 슬라이드 한 장이 돼요. 가사를 고치면 오른쪽 미리보기에 바로 반영돼요." },
             { target: autoSplitRow, demo: autoSplitDemo, title: "자동 나누기",
               body: "가사 전체를 처음부터 <b>1줄씩</b> 또는 <b>2줄씩</b> 다시 나눠요. 곡을 처음 불러오면 2줄씩 나뉘어 있어요.<br>"
                   + "직접 나눈 것은 사라지지만 <b>되돌리기(" + Theme.mod + "Z)</b>로 되돌릴 수 있어요." }
-        ])
+        ]
     }
 
-    function slides() {
-        tour.start([
+    function slidesSteps() {
+        return [
             { target: slideList, demo: previewDemo, title: "슬라이드 미리보기",
               body: "PPT에 들어갈 슬라이드를 한 장씩 보여줘요.<br>"
                   + "슬라이드를 누르면 왼쪽 가사에서 그 부분이 선택되고, 마우스를 올리면 나오는 <b>휴지통</b>으로 지울 수 있어요." },
@@ -59,11 +69,11 @@ QtObject {
             { target: historyRow, demo: historyDemo, title: "되돌리기",
               body: "모든 편집은 되돌릴 수 있어요. <b>" + Theme.mod + "Z</b> 되돌리기, <b>"
                   + (Qt.platform.os === "osx" ? "⇧⌘Z" : "Ctrl+Y") + "</b> 다시 실행." }
-        ])
+        ]
     }
 
-    function keepTwoHelp() {
-        tour.start([
+    function keepTwoSteps() {
+        return [
             { target: keepTwoRow, demo: keepTwoToggleDemo, title: "2줄 유지란?",
               body: "줄을 옆 슬라이드로 옮길 때, <b>나머지 슬라이드도 2줄씩 다시 맞춰주는</b> 옵션이에요. "
                   + "가사 짝이 한 줄씩 어긋나 있을 때, 한 줄만 옮겨서 뒤쪽을 한 번에 바로잡을 수 있어요." },
@@ -72,19 +82,23 @@ QtObject {
             { target: slideList, demo: keepTwoDragDemo, title: "켜져 있으면",
               body: "예: 첫 슬라이드의 마지막 줄을 뒤 슬라이드로 옮기면, 3줄이 된 슬라이드는 넘친 줄을 <b>같은 방향</b>으로 밀어내고, 줄이 빠진 슬라이드는 <b>반대쪽</b> 이웃에서 당겨와 채워요. "
                   + "그래서 뒤쪽 슬라이드가 모두 <b>2줄씩 다시 맞춰져요</b>." }
-        ])
+        ]
     }
 
-    function generate() {
-        tour.start([
-            { target: templateRow, demo: templateDemo, title: "템플릿",
-              body: "PPT의 배경·글꼴·글자 위치를 정하는 PowerPoint 파일이에요. "
-                  + "템플릿 첫 슬라이드에서 <b>'가사'</b>라고 적힌 글상자 자리에 각 슬라이드의 가사가 들어가요.<br>"
-                  + "<b>변경</b>을 눌러 직접 만든 .pptx로 바꿀 수 있어요." },
+    function generateSteps() {
+        return [
+            customTemplate
+                ? { target: templateRow, demo: templateDemo, title: "템플릿",
+                    body: "PPT의 배경·글꼴·글자 위치를 정하는 PowerPoint 파일이에요. "
+                        + "템플릿 첫 슬라이드에서 <b>'가사'</b>라고 적힌 글상자 자리에 각 슬라이드의 가사가 들어가요.<br>"
+                        + "<b>변경</b>을 눌러 직접 만든 .pptx로 바꿀 수 있어요." }
+                : { target: templateRow, title: "템플릿",
+                    body: "PPT의 배경·글꼴·글자 위치를 정하는 파일이에요. 지금은 <b>기본 템플릿</b>으로 만들어지고, "
+                        + "직접 만든 템플릿은 추후 지원할 예정이에요." },
             { target: generateButton, demo: generateDemo, title: "PPT 생성",
               body: "저장할 위치를 고르면 미리보기의 슬라이드 수만큼 PPT가 만들어져요.<br>단축키: <b>"
                   + Theme.mod + "Enter</b>" }
-        ])
+        ]
     }
 
     // ── 예시 동작 ──
@@ -105,7 +119,7 @@ QtObject {
                 radius: Theme.radius
                 color: Theme.surface
                 border.width: 1.5
-                border.color: Theme.primary
+                border.color: Theme.focusBorder
 
                 ListView {
                     id: textView

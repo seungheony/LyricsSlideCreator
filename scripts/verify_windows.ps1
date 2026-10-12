@@ -8,7 +8,7 @@ $setup = Join-Path $PSScriptRoot "..\dist\LyricsSlideCreator-$Version-Setup.exe"
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\LyricsSlideCreator'
 $exe = Join-Path $installDir 'LyricsSlideCreator.exe'
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{99E90106-8A80-4B53-92E4-ADE0CCB80F0F}_is1'
-$shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Lyrics Slide Creator.lnk'
+$shortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\가사 슬라이드 생성기.lnk'
 $watched = @($env:LOCALAPPDATA, $env:APPDATA, $env:TEMP)
 $appPattern = 'Lyrics|PySide|Nuitka|qmlcache|pipelinecache'
 

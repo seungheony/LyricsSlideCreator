@@ -9,7 +9,7 @@ ApplicationWindow {
     minimumWidth: 760
     minimumHeight: 560
     visible: true
-    title: "Lyrics Slide Creator"
+    title: "가사 슬라이드 생성기"
     color: Theme.bg
     font.family: Theme.font
 
@@ -44,6 +44,7 @@ ApplicationWindow {
             }
             editorPage.load(song, det.lyrics)
             win.editorActive = true
+            if (!backend.tutorialSeen("editor")) editorTourTimer.start()
         }
     }
 
@@ -124,6 +125,15 @@ ApplicationWindow {
             updateBanner.shown = true
         }
     }
+
+    // ── 첫 실행 튜토리얼 ── 화면마다 처음 들어갈 때 한 번씩, 끝까지 봐야 넘어간다 (기록: src/utils/app_state.py)
+    // 페이지 전환 애니메이션이 끝난 뒤에 시작해야 강조할 위치가 맞는다
+    Timer {
+        interval: 600
+        Component.onCompleted: if (!backend.tutorialSeen("search")) start()
+        onTriggered: searchPage.showHelp({ required: true, onFinished: () => backend.markTutorialSeen("search") })
+    }
+    Timer { id: editorTourTimer; interval: Theme.normal + 200; onTriggered: editorPage.showFirstRunTour() }
 
     // 시작 직후가 아니라 화면이 뜬 뒤에 조용히 확인
     Timer { interval: 1500; running: true; onTriggered: backend.checkForUpdate() }

@@ -12,8 +12,9 @@ from PySide6.QtQuick import QQuickImageProvider
 
 from src.utils.melon_api import MelonScraper
 from src.utils.ppt_engine import PPTBuilder
+from src.utils.line_fit import LineFit
 from src.utils.helpers import resource_path
-from src.utils import updater
+from src.utils import app_state, updater
 from src.utils.version import get_version
 
 
@@ -73,6 +74,7 @@ class Backend(QObject):
         self._pool = ThreadPoolExecutor(max_workers=6)
         self._art_requested = set()
         self._template_path = resource_path("template.pptx")
+        self._line_fit = None            # 템플릿 글상자 기준 줄바꿈 계산기 (처음 쓸 때 만든다, 실패하면 False)
         self._update = None
         # 지난 업데이트에서 남은 다운로드 파일 정리 (앱 폴더 밖에 아무것도 남기지 않는다)
         updater.cleanup()
@@ -91,8 +93,49 @@ class Backend(QObject):
         path = QUrl(file_url).toLocalFile() or file_url
         if path:
             self._template_path = path
+            self._line_fit = None
             self.templateChanged.emit()
         return os.path.basename(self._template_path)
+
+    # ── PPT 줄바꿈 미리 계산 ── (템플릿의 가사 글상자 기준, src/utils/line_fit.py)
+    def _fit(self):
+        if self._line_fit is None:
+            try:
+                self._line_fit = LineFit(self._template_path)
+            except Exception:
+                traceback.print_exc()
+                self._line_fit = False
+        return self._line_fit or None
+
+    @Slot(str, result=str)
+    def lineWidthRatios(self, lines_json):
+        """줄마다 글상자 폭 대비 글자 폭 비율 (JSON 배열). 1을 넘으면 PPT에서 줄바꿈된다. 계산할 수 없으면 0"""
+        fit = self._fit()
+        return json.dumps([fit.ratio(line) if fit else 0 for line in json.loads(lines_json)])
+
+    @Slot(result=str)
+    def lineFitInfo(self):
+        """계산 기준 (JSON 객체: font, sizePt, availablePt, exact). 계산할 수 없으면 빈 객체"""
+        fit = self._fit()
+        if not fit or not fit.box or not fit.box.wraps:
+            return '{}'
+        box = fit.box
+        font = box.latin if box.latin == box.east_asian else f'{box.east_asian} / {box.latin}'
+        return json.dumps({'font': font, 'bold': box.bold, 'sizePt': round(box.size_pt, 1),
+                           'availablePt': round(box.available_pt, 1), 'exact': box.exact})
+
+    # ── 첫 실행 튜토리얼 ── (name: "search" | "editor")
+    @Slot(str, result=bool)
+    def tutorialSeen(self, name):
+        return name in app_state.load().get('tutorials_seen', [])
+
+    @Slot(str)
+    def markTutorialSeen(self, name):
+        state = app_state.load()
+        seen = state.get('tutorials_seen', [])
+        if name not in seen:
+            state['tutorials_seen'] = seen + [name]
+            app_state.save(state)
 
     # ── 멜론 ──
     @Slot(int, str)

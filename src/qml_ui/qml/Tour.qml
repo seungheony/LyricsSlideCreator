@@ -6,6 +6,7 @@ import "."
 // 튜토리얼: 설명할 부분만 밝게 남기고 나머지를 어둡게 덮은 뒤, 옆에 단계별 설명 카드를 띄운다.
 // start([{ target: Item(없으면 가운데 카드만), title, body(StyledText), demo: Component(선택) }, ...])
 // demo는 강조 영역 위에 그대로 겹쳐 만들어져, 실제 화면 위에서 예시 동작을 재생한다 (Demo.qml)
+// opts.required: 첫 실행용. 닫기·Esc 없이 마지막 단계의 "완료"까지 봐야 끝나고, 끝나면 opts.onFinished()
 Popup {
     id: tour
 
@@ -14,12 +15,24 @@ Popup {
     readonly property var step: steps[index] || null
     readonly property bool hasTarget: !!(step && step.target)
 
-    function start(newSteps) {
+    property bool required: false
+    property var onFinished: null
+
+    function start(newSteps, opts) {
+        opts = opts || {}
         steps = newSteps
         index = 0
+        required = !!opts.required
+        onFinished = opts.onFinished || null
         open()
     }
-    function next() { if (index < steps.length - 1) index++; else close() }
+    function next() {
+        if (index < steps.length - 1) { index++; return }
+        const done = onFinished
+        onFinished = null
+        close()
+        if (done) done()
+    }
     readonly property int pad: 6     // 강조 영역이 대상보다 넓은 정도
     function prev() { if (index > 0) index-- }
 
@@ -31,7 +44,7 @@ Popup {
     padding: 0
     modal: true
     focus: true
-    closePolicy: Popup.CloseOnEscape
+    closePolicy: required ? Popup.NoAutoClose : Popup.CloseOnEscape
     Overlay.modal: Item {}    // 어둡게 덮는 건 강조 영역에 구멍을 내야 해서 직접 그린다
     background: null
 
@@ -156,6 +169,7 @@ Popup {
                     Item { Layout.fillWidth: true }
                     AppButton {
                         glyph: "x"; variant: "ghost"; size: "small"
+                        visible: !tour.required
                         implicitHeight: 26
                         Accessible.name: "닫기"
                         onClicked: tour.close()

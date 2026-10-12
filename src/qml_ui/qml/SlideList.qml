@@ -9,6 +9,8 @@ Item {
     id: list
 
     property var blocks: []
+    // 슬라이드별·줄별 PPT 글상자 폭 대비 글자 폭 비율 (1을 넘으면 PPT에서 줄바꿈, EditorPage.measureLines)
+    property var ratios: []
     property int active: -1
     // (src, 포인터가 가리키는 위치) → 허용된 드롭 위치 또는 null. 규칙은 editor.js resolveDrop
     property var resolveDrop: function (src, target) { return target }
@@ -349,17 +351,34 @@ Item {
                                     required property int index
                                     readonly property bool isDragged: drag.active && drag.src
                                                                       && drag.src.slide === slot.index && drag.src.line === index
+                                    readonly property real ratio: (list.ratios[slot.index] || [])[index] || 0
+                                    readonly property bool wraps: ratio > 1
 
                                     width: lines.width
                                     height: lineText.height + 6
+
+                                    ToolTip.visible: wraps && lineMouse.containsMouse && !drag.active
+                                    ToolTip.delay: 300
+                                    ToolTip.text: "PPT에서 두 줄로 나뉘어요 · " + (ratio < 1.005 ? "글상자 폭을 아주 조금 넘어요"
+                                                                                     : "글상자 폭의 " + Math.round(ratio * 100) + "%")
 
                                     Rectangle {
                                         anchors.centerIn: parent
                                         width: Math.min(lineText.contentWidth + 20, parent.width)
                                         height: parent.height
                                         radius: 6
-                                        color: Qt.rgba(1, 1, 1, lineMouse.containsMouse && lineMouse.draggable && !drag.active ? 0.08 : 0)
+                                        color: lineItem.wraps ? Qt.rgba(1, 0.71, 0.28, lineMouse.containsMouse && !drag.active ? 0.22 : 0.14)
+                                             : Qt.rgba(1, 1, 1, lineMouse.containsMouse && lineMouse.draggable && !drag.active ? 0.08 : 0)
                                         Behavior on color { ColorAnimation { duration: Theme.fast } }
+                                    }
+
+                                    // PPT 줄바꿈 경고 (왼쪽 여백, 나누기 가위 버튼과 겹치지 않는 자리)
+                                    Icon {
+                                        visible: lineItem.wraps
+                                        x: -22
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        glyph: "alert"; size: 14
+                                        color: Theme.slideWarning
                                     }
 
                                     Text {
@@ -367,7 +386,7 @@ Item {
                                         anchors.centerIn: parent
                                         width: parent.width
                                         text: lineItem.modelData
-                                        color: "white"
+                                        color: lineItem.wraps ? Theme.slideWarning : "white"
                                         font.family: Theme.font
                                         font.pixelSize: 14
                                         font.weight: Font.Bold

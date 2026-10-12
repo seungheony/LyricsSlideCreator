@@ -12,6 +12,8 @@ Item {
     property var toastHost: null
     property var dialog: null
     property var tour: null
+    // 커스텀 템플릿(변경 버튼)은 아직 지원하지 않는다. 다시 쓸 때 true로 바꾸면 기존 기능이 그대로 살아난다
+    readonly property bool customTemplate: false
 
     property var song: null
     property var blocks: []          // 가사 텍스트에서 파생된 슬라이드 목록
@@ -53,7 +55,38 @@ Item {
     function sync() {
         blocks = E.parseBlocks(lyrics.text)
         if (active >= blocks.length) active = blocks.length - 1
+        measureLines()
     }
+
+    // ── PPT 줄바꿈 미리 계산 ── 템플릿의 가사 글상자(글꼴·크기·폭) 기준 (src/utils/line_fit.py)
+    property var lineRatios: []      // 슬라이드별·줄별 글상자 폭 대비 글자 폭 비율 (1을 넘으면 줄바꿈)
+    property var wrapSlides: []      // 줄바꿈되는 줄이 있는 슬라이드 번호
+    property int wrapCursor: -1      // 줄바꿈 표시를 누를 때마다 다음 슬라이드로
+    property string fitBasis: ""     // 계산 기준 (안내 문구)
+
+    function measureLines() {
+        const ratios = JSON.parse(backend.lineWidthRatios(JSON.stringify(E.allLines(blocks))))
+        let k = 0
+        lineRatios = blocks.map(b => b.lines.map(() => ratios[k++]))
+        wrapSlides = lineRatios.reduce((acc, r, i) => r.some(x => x > 1) ? acc.concat(i) : acc, [])
+    }
+
+    function updateFitBasis() {
+        const info = JSON.parse(backend.lineFitInfo())
+        fitBasis = info.font ? info.font + (info.bold ? " 굵게 " : " ") + info.sizePt + "pt · 글상자 폭 " + info.availablePt + "pt"
+                               + (info.exact ? "" : " (글꼴이 없어 비슷한 글꼴로 계산한 어림값)")
+                             : ""
+    }
+
+    function showNextWrap() {
+        if (!wrapSlides.length) return
+        const next = wrapSlides.find(i => i > wrapCursor)
+        wrapCursor = next !== undefined ? next : wrapSlides[0]
+        revealInText(wrapCursor)
+        slideList.flash(wrapCursor)
+    }
+
+    Component.onCompleted: updateFitBasis()
 
     // 구조 편집: 텍스트를 새로 쓰고 히스토리에 남긴 뒤 바뀐 슬라이드를 강조한다
     function commit(groups, opts) {
@@ -96,7 +129,7 @@ Item {
     }
 
     // 줄 드래그: 옆 슬라이드로만 옮긴다. 2줄 유지를 켜면 넘친 줄은 연쇄로 밀고 빈자리는 연쇄로 당겨 채운다
-    property bool keepTwo: false
+    property bool keepTwo: true     // 기본으로 켜 둔다
 
     // 놓으려는 위치를 허용된 동작으로 바꾼다. 허용되지 않거나 바뀌는 게 없으면 null
     function resolveDrop(src, raw) {
@@ -176,6 +209,11 @@ Item {
     function cancelDrag() { slideList.cancelDrag() }
 
     // ── 도움말 (? 버튼) ──
+    // 처음 편집 화면에 들어왔을 때: 모든 튜토리얼을 이어서 끝까지 보여준다
+    function showFirstRunTour() {
+        help.firstRun(() => backend.markTutorialSeen("editor"))
+    }
+
     EditorHelp {
         id: help
         tour: page.tour
@@ -189,6 +227,7 @@ Item {
         historyRow: historyRow
         templateRow: templateRow
         templateButton: templateButton
+        customTemplate: page.customTemplate
         generateButton: generateButton
     }
 
@@ -211,6 +250,10 @@ Item {
             const res = JSON.parse(json)
             if (res.error) page.dialog.showError(res.error, res.detail)
             else page.toastHost.show("PPT 생성이 완료되었습니다!")
+        }
+        function onTemplateChanged() {
+            page.updateFitBasis()
+            page.measureLines()
         }
         function onArtReady(id) {
             if (page.song && id === page.song.song_id) {
@@ -385,7 +428,7 @@ Item {
                     radius: Theme.radius
                     color: Theme.surface
                     border.width: 1.5
-                    border.color: lyrics.activeFocus ? Theme.primary : Theme.border
+                    border.color: lyrics.activeFocus ? Theme.focusBorder : Theme.border
                     Behavior on border.color { ColorAnimation { duration: Theme.fast } }
 
                     ScrollView {
@@ -434,7 +477,7 @@ Item {
                         Text { id: kbd; anchors.centerIn: parent; text: "빈 줄"; color: Theme.text2; font.family: Theme.font; font.pixelSize: 11 }
                     }
                     Text {
-                        text: "하나가 슬라이드 경계예요 · Enter 두 번으로 나누고, 빈 줄을 지우면 합쳐져요"
+                        text: "하나가 슬라이드의 경계가 됩니다"
                         color: Theme.text3
                         font.family: Theme.font
                         font.pixelSize: 12
@@ -458,7 +501,31 @@ Item {
                         visible: page.blocks.length > 0
                         width: countText.implicitWidth + 16; height: 20; radius: 10
                         color: Theme.primarySoft
-                        Text { id: countText; anchors.centerIn: parent; text: page.blocks.length + "장"; color: Theme.primary; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
+                        Text { id: countText; anchors.centerIn: parent; text: page.blocks.length + "장"; color: Theme.primaryText; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
+                    }
+                    // PPT에서 줄바꿈되는 슬라이드 수. 누르면 그 슬라이드를 차례로 보여준다
+                    Rectangle {
+                        visible: page.wrapSlides.length > 0
+                        width: wrapRow.implicitWidth + 16; height: 20; radius: 10
+                        color: wrapArea.containsMouse ? Qt.darker(Theme.warningSoft, 1.05) : Theme.warningSoft
+                        Row {
+                            id: wrapRow
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Icon { glyph: "alert"; size: 12; color: Theme.warning; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: "줄바꿈 " + page.wrapSlides.length + "장"; color: Theme.warning; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
+                        }
+                        MouseArea {
+                            id: wrapArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: page.showNextWrap()
+                        }
+                        ToolTip.visible: wrapArea.containsMouse
+                        ToolTip.delay: 400
+                        ToolTip.text: "PPT에서 글상자 폭을 넘어 두 줄로 나뉘는 줄이 있어요. 누르면 차례로 보여줘요"
+                                      + (page.fitBasis ? "\n기준: " + page.fitBasis : "")
                     }
                     HelpButton { Layout.leftMargin: 2; onClicked: help.slides() }
                     Item { Layout.fillWidth: true }
@@ -521,6 +588,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     blocks: page.blocks
+                    ratios: page.lineRatios
                     active: page.active
                     resolveDrop: (src, raw) => page.resolveDrop(src, raw)
                     onCutRequested: (slide, at) => page.cutSlide(slide, at)
@@ -532,7 +600,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "첫 줄은 앞, 마지막 줄은 뒤 슬라이드로 <b>드래그</b> · 줄 사이 <b>✂</b> → 나누기 · 슬라이드 사이 → 합치기 · 클릭 → 가사로 이동"
+                    text: "줄을 <b>드래그</b>해 옆 슬라이드로 옮길 수 있습니다"
                     textFormat: Text.StyledText
                     color: Theme.text3
                     font.family: Theme.font
@@ -561,7 +629,7 @@ Item {
                     Text { text: "템플릿"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13 }
                     Text {
                         id: templateName
-                        Component.onCompleted: text = backend.templateName()
+                        Component.onCompleted: text = page.customTemplate ? backend.templateName() : "기본 템플릿"
                         color: Theme.text
                         font.family: Theme.font
                         font.pixelSize: 13
@@ -569,7 +637,14 @@ Item {
                         elide: Text.ElideMiddle
                         Layout.maximumWidth: 260
                     }
-                    AppButton { id: templateButton; text: "변경"; variant: "ghost"; size: "small"; onClicked: templateDialog.open() }
+                    AppButton { id: templateButton; visible: page.customTemplate; text: "변경"; variant: "ghost"; size: "small"; onClicked: templateDialog.open() }
+                    Text {
+                        visible: !page.customTemplate
+                        text: "· 커스텀 템플릿은 추후 지원 예정"
+                        color: Theme.text3
+                        font.family: Theme.font
+                        font.pixelSize: 12
+                    }
                     HelpButton { onClicked: help.generate() }
                 }
                 Item { Layout.fillWidth: true }
