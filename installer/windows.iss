@@ -78,3 +78,19 @@ function ShouldLaunch: Boolean;
 begin
   Result := Pos('/NOLAUNCH', UpperCase(GetCmdTail)) = 0;
 end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  TempDir: String;
+  ResultCode: Integer;
+begin
+  if CurUninstallStep = usDone then
+  begin
+    // 제거 프로그램은 %TEMP%\is-XXXX-uninstall.tmp 에 복사된 자신을 실행하므로 그 폴더를 스스로 지울 수 없다.
+    // 제거가 끝나고 몇 초 뒤 폴더를 지우는 일을 별도 프로세스에 맡긴다 (자기 폴더일 때만).
+    TempDir := ExtractFileDir(ParamStr(0));
+    if Pos('-uninstall.tmp', Lowercase(TempDir)) > 0 then
+      Exec(ExpandConstant('{cmd}'), '/c ping 127.0.0.1 -n 5 >nul & rmdir /s /q "' + TempDir + '"',
+        ExpandConstant('{%TEMP}'), SW_HIDE, ewNoWait, ResultCode);
+  end;
+end;
