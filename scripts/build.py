@@ -25,6 +25,8 @@ APP_FILE_NAME = 'LyricsSlideCreator'
 BUNDLE_ID = 'io.github.seungheony.lyricsslidecreator'
 DIST = os.path.join(ROOT, 'dist')
 BUILD = os.path.join(ROOT, 'build')
+# 앱 아이콘 (scripts/make_icons.py로 생성)
+ICON_DIR = os.path.join(ROOT, 'assets', 'app-icon')
 
 # 앱이 쓰지 않는 Qt 모듈. Nuitka가 QML 모듈을 통째로 가져오면서 웹 엔진(200MB+) 등이 딸려오므로 뺀다.
 # 파일 이름에 이 문자열이 들어가면 제외 (macOS: QtWebEngineCore, Windows: Qt6WebEngineCore.dll 등)
@@ -78,6 +80,7 @@ def build_macos(version):
         f'--macos-app-name={APP_NAME}',
         f'--macos-signed-app-name={BUNDLE_ID}',
         f'--macos-app-version={version}',
+        f'--macos-app-icon={os.path.join(ICON_DIR, "AppIcon.icns")}',
     ])
     app_src = os.path.join(BUILD, 'run.app')
     app_dst = os.path.join(DIST, f'{APP_NAME}.app')
@@ -104,7 +107,8 @@ def find_iscc():
 
 def build_windows(version):
     nuitka(version, ['--mode=standalone', '--windows-console-mode=disable',
-                     f'--output-filename={APP_FILE_NAME}.exe'])
+                     f'--output-filename={APP_FILE_NAME}.exe',
+                     f'--windows-icon-from-ico={os.path.join(ICON_DIR, "AppIcon.ico")}'])
     run([find_iscc(),
          f'/DAppVersion={version}',
          f'/DAppNumericVersion={numeric_version(version)}',
