@@ -58,16 +58,24 @@ python scripts/build.py 1.2.0
 
 Nuitka로 C 컴파일하므로 macOS는 Xcode Command Line Tools, Windows는 Visual Studio Build Tools(C++)가 필요합니다.
 
-### 4. 릴리스 (자동)
+### 4. 작업 흐름
 
-버전 태그를 올리면 GitHub Actions가 Windows/macOS 빌드 → 검증(Windows는 설치·실행·제거 후 남은 파일 확인) → 릴리스 업로드를 자동으로 합니다.
+작업 브랜치에서 개발하고 master로 PR을 올립니다. PR마다 GitHub Actions가 Windows/macOS 빌드와 검증(Windows는 설치·실행·제거 후 남은 파일 확인)을 하며, 두 검사를 통과해야 머지할 수 있습니다.
+
+### 5. 릴리스
+
+베타로 먼저 배포해 직접 테스트하고, 문제가 없으면 같은 커밋을 정식으로 배포합니다. master에서 실행합니다.
 
 ```bash
-git tag v1.2.0          # 베타는 v1.2.0-beta.1 처럼 '-'를 붙이면 프리릴리스가 됩니다
-git push origin v1.2.0
+git checkout master && git pull
+./scripts/release.sh beta 1.2.0     # v1.2.0-beta.1 (번호 자동) → 프리릴리스. 베타 사용자에게만 업데이트 알림
+# 이전 베타가 설치된 PC에서 업데이트·기능 테스트 → 문제가 있으면 고친 뒤 다시 beta (v1.2.0-beta.2 ...)
+./scripts/release.sh stable         # 마지막 베타와 같은 커밋에 v1.2.0 → 정식 릴리스. 모든 사용자에게 알림
 ```
 
-릴리스 노트는 자동 생성되며, 앱의 업데이트 창에 그대로 표시됩니다. 정식 버전 사용자에게는 정식 릴리스만, 베타 사용자에게는 베타 릴리스도 알립니다. master·develop으로 가는 PR에서는 릴리스 없이 빌드·검증만 실행됩니다.
+테스트 항목은 [릴리스 체크리스트](docs/RELEASE_CHECKLIST.md)를 따릅니다. 스크립트는 태그를 올리기 전에 대상 커밋을 보여주고 확인을 받으며, master가 아니거나 원격과 다르거나 이미 배포된 버전이면 거부합니다.
+
+정식 릴리스 파일은 같은 커밋에서 다시 빌드됩니다(버전 번호가 앱에 들어가기 때문). 릴리스 노트는 머지된 PR 제목으로 자동 생성되며, 정식 릴리스는 이전 정식 버전 이후의 변경 전체를 담습니다.
 
 ## 사용 방법
 
