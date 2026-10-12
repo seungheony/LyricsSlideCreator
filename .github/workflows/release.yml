@@ -1,14 +1,15 @@
 # 태그를 올리면 Windows/macOS 빌드 → 검증 → GitHub 릴리스 업로드
 #   v1.2.0-beta.1 → 프리릴리스(베타 사용자에게만 업데이트 알림). 업데이트·기능 테스트용
 #   v1.2.0        → 정식 릴리스. 테스트를 마친 베타와 같은 커밋에 단다 (docs/RELEASE_CHECKLIST.md)
-# master·develop 으로 가는 PR과 수동 실행(workflow_dispatch)은 릴리스 없이 빌드·검증만 한다
+# master 로 가는 PR과 수동 실행(workflow_dispatch)은 릴리스 없이 빌드·검증만 한다
+# 태그는 scripts/release.sh 로 단다
 name: Release
 
 on:
   push:
     tags: ['v*']
   pull_request:
-    branches: [master, develop]
+    branches: [master]
   workflow_dispatch:
     inputs:
       version:
