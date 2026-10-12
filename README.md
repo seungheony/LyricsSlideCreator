@@ -15,11 +15,16 @@ Lyrics Slide Creator는 Melon.com에서 노래 가사를 검색하고, 편집하
 [Releases](https://github.com/seungheony/lyricsSlide_Creator/releases)에서 최신 버전을 받습니다.
 
 *   **Windows**: `LyricsSlideCreator-<버전>-Setup.exe` 실행. 관리자 권한 없이 현재 사용자 계정에 설치됩니다. 제거는 `설정 → 앱` 또는 `제어판 → 프로그램 제거`에서 합니다.
-*   **macOS (Apple Silicon)**: `LyricsSlideCreator-<버전>-macOS.zip`을 풀고 `Lyrics Slide Creator.app`을 **응용 프로그램 폴더로 옮긴 뒤** 실행합니다. 서명되지 않은 앱이라 처음 한 번은 앱을 우클릭 → `열기`로 실행해야 합니다. 제거는 앱을 휴지통으로 옮기면 됩니다.
+    *   서명되지 않은 설치 파일이라 "Windows의 PC 보호" 창이 뜰 수 있습니다. **추가 정보 → 실행**을 누르면 설치됩니다.
+*   **macOS (Apple Silicon, macOS 15 이상)**: `LyricsSlideCreator-<버전>-macOS.zip`을 풀고 `Lyrics Slide Creator.app`을 **응용 프로그램 폴더로 옮긴 뒤** 실행합니다. 제거는 앱을 휴지통으로 옮기면 됩니다.
+    *   서명되지 않은 앱이라 처음 실행하면 "열 수 없습니다" 경고가 뜹니다. **시스템 설정 → 개인정보 보호 및 보안**으로 가서 아래쪽의 **그래도 열기**를 누른 뒤 다시 실행하세요. 한 번만 하면 됩니다. (macOS 15부터는 우클릭 → 열기로는 실행되지 않습니다.)
+    *   응용 프로그램 폴더로 옮기지 않고 다운로드 폴더에서 바로 실행하면 자동 업데이트가 동작하지 않습니다.
 
 ### PowerPoint 서체
 
-기본 템플릿은 Pretendard 서체를 사용합니다. 발표하는 PC에 Pretendard가 없어도 깨지지 않게 하려면 `template.pptx`에 서체를 포함해 저장해야 합니다 (PowerPoint → 옵션 → 저장 → "파일의 글꼴 포함" → "모든 문자 포함", Pretendard **TTF** 설치 필요).
+기본 템플릿(`template.pptx`)에는 Pretendard 서체가 포함되어 있어, 발표하는 PC에 Pretendard가 없어도 PowerPoint에서 서체가 유지됩니다. (Keynote, Google Slides, 오래된 PowerPoint는 포함된 서체를 쓰지 않으므로 그 PC에 Pretendard를 설치해야 합니다.)
+
+다른 템플릿을 쓸 때 같은 효과를 내려면, 그 템플릿을 PowerPoint에서 열고 **글꼴 포함 → 모든 문자 포함**으로 저장하세요 (Windows: 파일 → 옵션 → 저장 / macOS: PowerPoint → 설정 → 저장). 서체는 `.ttf`로 설치되어 있어야 포함할 수 있습니다.
 
 ## 개발
 
