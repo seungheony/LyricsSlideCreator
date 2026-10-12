@@ -1,12 +1,12 @@
 # 태그(v1.2.0, v1.2.0-beta.1 등)를 올리면 Windows/macOS 빌드 → 검증 → GitHub 릴리스 업로드
-# master 로 가는 PR과 수동 실행(workflow_dispatch)은 릴리스 없이 빌드·검증만 한다
+# master·develop 으로 가는 PR과 수동 실행(workflow_dispatch)은 릴리스 없이 빌드·검증만 한다
 name: Release
 
 on:
   push:
     tags: ['v*']
   pull_request:
-    branches: [master]
+    branches: [master, develop]
   workflow_dispatch:
     inputs:
       version:
