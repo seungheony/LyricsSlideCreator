@@ -60,7 +60,7 @@ Nuitka로 C 컴파일하므로 macOS는 Xcode Command Line Tools, Windows는 Vis
 
 ### 4. 작업 흐름
 
-작업 브랜치에서 개발하고 master로 PR을 올립니다. PR마다 GitHub Actions가 Windows/macOS 빌드와 검증(Windows는 설치·실행·제거 후 남은 파일 확인)을 하며, 두 검사를 통과해야 머지할 수 있습니다.
+작업 브랜치에서 개발하고 master로 PR을 올려 머지합니다. 배포용 빌드와 검증은 PR에서는 하지 않고, 릴리스 태그를 올릴 때(`scripts/release.sh`) GitHub Actions가 합니다. 릴리스 없이 빌드만 시험하려면 Actions 탭의 Release 워크플로를 수동 실행(`Run workflow`)합니다.
 
 ### 5. 릴리스
 
