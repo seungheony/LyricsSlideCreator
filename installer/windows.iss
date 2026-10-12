@@ -41,6 +41,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExe}
+SetupIconFile=..\assets\app-icon\AppIcon.ico
 CloseApplications=yes
 RestartApplications=no
 
