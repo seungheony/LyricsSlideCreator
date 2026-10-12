@@ -22,6 +22,8 @@ QtObject {
     readonly property int radius: 14
     readonly property int radiusSm: 10
     readonly property string font: "Pretendard"
+    // 단축키 표기: macOS는 ⌘, 그 외는 Ctrl+
+    readonly property string mod: Qt.platform.os === "osx" ? "⌘" : "Ctrl+"
 
     readonly property int fast: 150
     readonly property int normal: 280

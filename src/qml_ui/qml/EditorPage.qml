@@ -11,6 +11,7 @@ Item {
 
     property var toastHost: null
     property var dialog: null
+    property var tour: null
 
     property var song: null
     property var blocks: []          // 가사 텍스트에서 파생된 슬라이드 목록
@@ -174,6 +175,23 @@ Item {
     function blurLyrics() { page.forceActiveFocus() }
     function cancelDrag() { slideList.cancelDrag() }
 
+    // ── 도움말 (? 버튼) ──
+    EditorHelp {
+        id: help
+        tour: page.tour
+        blocks: page.blocks
+        keepTwo: page.keepTwo
+        lyricsBox: lyricsBox
+        autoSplitRow: autoSplitRow
+        slideList: slideList
+        keepTwoRow: keepTwoRow
+        keepTwoBox: keepTwoBox
+        historyRow: historyRow
+        templateRow: templateRow
+        templateButton: templateButton
+        generateButton: generateButton
+    }
+
     // ── 템플릿 / 생성 ──
     function generate() {
         if (generating) return
@@ -325,37 +343,43 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 34
                     Text { text: "가사"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
+                    HelpButton { Layout.leftMargin: 2; onClicked: help.lyrics() }
                     Item { Layout.fillWidth: true }
-                    Text { text: "자동 나누기"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 12; Layout.rightMargin: 4 }
-                    Repeater {
-                        model: [1, 2]
-                        delegate: Button {
-                            id: splitBtn
-                            required property int modelData
-                            text: modelData + "줄"
-                            hoverEnabled: true
-                            implicitHeight: 28
-                            leftPadding: 10; rightPadding: 10
-                            contentItem: Text {
-                                text: splitBtn.text
-                                color: splitBtn.hovered ? Theme.primary : Theme.text2
-                                font.family: Theme.font
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
-                                verticalAlignment: Text.AlignVCenter
+                    RowLayout {
+                        id: autoSplitRow
+                        spacing: 5
+                        Text { text: "자동 나누기"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 12; Layout.rightMargin: 4 }
+                        Repeater {
+                            model: [1, 2]
+                            delegate: Button {
+                                id: splitBtn
+                                required property int modelData
+                                text: modelData + "줄"
+                                hoverEnabled: true
+                                implicitHeight: 28
+                                leftPadding: 10; rightPadding: 10
+                                contentItem: Text {
+                                    text: splitBtn.text
+                                    color: splitBtn.hovered ? Theme.primary : Theme.text2
+                                    font.family: Theme.font
+                                    font.pixelSize: 12
+                                    font.weight: Font.DemiBold
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: 8
+                                    color: splitBtn.hovered ? Theme.primarySoft : Theme.surface
+                                    border.width: 1
+                                    border.color: splitBtn.hovered ? Theme.primary : Theme.border
+                                }
+                                onClicked: page.autoSplit(modelData)
                             }
-                            background: Rectangle {
-                                radius: 8
-                                color: splitBtn.hovered ? Theme.primarySoft : Theme.surface
-                                border.width: 1
-                                border.color: splitBtn.hovered ? Theme.primary : Theme.border
-                            }
-                            onClicked: page.autoSplit(modelData)
                         }
                     }
                 }
 
                 Rectangle {
+                    id: lyricsBox
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: Theme.radius
@@ -436,49 +460,59 @@ Item {
                         color: Theme.primarySoft
                         Text { id: countText; anchors.centerIn: parent; text: page.blocks.length + "장"; color: Theme.primary; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                     }
+                    HelpButton { Layout.leftMargin: 2; onClicked: help.slides() }
                     Item { Layout.fillWidth: true }
-                    CheckBox {
-                        id: keepTwoBox
-                        text: "2줄 유지"
-                        checked: page.keepTwo
-                        onToggled: page.keepTwo = checked
-                        hoverEnabled: true
-                        spacing: 6
-                        padding: 4
+                    RowLayout {
+                        id: keepTwoRow
+                        spacing: 2
                         Layout.rightMargin: 6
-                        ToolTip.visible: hovered
-                        ToolTip.delay: 500
-                        ToolTip.text: "줄을 옮길 때 넘치는 줄은 연쇄로 밀고, 빈자리는 연쇄로 당겨와 슬라이드마다 2줄씩 유지해요"
-                        indicator: Rectangle {
-                            x: keepTwoBox.leftPadding
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 16; height: 16; radius: 4
-                            color: keepTwoBox.checked ? Theme.primary : Theme.surface
-                            border.width: keepTwoBox.checked ? 0 : 1.5
-                            border.color: keepTwoBox.hovered ? Theme.primary : Theme.border
-                            Icon { anchors.centerIn: parent; visible: keepTwoBox.checked; glyph: "check"; size: 11; color: "white" }
+                        CheckBox {
+                            id: keepTwoBox
+                            text: "2줄 유지"
+                            checked: page.keepTwo
+                            onToggled: page.keepTwo = checked
+                            hoverEnabled: true
+                            spacing: 6
+                            padding: 4
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 500
+                            ToolTip.text: "줄을 옮길 때 넘치는 줄은 연쇄로 밀고, 빈자리는 연쇄로 당겨와 슬라이드마다 2줄씩 유지해요"
+                            indicator: Rectangle {
+                                x: keepTwoBox.leftPadding
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 16; height: 16; radius: 4
+                                color: keepTwoBox.checked ? Theme.primary : Theme.surface
+                                border.width: keepTwoBox.checked ? 0 : 1.5
+                                border.color: keepTwoBox.hovered ? Theme.primary : Theme.border
+                                Icon { anchors.centerIn: parent; visible: keepTwoBox.checked; glyph: "check"; size: 11; color: "white" }
+                            }
+                            contentItem: Text {
+                                leftPadding: keepTwoBox.indicator.width + keepTwoBox.spacing
+                                text: keepTwoBox.text
+                                color: keepTwoBox.checked ? Theme.text : Theme.text2
+                                font.family: Theme.font
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                verticalAlignment: Text.AlignVCenter
+                            }
                         }
-                        contentItem: Text {
-                            leftPadding: keepTwoBox.indicator.width + keepTwoBox.spacing
-                            text: keepTwoBox.text
-                            color: keepTwoBox.checked ? Theme.text : Theme.text2
-                            font.family: Theme.font
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            verticalAlignment: Text.AlignVCenter
+                        HelpButton { onClicked: help.keepTwoHelp() }
+                    }
+                    RowLayout {
+                        id: historyRow
+                        spacing: 5
+                        AppButton {
+                            glyph: "undo"; variant: "ghost"; size: "small"
+                            enabled: page.histIdx > 0
+                            onClicked: page.undo()
+                            ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "되돌리기 (⌘Z)"
                         }
-                    }
-                    AppButton {
-                        glyph: "undo"; variant: "ghost"; size: "small"
-                        enabled: page.histIdx > 0
-                        onClicked: page.undo()
-                        ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "되돌리기 (⌘Z)"
-                    }
-                    AppButton {
-                        glyph: "redo"; variant: "ghost"; size: "small"
-                        enabled: page.histIdx < page.hist.length - 1
-                        onClicked: page.redo()
-                        ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "다시 실행 (⇧⌘Z)"
+                        AppButton {
+                            glyph: "redo"; variant: "ghost"; size: "small"
+                            enabled: page.histIdx < page.hist.length - 1
+                            onClicked: page.redo()
+                            ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "다시 실행 (⇧⌘Z)"
+                        }
                     }
                 }
 
@@ -520,21 +554,27 @@ Item {
                 anchors.leftMargin: 24
                 anchors.rightMargin: 24
                 spacing: 8
-                Icon { glyph: "monitor"; color: Theme.text3 }
-                Text { text: "템플릿"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13 }
-                Text {
-                    id: templateName
-                    Component.onCompleted: text = backend.templateName()
-                    color: Theme.text
-                    font.family: Theme.font
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                    elide: Text.ElideMiddle
-                    Layout.maximumWidth: 260
+                RowLayout {
+                    id: templateRow
+                    spacing: 8
+                    Icon { glyph: "monitor"; color: Theme.text3 }
+                    Text { text: "템플릿"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13 }
+                    Text {
+                        id: templateName
+                        Component.onCompleted: text = backend.templateName()
+                        color: Theme.text
+                        font.family: Theme.font
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideMiddle
+                        Layout.maximumWidth: 260
+                    }
+                    AppButton { id: templateButton; text: "변경"; variant: "ghost"; size: "small"; onClicked: templateDialog.open() }
+                    HelpButton { onClicked: help.generate() }
                 }
-                AppButton { text: "변경"; variant: "ghost"; size: "small"; onClicked: templateDialog.open() }
                 Item { Layout.fillWidth: true }
                 AppButton {
+                    id: generateButton
                     text: "PPT 생성"
                     variant: "primary"
                     size: "large"
