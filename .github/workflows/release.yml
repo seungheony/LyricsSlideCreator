@@ -1,15 +1,13 @@
 # 태그를 올리면 Windows/macOS 빌드 → 검증 → GitHub 릴리스 업로드
 #   v1.2.0-beta.1 → 프리릴리스(베타 사용자에게만 업데이트 알림). 업데이트·기능 테스트용
 #   v1.2.0        → 정식 릴리스. 테스트를 마친 베타와 같은 커밋에 단다 (docs/RELEASE_CHECKLIST.md)
-# master 로 가는 PR과 수동 실행(workflow_dispatch)은 릴리스 없이 빌드·검증만 한다
-# 태그는 scripts/release.sh 로 단다
+# 태그는 scripts/release.sh 로 단다. PR에서는 실행하지 않는다
+# Actions 탭에서 수동 실행(workflow_dispatch)하면 릴리스 없이 빌드·검증만 한다
 name: Release
 
 on:
   push:
     tags: ['v*']
-  pull_request:
-    branches: [master]
   workflow_dispatch:
     inputs:
       version:
@@ -19,11 +17,6 @@ on:
 
 permissions:
   contents: write
-
-# 같은 PR에 새 커밋이 올라오면 이전 실행을 취소한다 (태그 릴리스는 취소하지 않음)
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Windows 빌드 서버의 기본 출력 인코딩은 한글을 못 써서 스크립트 출력이 실패할 수 있다
@@ -56,7 +49,6 @@ jobs:
         run: |
           case "${{ github.event_name }}" in
             push) v="${GITHUB_REF_NAME#v}" ;;
-            pull_request) v="0.0.0-pr.${{ github.event.number }}" ;;
             *) v="${{ inputs.version }}" ;;
           esac
           echo "VERSION=$v" >> "$GITHUB_ENV"

@@ -10,8 +10,8 @@ Item {
 
     property var blocks: []
     property int active: -1
-    // (src, target) → 실제로 바뀌는 게 있는지. 제자리 이동은 삽입선을 표시하지 않기 위해 사용
-    property var canMove: function (src, target) { return true }
+    // (src, 포인터가 가리키는 위치) → 허용된 드롭 위치 또는 null. 규칙은 editor.js resolveDrop
+    property var resolveDrop: function (src, target) { return target }
 
     signal cutRequested(int slide, int at)
     signal joinRequested(int slide)              // slide와 slide+1 합치기
@@ -84,48 +84,41 @@ Item {
         indicator.visible = false
     }
 
+    function cardTop(i) { const it = rep.itemAt(i); return it.y + it.cardY }
+    function cardBottom(i) { const it = rep.itemAt(i); return it.y + it.cardY + it.cardHeight }
+
     // 포인터 위치 → 놓을 위치 계산 및 삽입선 표시
     function updateTarget() {
         const local = list.mapFromItem(null, drag.pointer.x, drag.pointer.y)
         const p = col.mapFromItem(null, drag.pointer.x, drag.pointer.y)
-        let target = null
-        let lineY = 0
-        let card = -1
+        let raw = null
 
+        // 1) 포인터가 가리키는 곳: 어느 슬라이드 위(line) 또는 어느 슬라이드 사이(new)
         const inside = local.x >= 0 && local.x <= list.width && local.y >= -20 && local.y <= list.height + 20
         if (inside && rep.count > 0) {
-            let prevBottom = null
             for (let i = 0; i < rep.count; i++) {
-                const it = rep.itemAt(i)
-                const top = it.y + it.cardY
-                const bottom = top + it.cardHeight
-                if (p.y < top + edge) {
-                    target = { type: 'new', at: i }
-                    lineY = prevBottom === null ? top - 9 : (prevBottom + top) / 2
-                    break
-                }
-                if (p.y <= bottom - edge) {
-                    const rows = it.lineRects()
-                    let at = rows.findIndex(r => p.y < (r.top + r.bottom) / 2)
-                    if (at === -1) at = rows.length
-                    target = { type: 'line', slide: i, at: at }
-                    if (at === 0) lineY = rows[0].top
-                    else if (at === rows.length) lineY = rows[at - 1].bottom
-                    else lineY = (rows[at - 1].bottom + rows[at].top) / 2
-                    card = i
-                    break
-                }
-                prevBottom = bottom
+                if (p.y < cardTop(i) + edge) { raw = { type: 'new', at: i }; break }
+                if (p.y <= cardBottom(i) - edge) { raw = { type: 'line', slide: i, at: 0 }; break }
             }
-            if (!target) {
-                const last = rep.itemAt(rep.count - 1)
-                target = { type: 'new', at: rep.count }
-                lineY = last.y + last.cardY + last.cardHeight + 9
-            }
+            if (!raw) raw = { type: 'new', at: rep.count }
         }
 
-        if (target && !list.canMove(drag.src, target)) { target = null; card = -1 }
+        // 2) 허용된 동작으로 바꾼다 (옆 슬라이드 끝/처음에 붙이기, 옆 사이에 새 슬라이드)
+        const target = raw ? list.resolveDrop(drag.src, raw) : null
         drag.target = target
+
+        let lineY = 0
+        let card = -1
+        if (target && target.type === 'line') {
+            card = target.slide
+            const rows = rep.itemAt(card).lineRects()
+            lineY = target.at === 0 ? rows[0].top : rows[rows.length - 1].bottom
+        } else if (target) {
+            const k = target.at
+            if (k === 0) lineY = cardTop(0) - 9
+            else if (k === rep.count) lineY = cardBottom(rep.count - 1) + 9
+            else lineY = (cardBottom(k - 1) + cardTop(k)) / 2
+        }
 
         for (let i = 0; i < rep.count; i++) rep.itemAt(i).dropTarget = (i === card)
 
@@ -365,7 +358,7 @@ Item {
                                         width: Math.min(lineText.contentWidth + 20, parent.width)
                                         height: parent.height
                                         radius: 6
-                                        color: Qt.rgba(1, 1, 1, lineMouse.containsMouse && !drag.active ? 0.08 : 0)
+                                        color: Qt.rgba(1, 1, 1, lineMouse.containsMouse && lineMouse.draggable && !drag.active ? 0.08 : 0)
                                         Behavior on color { ColorAnimation { duration: Theme.fast } }
                                     }
 
@@ -385,12 +378,16 @@ Item {
                                     }
 
                                     // 줄 잡고 끌기 (조금 움직여야 드래그, 그 전엔 클릭)
+                                    // 옆 슬라이드로 옮길 수 있는 첫 줄·마지막 줄만 잡힌다
                                     MouseArea {
                                         id: lineMouse
+                                        readonly property bool draggable: lineItem.index === 0
+                                                                          || lineItem.index === lineRep.count - 1
                                         anchors.fill: parent
                                         hoverEnabled: true
-                                        preventStealing: true
-                                        cursorShape: drag.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                        preventStealing: draggable
+                                        cursorShape: drag.active ? Qt.ClosedHandCursor
+                                                   : draggable ? Qt.OpenHandCursor : Qt.PointingHandCursor
                                         property point start
                                         property bool moved: false
 
@@ -399,7 +396,7 @@ Item {
                                             moved = false
                                         }
                                         onPositionChanged: (mouse) => {
-                                            if (!pressed) return
+                                            if (!pressed || !draggable) return
                                             const p = mapToItem(null, mouse.x, mouse.y)
                                             if (!moved) {
                                                 if (Math.hypot(p.x - start.x, p.y - start.y) < 5) return
