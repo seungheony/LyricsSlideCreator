@@ -2,7 +2,7 @@ import os
 import sys
 
 from PySide6.QtCore import QTimer, QUrl
-from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
 from src.qml_ui.backend import AlbumArtProvider, Backend
@@ -29,6 +29,9 @@ def create_app(argv):
     os.environ['QSG_RHI_DISABLE_DISK_CACHE'] = '1'
     app = QGuiApplication(argv)
     app.setApplicationName('Lyrics Slide Creator')
+    # 창·작업 표시줄 아이콘 (개발 모드에서도 Python 기본 아이콘 대신 앱 아이콘이 보이도록)
+    icon_name = 'AppIcon.ico' if sys.platform == 'win32' else 'AppIcon.icns'
+    app.setWindowIcon(QIcon(resource_path(os.path.join('assets', 'app-icon', icon_name))))
     load_fonts()
 
     art_provider = AlbumArtProvider()
