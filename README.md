@@ -58,16 +58,26 @@ python scripts/build.py 1.2.0
 
 Nuitka로 C 컴파일하므로 macOS는 Xcode Command Line Tools, Windows는 Visual Studio Build Tools(C++)가 필요합니다.
 
-### 4. 릴리스 (자동)
+### 4. 릴리스
 
-버전 태그를 올리면 GitHub Actions가 Windows/macOS 빌드 → 검증(Windows는 설치·실행·제거 후 남은 파일 확인) → 릴리스 업로드를 자동으로 합니다.
+배포되는 파일을 직접 테스트한 뒤 공개하는 방식입니다. 테스트한 파일이 다시 빌드되지 않고 그대로 배포됩니다.
 
-```bash
-git tag v1.2.0          # 베타는 v1.2.0-beta.1 처럼 '-'를 붙이면 프리릴리스가 됩니다
-git push origin v1.2.0
-```
+1. `develop` → `master` PR을 머지합니다.
+2. master에서 버전 태그를 올립니다. 베타는 `v1.2.0-beta.1`처럼 `-`를 붙이면 프리릴리스가 됩니다.
 
-릴리스 노트는 자동 생성되며, 앱의 업데이트 창에 그대로 표시됩니다. 정식 버전 사용자에게는 정식 릴리스만, 베타 사용자에게는 베타 릴리스도 알립니다. master·develop으로 가는 PR에서는 릴리스 없이 빌드·검증만 실행됩니다.
+    ```bash
+    git checkout master && git pull
+    git tag v1.2.0
+    git push origin v1.2.0
+    ```
+
+3. GitHub Actions가 Windows/macOS 빌드 → 검증(Windows는 설치·실행·제거 후 남은 파일 확인) → **초안(Draft) 릴리스**를 만듭니다. 초안은 저장소 관리자에게만 보이며, 앱도 업데이트 대상으로 보지 않습니다.
+4. [Releases](https://github.com/seungheony/lyricsSlide_Creator/releases)에서 초안의 파일을 받아 [릴리스 체크리스트](docs/RELEASE_CHECKLIST.md)대로 테스트합니다.
+5. 문제가 없으면 초안에서 **Publish release**를 누릅니다. 이때부터 설치된 앱들이 업데이트 알림을 받습니다.
+
+    문제가 있으면 초안과 태그를 지우고(`git push origin :v1.2.0`) 고친 뒤 다시 태그를 올립니다.
+
+릴리스 노트는 직전 태그 이후 머지된 PR 제목으로 자동 생성되며(공개 전에 초안에서 고칠 수 있음), 앱의 업데이트 창에 그대로 표시됩니다. 정식 버전 사용자에게는 정식 릴리스만, 베타 사용자에게는 베타 릴리스도 알립니다. master·develop으로 가는 PR에서는 릴리스 없이 빌드·검증만 실행됩니다.
 
 ## 사용 방법
 

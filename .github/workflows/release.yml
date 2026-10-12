@@ -1,4 +1,5 @@
-# 태그(v1.2.0, v1.2.0-beta.1 등)를 올리면 Windows/macOS 빌드 → 검증 → GitHub 릴리스 업로드
+# 태그(v1.2.0, v1.2.0-beta.1 등)를 올리면 Windows/macOS 빌드 → 검증 → GitHub 초안(Draft) 릴리스 생성
+# 초안의 파일을 직접 테스트한 뒤 GitHub에서 [Publish release]를 누르면 같은 파일이 그대로 배포된다
 # master·develop 으로 가는 PR과 수동 실행(workflow_dispatch)은 릴리스 없이 빌드·검증만 한다
 name: Release
 
@@ -92,11 +93,11 @@ jobs:
         working-directory: dist
         run: sha256sum LyricsSlideCreator-* > SHA256SUMS.txt && cat SHA256SUMS.txt
 
-      - name: 릴리스 생성
+      - name: 초안 릴리스 생성 (공개는 직접 테스트 후 수동)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF_NAME}"
           pre=""
           case "$tag" in *-*) pre="--prerelease" ;; esac
-          gh release create "$tag" dist/* --repo "${{ github.repository }}" --title "$tag" --generate-notes $pre
+          gh release create "$tag" dist/* --repo "${{ github.repository }}" --title "$tag" --generate-notes --draft $pre
