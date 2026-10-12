@@ -50,9 +50,16 @@ if (Test-Path $uninstallKey) { Fail '제거 후 제어판 등록 정보가 남�
 if (Test-Path $shortcut) { Fail '제거 후 시작 메뉴 바로가기가 남음' }
 
 Write-Host '== 남은 파일 확인'
-$after = Snapshot
-$added = Compare-Object @($before) @($after) | Where-Object SideIndicator -eq '=>' | ForEach-Object InputObject
-$leftovers = $added | Where-Object { $_ -match $appPattern }
+# 제거 프로그램은 %TEMP%\is-XXXX-uninstall.tmp 에 자신을 복사해 실행하고, 끝난 뒤 그 사본을 스스로 지운다.
+# 지워질 때까지 잠시 기다린 뒤 비교한다 (30초 안에 안 지워지면 남은 파일로 보고 실패)
+$innoTemp = '\\is-[^\\]+\.tmp'
+foreach ($i in 1..30) {
+    $after = Snapshot
+    $added = Compare-Object @($before) @($after) | Where-Object SideIndicator -eq '=>' | ForEach-Object InputObject
+    if (-not ($added | Where-Object { $_ -match $innoTemp })) { break }
+    Start-Sleep -Seconds 1
+}
+$leftovers = $added | Where-Object { $_ -match $appPattern -or $_ -match $innoTemp }
 if ($leftovers) {
     $leftovers | ForEach-Object { Write-Host "  남음: $_" }
     Fail '제거 후 앱 관련 파일이 남음'
