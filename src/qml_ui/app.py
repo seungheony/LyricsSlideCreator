@@ -1,7 +1,7 @@
 import os
 import sys
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QSize, QTimer, QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -20,6 +20,21 @@ def load_fonts():
     QGuiApplication.setFont(font)
 
 
+def window_icon():
+    """창·작업 표시줄 아이콘. Windows는 .ico 대신 SVG를 쓴다:
+    Nuitka로 빌드한 앱에서 .ico를 읽으면(qico 플러그인) 시작하자마자 접근 위반으로 죽는다 (v1.2.0-beta.4).
+    실행 파일 자체의 아이콘(탐색기·바로가기)은 빌드 때 AppIcon.ico로 넣는다(scripts/build.py)"""
+    icon_dir = resource_path(os.path.join('assets', 'app-icon'))
+    if sys.platform == 'darwin':
+        return QIcon(os.path.join(icon_dir, 'AppIcon.icns'))
+    icon = QIcon()
+    for size in (16, 24, 32):   # 작은 크기는 간소화 버전
+        icon.addFile(os.path.join(icon_dir, 'icon-small.svg'), QSize(size, size))
+    for size in (48, 64, 128, 256):
+        icon.addFile(os.path.join(icon_dir, 'icon.svg'), QSize(size, size))
+    return icon
+
+
 def create_app(argv):
     """앱과 QML 엔진을 만든다. 실행(exec)은 하지 않는다. 반환: (app, engine, backend)"""
     # 모든 OS에서 같은 모양이 되도록, 직접 꾸미기 쉬운 Basic 스타일 사용
@@ -32,8 +47,7 @@ def create_app(argv):
     app.setApplicationName('Lyrics Slide Creator')   # 내부 이름 (바꾸지 않는다)
     app.setApplicationDisplayName('가사 슬라이드 생성기')
     # 창·작업 표시줄 아이콘 (개발 모드에서도 Python 기본 아이콘 대신 앱 아이콘이 보이도록)
-    icon_name = 'AppIcon.ico' if sys.platform == 'win32' else 'AppIcon.icns'
-    app.setWindowIcon(QIcon(resource_path(os.path.join('assets', 'app-icon', icon_name))))
+    app.setWindowIcon(window_icon())
     load_fonts()
 
     art_provider = AlbumArtProvider()
