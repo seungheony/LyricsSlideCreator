@@ -9,7 +9,7 @@ ApplicationWindow {
     minimumWidth: 760
     minimumHeight: 560
     visible: true
-    title: "Lyrics Slide Creator"
+    title: "가사 슬라이드 생성기"
     color: Theme.bg
     font.family: Theme.font
 
@@ -44,6 +44,7 @@ ApplicationWindow {
             }
             editorPage.load(song, det.lyrics)
             win.editorActive = true
+            if (!backend.tutorialSeen("editor")) editorTourTimer.start()
         }
     }
 
@@ -56,6 +57,7 @@ ApplicationWindow {
         transform: Translate { x: win.editorActive ? -24 : 0; Behavior on x { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } } }
         Behavior on opacity { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
         onSongClicked: (song) => win.openSong(song)
+        tour: tour
     }
 
     EditorPage {
@@ -68,6 +70,7 @@ ApplicationWindow {
         Behavior on opacity { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
         toastHost: toast
         dialog: dialog
+        tour: tour
         confirmDialog: confirmDialog
         onBackRequested: win.showSearch()
     }
@@ -93,6 +96,8 @@ ApplicationWindow {
 
     AppDialog { id: dialog }
     ConfirmDialog { id: confirmDialog }
+
+    Tour { id: tour }
 
     // ── 업데이트 ──
     UpdateBanner {
@@ -123,28 +128,37 @@ ApplicationWindow {
         }
     }
 
+    // ── 첫 실행 튜토리얼 ── 화면마다 처음 들어갈 때 한 번씩, 끝까지 봐야 넘어간다 (기록: src/utils/app_state.py)
+    // 페이지 전환 애니메이션이 끝난 뒤에 시작해야 강조할 위치가 맞는다
+    Timer {
+        interval: 600
+        Component.onCompleted: if (!backend.tutorialSeen("search")) start()
+        onTriggered: searchPage.showHelp({ required: true, onFinished: () => backend.markTutorialSeen("search") })
+    }
+    Timer { id: editorTourTimer; interval: Theme.normal + 200; onTriggered: editorPage.showFirstRunTour() }
+
     // 시작 직후가 아니라 화면이 뜬 뒤에 조용히 확인
     Timer { interval: 1500; running: true; onTriggered: backend.checkForUpdate() }
 
     // ── 단축키 ──
     Shortcut {
         sequences: [StandardKey.Undo]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
         onActivated: editorPage.undo()
     }
     Shortcut {
         sequences: [StandardKey.Redo, "Ctrl+Shift+Z"]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
         onActivated: editorPage.redo()
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
         onActivated: editorPage.generate()
     }
     Shortcut {
         sequence: "Escape"
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
         onActivated: {
             // 드래그 중이면 취소, 가사 입력 중이면 입력칸에서만 빠져나오고, 아니면 검색 화면으로
             if (editorPage.dragging) editorPage.cancelDrag()

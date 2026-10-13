@@ -12,6 +12,117 @@ Item {
     property string emptyText: ""
     property string loadingId: ""     // 가사를 불러오는 중인 곡
     property int token: 0             // 오래된 검색 응답 무시용
+    property var tour: null
+
+    function showHelp(opts) {
+        tour.start([
+            { target: searchBox, demo: searchDemo, title: "1. 노래 검색",
+              body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>(또는 <b>검색</b>)를 누르면 멜론에서 찾아와요." },
+            { target: resultsArea, demo: resultsDemo, title: "2. 곡 고르기",
+              body: "검색 결과에서 곡을 누르면 가사와 앨범아트를 불러와 <b>편집 화면</b>으로 넘어가요." },
+            { target: null, title: "3. 다듬고 PPT 만들기",
+              body: "편집 화면에서 가사를 슬라이드 단위로 나누고, 아래의 <b>PPT 생성</b>을 누르면 끝이에요.<br><br>"
+                  + "편집 화면 곳곳의 <b>?</b> 버튼을 누르면 그 부분의 사용 방법을 볼 수 있어요." }
+        ], opts)
+    }
+
+    // 검색창 복제본에 검색어를 한 글자씩 입력하고 검색을 누른다
+    property Component searchDemo: Component {
+        Demo {
+            id: d
+            readonly property string word: "노래 제목"
+            property int typed: 0
+            Rectangle { anchors.fill: parent; color: Theme.bg }
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: page.tour.pad
+                radius: 16
+                color: Theme.surface
+                border.width: 1.5
+                border.color: Theme.focusBorder
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 6
+                    spacing: 8
+                    Icon { glyph: "search"; color: Theme.text3 }
+                    Text {
+                        Layout.fillWidth: true
+                        leftPadding: 6
+                        text: d.typed ? d.word.slice(0, d.typed) + "|" : "노래 제목 또는 가수 이름"
+                        color: d.typed ? Theme.text : Theme.text3
+                        font.family: Theme.font
+                        font.pixelSize: 16
+                    }
+                    AppButton { id: demoSearchButton; text: "검색"; variant: "primary"; implicitHeight: 44 }
+                }
+            }
+            onReset: { typed = 0; d.jumpTo(demoSearchButton, -2, 2.2) }
+            script: {
+                const steps = [[500, () => d.moveTo(searchBox, 0.4, 0.5)], [700, () => d.click()]]
+                for (let i = 1; i <= word.length; i++) steps.push([i === 1 ? 400 : 140, () => d.typed++])
+                steps.push([500, () => d.moveTo(demoSearchButton)], [750, () => d.click()])
+                return steps
+            }
+        }
+    }
+
+    // 결과 목록 복제본에서 곡 하나를 누른다
+    property Component resultsDemo: Component {
+        Demo {
+            id: d
+            property int hover: -1
+            property bool loading: false
+            Rectangle { anchors.fill: parent; color: Theme.bg }
+            Column {
+                id: rows
+                anchors.fill: parent
+                anchors.margins: page.tour.pad
+                spacing: 4
+                Repeater {
+                    model: 3
+                    delegate: Rectangle {
+                        id: row
+                        required property int index
+                        width: rows.width
+                        height: 72
+                        radius: Theme.radius
+                        color: d.hover === index ? Theme.surface : "transparent"
+                        Behavior on color { ColorAnimation { duration: Theme.fast } }
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 14
+                            spacing: 14
+                            Rectangle { Layout.preferredWidth: 52; Layout.preferredHeight: 52; radius: 8; color: Theme.surface2 }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                Text { text: "노래 제목 " + (row.index + 1); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { text: "가수 · 앨범"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13 }
+                            }
+                            Icon {
+                                glyph: d.loading && d.hover === row.index ? "loader" : "chevron-right"
+                                color: Theme.text3
+                                opacity: d.hover === row.index ? 1 : 0
+                                RotationAnimation on rotation {
+                                    running: d.loading && d.hover === row.index
+                                    from: 0; to: 360; duration: 800; loops: Animation.Infinite
+                                    onStopped: parent.rotation = 0
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            onReset: { hover = -1; loading = false; d.jumpTo(rows, 0.7, 0.9) }
+            script: [
+                [500, () => d.moveTo(rows.children[1], 0.35, 0.5)],
+                [450, () => { d.hover = 1 }],
+                [500, () => { d.click(); d.loading = true }]
+            ]
+        }
+    }
 
     signal songClicked(var song)
 
@@ -49,30 +160,45 @@ Item {
         Behavior on anchors.topMargin { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
 
         // ── 로고 / 제목 ──
-        Rectangle {
+        Item {
             Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: page.hasResults ? 0 : 56
-            Layout.preferredHeight: page.hasResults ? 0 : 56
-            Layout.bottomMargin: page.hasResults ? 0 : 18
-            radius: 16
-            color: Theme.primary
+            Layout.preferredWidth: page.hasResults ? 0 : 64
+            Layout.preferredHeight: page.hasResults ? 0 : 64
+            Layout.bottomMargin: page.hasResults ? 0 : 16
             opacity: page.hasResults ? 0 : 1
             Behavior on Layout.preferredWidth { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
             Behavior on Layout.preferredHeight { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
             Behavior on Layout.bottomMargin { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 300 } }
-            Icon { anchors.centerIn: parent; glyph: "music"; size: 28; color: "white"; visible: parent.width > 20 }
+            // 앱 아이콘. SVG는 1024 칸 안에 824 크기 둥근 사각형이 있어(여백 100) 그만큼 크게 그려 사각형이 이 칸에 맞게 한다
+            Image {
+                anchors.centerIn: parent
+                width: parent.width * 1024 / 824
+                height: width
+                source: assetsUrl + "/app-icon/icon.svg"
+                sourceSize: Qt.size(160, 160)
+                smooth: true
+                mipmap: true
+            }
         }
 
         Text {
             Layout.alignment: Qt.AlignHCenter
-            text: "Lyrics Slide Creator"
+            text: "가사 슬라이드 생성기"
             color: Theme.text
             font.family: Theme.font
             font.pixelSize: page.hasResults ? 20 : 28
             font.weight: Font.ExtraBold
             font.letterSpacing: -0.4
             Behavior on font.pixelSize { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
+
+            // 제목 가운데 정렬이 흐트러지지 않도록 레이아웃 밖에서 오른쪽에 붙인다
+            HelpButton {
+                anchors.left: parent.right
+                anchors.leftMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                onClicked: page.showHelp()
+            }
         }
 
         Text {
@@ -91,13 +217,14 @@ Item {
 
         // ── 검색창 ──
         Rectangle {
+            id: searchBox
             Layout.fillWidth: true
             Layout.topMargin: page.hasResults ? 14 : 28
             Layout.preferredHeight: 58
             radius: 16
             color: Theme.surface
             border.width: 1.5
-            border.color: input.activeFocus ? Theme.primary : Theme.border
+            border.color: input.activeFocus ? Theme.focusBorder : Theme.border
             Behavior on Layout.topMargin { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
             Behavior on border.color { ColorAnimation { duration: Theme.fast } }
 
@@ -144,6 +271,7 @@ Item {
 
         // ── 결과 ──
         Item {
+            id: resultsArea
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.topMargin: 16

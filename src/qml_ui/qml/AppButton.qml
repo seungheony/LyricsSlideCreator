@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import "."
 
-// variant: "primary" | "secondary" | "ghost" | "danger"
+// variant: "primary"(연한 초록 바탕 + 초록 글자) | "secondary" | "ghost" | "danger"
 // size:    "small" | "normal" | "large"
 Button {
     id: control
@@ -21,7 +21,8 @@ Button {
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
 
-    readonly property color fg: variant === "primary" || variant === "danger" ? "white"
+    readonly property color fg: variant === "primary" ? Theme.primaryText
+                               : variant === "danger" ? "white"
                                : variant === "ghost" ? (hovered ? Theme.text : Theme.text2)
                                : Theme.text
 
@@ -60,7 +61,7 @@ Button {
     background: Rectangle {
         radius: Theme.radiusSm
         color: {
-            if (control.variant === "primary") return control.hovered && control.enabled ? Theme.primaryHover : Theme.primary
+            if (control.variant === "primary") return control.hovered && control.enabled ? Theme.primarySoftHover : Theme.primarySoft
             if (control.variant === "danger") return Theme.danger
             if (control.variant === "ghost") return control.hovered ? Theme.surface2 : "transparent"
             return control.hovered ? Theme.border : Theme.surface2

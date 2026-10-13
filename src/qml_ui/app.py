@@ -7,6 +7,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 from src.qml_ui.backend import AlbumArtProvider, Backend
 from src.utils.helpers import resource_path
+from src.utils.line_fit import LineFit
 
 
 def load_fonts():
@@ -28,7 +29,8 @@ def create_app(argv):
     os.environ['QML_DISABLE_DISK_CACHE'] = '1'
     os.environ['QSG_RHI_DISABLE_DISK_CACHE'] = '1'
     app = QGuiApplication(argv)
-    app.setApplicationName('Lyrics Slide Creator')
+    app.setApplicationName('Lyrics Slide Creator')   # 내부 이름 (바꾸지 않는다)
+    app.setApplicationDisplayName('가사 슬라이드 생성기')
     # 창·작업 표시줄 아이콘 (개발 모드에서도 Python 기본 아이콘 대신 앱 아이콘이 보이도록)
     icon_name = 'AppIcon.ico' if sys.platform == 'win32' else 'AppIcon.icns'
     app.setWindowIcon(QIcon(resource_path(os.path.join('assets', 'app-icon', icon_name))))
@@ -59,6 +61,15 @@ def self_test(app, engine):
             problems.append('Pretendard 폰트가 등록되지 않았습니다')
         if not os.path.exists(resource_path('template.pptx')):
             problems.append('template.pptx 가 없습니다')
+        else:
+            try:
+                fit = LineFit(resource_path('template.pptx'))
+                if not fit.box or not fit.ratio('가사'):
+                    problems.append('템플릿에서 가사 글상자를 찾지 못해 줄바꿈을 계산할 수 없습니다')
+                elif not fit.box.exact:
+                    problems.append(f'템플릿 글꼴({fit.box.latin})이 없어 줄바꿈을 정확히 계산할 수 없습니다')
+            except Exception as e:
+                problems.append(f'줄바꿈 계산 정보를 읽지 못했습니다: {e}')
         for p in problems:
             print(f'SELF-TEST FAIL: {p}', flush=True)
         if not problems:

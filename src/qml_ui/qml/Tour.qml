@@ -1,0 +1,234 @@
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+import "."
+
+// 튜토리얼: 설명할 부분만 밝게 남기고 나머지를 어둡게 덮은 뒤, 옆에 단계별 설명 카드를 띄운다.
+// start([{ target: Item(없으면 가운데 카드만), title, body(StyledText), demo: Component(선택) }, ...])
+// demo는 강조 영역 위에 그대로 겹쳐 만들어져, 실제 화면 위에서 예시 동작을 재생한다 (Demo.qml)
+// opts.required: 첫 실행용. 닫기·Esc 없이 마지막 단계의 "완료"까지 봐야 끝나고, 끝나면 opts.onFinished()
+Popup {
+    id: tour
+
+    property var steps: []
+    property int index: 0
+    readonly property var step: steps[index] || null
+    readonly property bool hasTarget: !!(step && step.target)
+
+    property bool required: false
+    property var onFinished: null
+
+    function start(newSteps, opts) {
+        opts = opts || {}
+        steps = newSteps
+        index = 0
+        required = !!opts.required
+        onFinished = opts.onFinished || null
+        open()
+    }
+    function next() {
+        if (index < steps.length - 1) { index++; return }
+        const done = onFinished
+        onFinished = null
+        close()
+        if (done) done()
+    }
+    readonly property int pad: 6     // 강조 영역이 대상보다 넓은 정도
+    function prev() { if (index > 0) index-- }
+
+    parent: Overlay.overlay
+    x: 0
+    y: 0
+    width: parent ? parent.width : 0
+    height: parent ? parent.height : 0
+    padding: 0
+    modal: true
+    focus: true
+    closePolicy: required ? Popup.NoAutoClose : Popup.CloseOnEscape
+    Overlay.modal: Item {}    // 어둡게 덮는 건 강조 영역에 구멍을 내야 해서 직접 그린다
+    background: null
+
+    enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200 } }
+    exit: Transition { NumberAnimation { property: "opacity"; to: 0; duration: 150 } }
+
+    // 강조할 영역 (창 좌표). 화면 전환·창 크기 변경으로 대상이 움직여도 따라가도록 열려 있는 동안 주기적으로 다시 계산한다
+    property int refresh: 0
+    Timer { interval: 100; repeat: true; running: tour.visible; onTriggered: tour.refresh++ }
+    readonly property rect hole: {
+        const w = tour.width, h = tour.height, _ = tour.refresh
+        const t = tour.step ? tour.step.target : null
+        if (!t || !tour.visible) return Qt.rect(w / 2, h / 2, 0, 0)
+        const p = t.mapToItem(tour.parent, 0, 0)
+        return Qt.rect(p.x - pad, p.y - pad, t.width + pad * 2, t.height + pad * 2)
+    }
+
+    // 설명 카드 위치: 강조 영역의 오른쪽 → 왼쪽 → 아래 → 위 순서로 들어갈 자리를 찾는다
+    function cardPos(cw, ch) {
+        const m = 16, gap = 16, W = width, H = height, r = hole
+        const clampX = (v) => Math.max(m, Math.min(W - cw - m, v))
+        const clampY = (v) => Math.max(m, Math.min(H - ch - m, v))
+        if (!hasTarget) return Qt.point((W - cw) / 2, (H - ch) / 2)
+        if (r.x + r.width + gap + cw <= W - m) return Qt.point(r.x + r.width + gap, clampY(r.y))
+        if (r.x - gap - cw >= m) return Qt.point(r.x - gap - cw, clampY(r.y))
+        if (r.y + r.height + gap + ch <= H - m) return Qt.point(clampX(r.x + r.width / 2 - cw / 2), r.y + r.height + gap)
+        if (r.y - gap - ch >= m) return Qt.point(clampX(r.x + r.width / 2 - cw / 2), r.y - gap - ch)
+        // 들어갈 자리가 없으면 강조 영역 안쪽 아래에 겹쳐 띄운다
+        return Qt.point(clampX(r.x + r.width - cw - gap), clampY(r.y + r.height - ch - gap))
+    }
+
+    contentItem: Item {
+        focus: true
+        Keys.onLeftPressed: tour.prev()
+        Keys.onRightPressed: tour.next()
+        Keys.onReturnPressed: tour.next()
+        Keys.onEnterPressed: tour.next()
+
+        // 아래 화면 클릭 막기
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; onWheel: (wheel) => wheel.accepted = true }
+
+        // ── 강조 영역 (움직일 때 부드럽게) ──
+        Item {
+            id: spot
+            x: tour.hole.x
+            y: tour.hole.y
+            width: tour.hole.width
+            height: tour.hole.height
+            Behavior on x { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+            Behavior on y { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+            Behavior on width { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+            Behavior on height { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+        }
+
+        // 구멍 주위 네 방향을 어둡게
+        readonly property color dim: Qt.rgba(0, 0, 0, 0.55)
+        Rectangle { color: parent.dim; x: 0; y: 0; width: parent.width; height: Math.max(0, spot.y) }
+        Rectangle { color: parent.dim; x: 0; y: spot.y + spot.height; width: parent.width; height: Math.max(0, parent.height - y) }
+        Rectangle { color: parent.dim; x: 0; y: spot.y; width: Math.max(0, spot.x); height: spot.height }
+        Rectangle { color: parent.dim; x: spot.x + spot.width; y: spot.y; width: Math.max(0, parent.width - x); height: spot.height }
+
+        Rectangle {
+            visible: tour.hasTarget
+            x: spot.x; y: spot.y; width: spot.width; height: spot.height
+            radius: 6
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.primary
+        }
+
+        // ── 예시 동작 ── 강조 영역이 자리를 잡은 뒤에 만들어, 대상 위치를 정확히 계산할 수 있게 한다
+        // (바인딩으로 두면 단계가 바뀌는 순간 새 예시가 이전 위치에 잠깐 만들어져 깜빡이므로 직접 넣고 뺀다)
+        Loader {
+            id: demoLoader
+            x: tour.hole.x
+            y: tour.hole.y
+            width: tour.hole.width
+            height: tour.hole.height
+            Timer {
+                id: demoDelay
+                interval: Theme.normal + 60
+                onTriggered: demoLoader.sourceComponent = tour.step && tour.step.demo ? tour.step.demo : null
+            }
+            Connections {
+                target: tour
+                function onStepChanged() { demoLoader.sourceComponent = null; demoDelay.restart() }
+                function onAboutToHide() { demoDelay.stop(); demoLoader.sourceComponent = null }
+            }
+        }
+
+        // ── 설명 카드 ──
+        Rectangle {
+            id: card
+            readonly property point pos: tour.cardPos(width, height)
+            x: pos.x
+            y: pos.y
+            width: 360
+            height: body.implicitHeight + 40
+            radius: 16
+            color: Theme.surface
+            border.width: 1
+            border.color: Theme.border
+            Behavior on x { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+            Behavior on y { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+
+            ColumnLayout {
+                id: body
+                x: 20
+                y: 20
+                width: card.width - 40
+                spacing: 8
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text {
+                        text: (tour.index + 1) + " / " + tour.steps.length
+                        color: Theme.primary
+                        font.family: Theme.font
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                    }
+                    Item { Layout.fillWidth: true }
+                    AppButton {
+                        glyph: "x"; variant: "ghost"; size: "small"
+                        visible: !tour.required
+                        implicitHeight: 26
+                        Accessible.name: "닫기"
+                        onClicked: tour.close()
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: tour.step ? tour.step.title : ""
+                    color: Theme.text
+                    font.family: Theme.font
+                    font.pixelSize: 17
+                    font.weight: Font.Bold
+                    wrapMode: Text.Wrap
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: tour.step ? tour.step.body : ""
+                    textFormat: Text.StyledText
+                    color: Theme.text2
+                    font.family: Theme.font
+                    font.pixelSize: 13
+                    lineHeight: 1.45
+                    wrapMode: Text.Wrap
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 10
+                    spacing: 6
+                    Row {
+                        spacing: 5
+                        visible: tour.steps.length > 1
+                        Repeater {
+                            model: tour.steps.length
+                            delegate: Rectangle {
+                                required property int index
+                                width: index === tour.index ? 16 : 6
+                                height: 6
+                                radius: 3
+                                color: index === tour.index ? Theme.primary : Theme.border
+                                Behavior on width { NumberAnimation { duration: Theme.fast } }
+                            }
+                        }
+                    }
+                    Item { Layout.fillWidth: true }
+                    AppButton {
+                        text: "이전"; variant: "ghost"; size: "small"
+                        visible: tour.index > 0
+                        onClicked: tour.prev()
+                    }
+                    AppButton {
+                        text: tour.index < tour.steps.length - 1 ? "다음" : "완료"
+                        variant: "primary"; size: "small"
+                        onClicked: tour.next()
+                    }
+                }
+            }
+        }
+    }
+}

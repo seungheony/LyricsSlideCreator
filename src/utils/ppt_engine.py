@@ -5,6 +5,16 @@ from pptx.enum.text import PP_ALIGN
 from lxml import etree
 import io
 
+
+def find_lyrics_shape(slide):
+    """가사를 넣을 글상자: '가사'라고 적힌 첫 글상자(글자가 있는 것). 없으면 None.
+    줄바꿈 미리 계산(line_fit)도 같은 글상자를 기준으로 한다."""
+    for shape in slide.shapes:
+        if shape.has_text_frame and '가사' in shape.text and shape.text_frame.paragraphs[0].runs:
+            return shape
+    return None
+
+
 class PPTBuilder:
     def __init__(self, template_path):
         self.template_path = template_path
@@ -22,49 +32,40 @@ class PPTBuilder:
             target_slide.shapes._spTree.insert_element_before(new_el, 'p:extLst')
 
     def replace_text_in_slide(self, slide, lyrics_chunk):
-        for shape in slide.shapes:
-            if not shape.has_text_frame:
-                continue
+        shape = find_lyrics_shape(slide)
+        if shape is None:
+            return
 
-            if '가사' not in shape.text:
-                continue
+        text_frame = shape.text_frame
+        original_p = text_frame.paragraphs[0]
+        original_run = original_p.runs[0]
 
-            text_frame = shape.text_frame
-            
-            try:
-                original_p = text_frame.paragraphs[0]
-                original_run = original_p.runs[0]
-            except IndexError:
-                continue
+        # 문단 서식(줄 간격·정렬 등)과 글자 서식(폰트·크기·색·언어 등)을 XML째로 보관
+        original_pPr = copy.deepcopy(original_p._p.pPr)
+        original_rPr = copy.deepcopy(original_run._r.rPr)
 
-            # 문단 서식(줄 간격·정렬 등)과 글자 서식(폰트·크기·색·언어 등)을 XML째로 보관
-            original_pPr = copy.deepcopy(original_p._p.pPr)
-            original_rPr = copy.deepcopy(original_run._r.rPr)
+        # 첫 번째 문단을 제외한 나머지 문단을 삭제
+        for p in text_frame.paragraphs[1:]:
+            p._p.getparent().remove(p._p)
 
-            # 첫 번째 문단을 제외한 나머지 문단을 삭제
-            for p in text_frame.paragraphs[1:]:
-                p._p.getparent().remove(p._p)
+        # 첫 번째 문단의 내용을 모두 지움 (문단 서식은 유지됨)
+        p = text_frame.paragraphs[0]
+        p.clear()
 
-            # 첫 번째 문단의 내용을 모두 지움 (문단 서식은 유지됨)
-            p = text_frame.paragraphs[0]
-            p.clear()
+        lines = lyrics_chunk.split('\n')
+        for i, line in enumerate(lines):
+            if i > 0:
+                p = text_frame.add_paragraph()
+                # 새 문단에도 첫 문단의 서식을 그대로 적용 (없으면 줄 간격이 기본값으로 바뀜)
+                if original_pPr is not None:
+                    p._p.remove(p._p.get_or_add_pPr())
+                    p._p.insert(0, copy.deepcopy(original_pPr))
 
-            lines = lyrics_chunk.split('\n')
-            for i, line in enumerate(lines):
-                if i > 0:
-                    p = text_frame.add_paragraph()
-                    # 새 문단에도 첫 문단의 서식을 그대로 적용 (없으면 줄 간격이 기본값으로 바뀜)
-                    if original_pPr is not None:
-                        p._p.remove(p._p.get_or_add_pPr())
-                        p._p.insert(0, copy.deepcopy(original_pPr))
-
-                run = p.add_run()
-                run.text = line
-                if original_rPr is not None:
-                    run._r.remove(run._r.get_or_add_rPr())
-                    run._r.insert(0, copy.deepcopy(original_rPr))
-
-            break
+            run = p.add_run()
+            run.text = line
+            if original_rPr is not None:
+                run._r.remove(run._r.get_or_add_rPr())
+                run._r.insert(0, copy.deepcopy(original_rPr))
 
     def generate_slides_to_memory(self, lyrics_data):
         if not self.prs or not self.prs.slides: return None
