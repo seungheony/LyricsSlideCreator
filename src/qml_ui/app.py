@@ -64,8 +64,7 @@ def create_app(argv):
     ctx.setContextProperty('assetsUrl', QUrl.fromLocalFile(resource_path('assets')).toString())
     engine.load(QUrl.fromLocalFile(resource_path(os.path.join('src', 'qml_ui', 'qml', 'Main.qml'))))
     if sys.platform != 'darwin':
-        # Windows: 앱 전체 아이콘(QGuiApplication.setWindowIcon)을 Nuitka로 빌드한 앱에서 부르면
-        # 접근 위반으로 죽는다(v1.2.0-beta.4). 창마다 아이콘을 지정한다
+        # Windows: 창마다 아이콘을 지정한다 (작업 표시줄·창 제목줄)
         icon = window_icon()
         for window in engine.rootObjects():
             window.setIcon(icon)
