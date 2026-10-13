@@ -109,8 +109,8 @@ def find_iscc():
 
 def build_windows(version):
     nuitka(version, ['--mode=standalone', '--windows-console-mode=disable',
-                     f'--output-filename={APP_FILE_NAME}.exe',
-                     f'--windows-icon-from-ico={os.path.join(ICON_DIR, "AppIcon.ico")}'])
+                     f'--output-filename={APP_FILE_NAME}.exe'])
+    # 실험: --windows-icon-from-ico를 빼고 시작 시 접근 위반이 사라지는지 확인 (v1.2.0-beta.4)
     run([find_iscc(),
          f'/DAppVersion={version}',
          f'/DAppNumericVersion={numeric_version(version)}',
