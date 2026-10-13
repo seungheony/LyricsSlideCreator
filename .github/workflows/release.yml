@@ -53,6 +53,15 @@ jobs:
           esac
           echo "VERSION=$v" >> "$GITHUB_ENV"
 
+      # 빌드(Windows는 15분 넘게 걸림) 전에 소스 상태로 먼저 확인해 코드 문제를 빨리 찾는다.
+      # 여기서는 통과하는데 빌드한 앱만 실패하면 패키징(Nuitka 포함 파일 등) 문제다
+      - name: 소스로 자체 점검
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_FORCE_STDERR_LOGGING: '1'
+          PYTHONFAULTHANDLER: '1'
+        run: python run.py --self-test
+
       - name: 빌드
         run: python scripts/build.py ${{ env.VERSION }}
 
