@@ -53,6 +53,15 @@ jobs:
           esac
           echo "VERSION=$v" >> "$GITHUB_ENV"
 
+      # 빌드(Windows는 15분 넘게 걸림) 전에 소스 상태로 먼저 확인해 코드 문제를 빨리 찾는다.
+      # 여기서는 통과하는데 빌드한 앱만 실패하면 패키징(Nuitka 포함 파일 등) 문제다
+      - name: 소스로 자체 점검
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_FORCE_STDERR_LOGGING: '1'
+          PYTHONFAULTHANDLER: '1'
+        run: python run.py --self-test
+
       - name: 빌드
         run: python scripts/build.py ${{ env.VERSION }}
 
@@ -60,6 +69,28 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/verify_windows.ps1 -Version ${{ env.VERSION }}
+
+      # 검증이 실패하면 설치된 앱을 디버거로 다시 실행해 어디서 죽었는지(DLL·함수) 남긴다
+      - name: 실패 원인 진단 (Windows)
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\LyricsSlideCreator\LyricsSlideCreator.exe'
+          if (-not (Test-Path $exe)) { Write-Host "설치된 앱이 없음: $exe"; exit 0 }
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($cdb) {
+            Write-Host '== 디버거로 실행 (처음 일어난 접근 위반 지점)'
+            & $cdb.FullName -g -G -c '.lastevent; r; ln @rip; kn 60; q' $exe --self-test 2>&1 | Select-Object -Last 120 | Write-Host
+          } else {
+            Write-Host 'cdb 없음: 디버거 진단 건너뜀'
+          }
+          Write-Host '== Qt 플러그인 로딩 기록'
+          $env:QT_DEBUG_PLUGINS = '1'
+          $env:QT_FORCE_STDERR_LOGGING = '1'
+          $p = Start-Process $exe -ArgumentList '--self-test' -Wait -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          Write-Host "종료 코드 $($p.ExitCode)"
+          Get-Content err.txt -ErrorAction SilentlyContinue | Select-Object -Last 60 | Write-Host
 
       - name: 검증 (macOS 자체 점검)
         if: runner.os == 'macOS'

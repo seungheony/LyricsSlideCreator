@@ -23,7 +23,7 @@ python scripts/build.py 1.2.0   # 버전 기록(scripts/set_version.py) + Nuitka
 ```
 
 - macOS: Nuitka `--mode=app` → `dist/가사 슬라이드 생성기.app` + `-macOS.zip`(ditto). 화면에 보이는 이름은 '가사 슬라이드 생성기'(`APP_NAME`, `windows.iss` `AppName`), 파일·번들 ID·설치 폴더·AppId 등 내부 이름은 영문 그대로(업데이트와 연결). 번들 ID `io.github.seungheony.lyricsslidecreator`
-- Windows: Nuitka `--mode=standalone` → Inno Setup(`installer/windows.iss`, 사용자 계정 설치, 제거 시 전부 삭제) → `-Setup.exe`
+- Windows: Nuitka `--mode=standalone` → 실행 파일 아이콘 넣기(`add_exe_icon`, Nuitka `--windows-icon-from-ico`는 쓰지 말 것: QtWidgets를 빼서 Nuitka가 덧붙이는 PySide6 아이콘 코드가 실패하고 앱이 시작하자마자 접근 위반으로 죽음 — v1.2.0-beta.4) → Inno Setup(`installer/windows.iss`, 사용자 계정 설치, 제거 시 전부 삭제) → `-Setup.exe`
 - 실행 파일 하나(onefile)는 실행마다 압축을 풀어 느리고 사용자 폴더에 캐시를 남기므로 쓰지 않는다
 - `scripts/build.py`의 `EXCLUDED_QT`로 쓰지 않는 Qt 모듈(웹 엔진 등)을 뺀다. QML에서 새 Qt 모듈을 import하면 여기서 빠져 있지 않은지 확인할 것
 - 빌드 중에는 `src/`, `assets/`를 수정하지 말 것 (Nuitka가 파일 목록을 먼저 만들고 나중에 복사해서 섞인다)

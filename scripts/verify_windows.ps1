@@ -29,15 +29,27 @@ Write-Host ("설치 크기: {0:N1}MB" -f ((Get-ChildItem $installDir -Recurse | 
 
 Write-Host '== 자체 점검 (2회: 두 번째는 Windows 보안 검사 후 시작 시간 참고용)'
 $env:QT_QPA_PLATFORM = 'offscreen'
+# 앱은 콘솔 없이 빌드되어 오류 메시지가 보이지 않으므로, 출력을 파일로 받아 실패하면 보여준다.
+# Qt 메시지는 stderr로(QT_FORCE_STDERR_LOGGING), 강제 종료(abort 등) 때는 Python 호출 위치도 남긴다(PYTHONFAULTHANDLER).
+# 사용자 폴더 감시 대상이 아닌 빌드 폴더에 쓴다
+$env:QT_FORCE_STDERR_LOGGING = '1'
+$env:PYTHONFAULTHANDLER = '1'
+$logDir = Join-Path $PSScriptRoot '..\build'
 foreach ($i in 1..2) {
+    $out = Join-Path $logDir "self-test-$i-stdout.txt"
+    $err = Join-Path $logDir "self-test-$i-stderr.txt"
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $p = Start-Process $exe -ArgumentList '--self-test' -Wait -PassThru
+    $p = Start-Process $exe -ArgumentList '--self-test' -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
     $sw.Stop()
     # 자체 점검은 화면을 띄운 뒤 1.5초 기다렸다 종료한다
     Write-Host ("실행 {0}: 종료 코드 {1}, {2:N1}초 (그중 1.5초는 점검 대기)" -f $i, $p.ExitCode, $sw.Elapsed.TotalSeconds)
-    if ($p.ExitCode -ne 0) { Fail '자체 점검 실패 (QML/폰트/템플릿 로드 문제)' }
+    if ($p.ExitCode -ne 0) {
+        Write-Host '--- 앱 출력 (stdout)'; Get-Content $out -ErrorAction SilentlyContinue | Write-Host
+        Write-Host '--- 앱 오류 (stderr)'; Get-Content $err -ErrorAction SilentlyContinue | Write-Host
+        Fail "자체 점검 실패 (종료 코드 $($p.ExitCode))"
+    }
 }
-Remove-Item Env:QT_QPA_PLATFORM
+Remove-Item Env:QT_QPA_PLATFORM, Env:QT_FORCE_STDERR_LOGGING, Env:PYTHONFAULTHANDLER
 
 Write-Host '== 제거'
 $uninstaller = Join-Path $installDir 'unins000.exe'

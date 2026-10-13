@@ -12,6 +12,7 @@ Nuitka로 폴더 형태(standalone)/앱 번들로 빌드한다. 실행 파일 �
 import os
 import platform
 import shutil
+import struct
 import subprocess
 import sys
 
@@ -107,10 +108,62 @@ def find_iscc():
     sys.exit('Inno Setup(ISCC.exe)을 찾을 수 없습니다. https://jrsoftware.org/isinfo.php 에서 설치하세요.')
 
 
+def add_exe_icon(exe_path, ico_path):
+    """실행 파일에 아이콘(탐색기·바로가기·작업 표시줄)을 넣는다.
+
+    Nuitka의 --windows-icon-from-ico는 쓰지 않는다: 그 옵션을 주면 Nuitka가 PySide6에
+    QApplication 아이콘 코드를 덧붙이는데, 이 앱은 QtWidgets를 빼서 그 코드가 실패하고
+    앱이 시작하자마자 접근 위반으로 죽는다 (v1.2.0-beta.4, 옵션만 빼면 통과하는 것으로 확인)
+    """
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.BeginUpdateResourceW.restype = wintypes.HANDLE
+    kernel32.BeginUpdateResourceW.argtypes = (wintypes.LPCWSTR, wintypes.BOOL)
+    kernel32.UpdateResourceW.argtypes = (wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p,
+                                         wintypes.WORD, ctypes.c_char_p, wintypes.DWORD)
+    kernel32.EndUpdateResourceW.argtypes = (wintypes.HANDLE, wintypes.BOOL)
+    RT_ICON, RT_GROUP_ICON = 3, 14
+
+    data = open(ico_path, 'rb').read()
+    count = struct.unpack_from('<HHH', data, 0)[2]
+    handle = kernel32.BeginUpdateResourceW(exe_path, False)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    def update(kind, res_id, payload):
+        if not kernel32.UpdateResourceW(handle, kind, res_id, 0, payload, len(payload)):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    # .ico 파일의 이미지마다 RT_ICON, 목록은 RT_GROUP_ICON(이미지 위치 대신 리소스 번호)
+    group = struct.pack('<HHH', 0, 1, count)
+    for i in range(count):
+        width, height, colors, reserved, planes, bits, size, offset = struct.unpack_from('<BBBBHHII', data, 6 + 16 * i)
+        update(RT_ICON, i + 1, data[offset:offset + size])
+        group += struct.pack('<BBBBHHIH', width, height, colors, reserved, planes, bits, size, i + 1)
+    update(RT_GROUP_ICON, 1, group)
+    if not kernel32.EndUpdateResourceW(handle, False):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+    # 실제로 들어갔는지 확인
+    kernel32.LoadLibraryExW.restype = wintypes.HMODULE
+    kernel32.LoadLibraryExW.argtypes = (wintypes.LPCWSTR, wintypes.HANDLE, wintypes.DWORD)
+    kernel32.FindResourceW.argtypes = (wintypes.HMODULE, ctypes.c_void_p, ctypes.c_void_p)
+    kernel32.FindResourceW.restype = ctypes.c_void_p
+    kernel32.FreeLibrary.argtypes = (wintypes.HMODULE,)
+    module = kernel32.LoadLibraryExW(exe_path, None, 0x2)   # LOAD_LIBRARY_AS_DATAFILE
+    found = module and kernel32.FindResourceW(module, 1, RT_GROUP_ICON)
+    if module:
+        kernel32.FreeLibrary(module)
+    if not found:
+        sys.exit(f'실행 파일에 아이콘을 넣지 못했습니다: {exe_path}')
+    print(f'실행 파일 아이콘: {count}개 크기', flush=True)
+
+
 def build_windows(version):
     nuitka(version, ['--mode=standalone', '--windows-console-mode=disable',
-                     f'--output-filename={APP_FILE_NAME}.exe',
-                     f'--windows-icon-from-ico={os.path.join(ICON_DIR, "AppIcon.ico")}'])
+                     f'--output-filename={APP_FILE_NAME}.exe'])
+    add_exe_icon(os.path.join(BUILD, 'run.dist', f'{APP_FILE_NAME}.exe'), os.path.join(ICON_DIR, 'AppIcon.ico'))
     run([find_iscc(),
          f'/DAppVersion={version}',
          f'/DAppNumericVersion={numeric_version(version)}',
