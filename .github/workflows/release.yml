@@ -70,6 +70,28 @@ jobs:
         shell: pwsh
         run: ./scripts/verify_windows.ps1 -Version ${{ env.VERSION }}
 
+      # 검증이 실패하면 설치된 앱을 디버거로 다시 실행해 어디서 죽었는지(DLL·함수) 남긴다
+      - name: 실패 원인 진단 (Windows)
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\LyricsSlideCreator\LyricsSlideCreator.exe'
+          if (-not (Test-Path $exe)) { Write-Host "설치된 앱이 없음: $exe"; exit 0 }
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $cdb = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($cdb) {
+            Write-Host '== 디버거로 실행 (처음 일어난 접근 위반 지점)'
+            & $cdb.FullName -g -G -c '.lastevent; r; ln @rip; kn 60; q' $exe --self-test 2>&1 | Select-Object -Last 120 | Write-Host
+          } else {
+            Write-Host 'cdb 없음: 디버거 진단 건너뜀'
+          }
+          Write-Host '== Qt 플러그인 로딩 기록'
+          $env:QT_DEBUG_PLUGINS = '1'
+          $env:QT_FORCE_STDERR_LOGGING = '1'
+          $p = Start-Process $exe -ArgumentList '--self-test' -Wait -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          Write-Host "종료 코드 $($p.ExitCode)"
+          Get-Content err.txt -ErrorAction SilentlyContinue | Select-Object -Last 60 | Write-Host
+
       - name: 검증 (macOS 자체 점검)
         if: runner.os == 'macOS'
         env:
