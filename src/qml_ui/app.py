@@ -21,8 +21,7 @@ def load_fonts():
 
 
 def window_icon():
-    """창·작업 표시줄 아이콘. Windows는 .ico 대신 SVG를 쓴다:
-    Nuitka로 빌드한 앱에서 .ico를 읽으면(qico 플러그인) 시작하자마자 접근 위반으로 죽는다 (v1.2.0-beta.4).
+    """창·작업 표시줄 아이콘 (macOS는 .icns, 그 외는 SVG).
     실행 파일 자체의 아이콘(탐색기·바로가기)은 빌드 때 AppIcon.ico로 넣는다(scripts/build.py)"""
     icon_dir = resource_path(os.path.join('assets', 'app-icon'))
     if sys.platform == 'darwin':
@@ -47,7 +46,9 @@ def create_app(argv):
     app.setApplicationName('Lyrics Slide Creator')   # 내부 이름 (바꾸지 않는다)
     app.setApplicationDisplayName('가사 슬라이드 생성기')
     # 창·작업 표시줄 아이콘 (개발 모드에서도 Python 기본 아이콘 대신 앱 아이콘이 보이도록)
-    app.setWindowIcon(window_icon())
+    if sys.platform == 'darwin':
+        # macOS: 개발 모드에서 Dock 아이콘도 앱 아이콘으로
+        app.setWindowIcon(window_icon())
     load_fonts()
 
     art_provider = AlbumArtProvider()
@@ -62,6 +63,12 @@ def create_app(argv):
     ctx.setContextProperty('backend', backend)
     ctx.setContextProperty('assetsUrl', QUrl.fromLocalFile(resource_path('assets')).toString())
     engine.load(QUrl.fromLocalFile(resource_path(os.path.join('src', 'qml_ui', 'qml', 'Main.qml'))))
+    if sys.platform != 'darwin':
+        # Windows: 앱 전체 아이콘(QGuiApplication.setWindowIcon)을 Nuitka로 빌드한 앱에서 부르면
+        # 접근 위반으로 죽는다(v1.2.0-beta.4). 창마다 아이콘을 지정한다
+        icon = window_icon()
+        for window in engine.rootObjects():
+            window.setIcon(icon)
     return app, engine, backend
 
 
