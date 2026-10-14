@@ -339,7 +339,7 @@ Item {
         slideList.scrollToTop()
     }
 
-    // 줄 드래그: 옆 슬라이드로만 옮긴다. 2줄 유지를 켜면 넘친 줄은 연쇄로 밀고 빈자리는 연쇄로 당겨 채운다
+    // 줄 드래그: 옆 슬라이드로만 옮긴다. 2줄 유지를 켜면 넘친 줄은 연쇄로 민다 (줄이 빠진 슬라이드는 1줄로 남는다)
     property bool keepTwo: true     // 기본으로 켜 둔다
 
     // 놓으려는 위치를 허용된 동작으로 바꾼다. 허용되지 않거나 바뀌는 게 없으면 null
@@ -839,7 +839,7 @@ Item {
                             padding: 4
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
-                            ToolTip.text: "줄을 옮길 때 넘치는 줄은 연쇄로 밀고, 빈자리는 연쇄로 당겨와 슬라이드마다 2줄씩 유지해요"
+                            ToolTip.text: "줄을 옮길 때 넘치는 줄을 연쇄로 밀어서 슬라이드마다 2줄을 넘지 않게 해요. 줄을 준 슬라이드는 1줄로 남아요"
                             indicator: Rectangle {
                                 x: keepTwoBox.leftPadding
                                 anchors.verticalCenter: parent.verticalCenter

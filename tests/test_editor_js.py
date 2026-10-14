@@ -209,24 +209,44 @@ class EditorJs(unittest.TestCase):
         plan = self.drop(g, {'slide': 0, 'line': 1}, {'type': 'new', 'at': 1}, False)
         self.assertEqual(plan, {'groups': [['a'], ['b'], ['c']], 'focus': 1})
 
-    def test_plan_drop_keep_two_cascades_and_preserves_lines(self):
+    def test_plan_drop_keep_two_pushes_backward(self):
         g = [['a', 'b'], ['c', 'd'], ['e', 'f']]
-        # c를 앞으로: [a,b,c] 넘침 → a가 맨 앞 새 슬라이드, 소스는 뒤에서 e를 당겨 채움 → f는 혼자
+        # c를 앞으로: [a,b,c] 넘침 → a가 맨 앞 새 슬라이드. 줄을 준 슬라이드는 d 혼자 남는다 (당겨 채우지 않음)
         plan = self.drop(g, {'slide': 1, 'line': 0}, {'type': 'line', 'slide': 0, 'at': 2}, True)
-        self.assertEqual(plan['groups'], [['a'], ['b', 'c'], ['d', 'e'], ['f']])
-        self.assertEqual(plan['focus'], 1)
-        flat = [x for grp in plan['groups'] for x in grp]
-        self.assertEqual(flat, ['a', 'b', 'c', 'd', 'e', 'f'])   # 줄 수·순서 보존
-        self.assertTrue(all(len(grp) <= 2 for grp in plan['groups']))
+        self.assertEqual(plan, {'groups': [['a'], ['b', 'c'], ['d'], ['e', 'f']], 'focus': 1})
 
-    def test_plan_drop_keep_two_forward(self):
+    def test_plan_drop_keep_two_pushes_forward(self):
         g = [['a', 'b'], ['c', 'd'], ['e', 'f']]
-        # b를 뒤로: [b,c,d] 넘침 → d가 다음으로 → ... 마지막은 새 슬라이드
+        # b를 뒤로: [b,c,d] 넘침 → d가 다음으로 → [d,e,f] 넘침 → f는 맨 뒤 새 슬라이드. a는 혼자 남는다
         plan = self.drop(g, {'slide': 0, 'line': 1}, {'type': 'line', 'slide': 1, 'at': 0}, True)
-        flat = [x for grp in plan['groups'] for x in grp]
-        self.assertEqual(flat, ['a', 'b', 'c', 'd', 'e', 'f'])
-        self.assertTrue(all(len(grp) <= 2 for grp in plan['groups']))
-        self.assertIn('b', plan['groups'][plan['focus']])
+        self.assertEqual(plan, {'groups': [['a'], ['b', 'c'], ['d', 'e'], ['f']], 'focus': 1})
+
+    def test_plan_drop_keep_two_does_not_pull_into_source(self):
+        # 가운데 슬라이드가 줄을 줘도 반대쪽 이웃에서 당겨오지 않는다
+        g = [['a', 'b'], ['c', 'd'], ['e']]
+        plan = self.drop(g, {'slide': 1, 'line': 1}, {'type': 'line', 'slide': 2, 'at': 0}, True)
+        self.assertEqual(plan, {'groups': [['a', 'b'], ['c'], ['d', 'e']], 'focus': 2})
+        g = [['a'], ['b', 'c'], ['d', 'e']]
+        plan = self.drop(g, {'slide': 1, 'line': 0}, {'type': 'line', 'slide': 0, 'at': 1}, True)
+        self.assertEqual(plan, {'groups': [['a', 'b'], ['c'], ['d', 'e']], 'focus': 0})
+
+    def test_plan_drop_keep_two_new_slide_does_not_pull(self):
+        # 새 슬라이드로 떼어내도 남은 슬라이드는 1줄 그대로
+        g = [['a', 'b'], ['c', 'd']]
+        plan = self.drop(g, {'slide': 0, 'line': 1}, {'type': 'new', 'at': 1}, True)
+        self.assertEqual(plan, {'groups': [['a'], ['b'], ['c', 'd']], 'focus': 1})
+
+    def test_plan_drop_keep_two_preserves_lines(self):
+        g = [['a', 'b'], ['c', 'd'], ['e', 'f'], ['g', 'h']]
+        moves = [({'slide': 1, 'line': 0}, {'type': 'line', 'slide': 0, 'at': 2}),
+                 ({'slide': 2, 'line': 1}, {'type': 'line', 'slide': 3, 'at': 0}),
+                 ({'slide': 0, 'line': 1}, {'type': 'line', 'slide': 1, 'at': 0})]
+        for src, target in moves:
+            with self.subTest(src=src, target=target):
+                plan = self.drop(g, src, target, True)
+                flat = [x for grp in plan['groups'] for x in grp]
+                self.assertEqual(flat, list('abcdefgh'))   # 줄 수·순서 보존
+                self.assertTrue(all(1 <= len(grp) <= 2 for grp in plan['groups']))
 
     def test_plan_drop_focus_with_repeated_lines(self):
         # 같은 가사 줄이 반복돼도 옮긴 줄이 들어간 슬라이드를 가리킨다

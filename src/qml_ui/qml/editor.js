@@ -112,8 +112,8 @@ function listDiff(old, next) {
 //   마지막 줄: 뒤 슬라이드 처음에 붙이기 / 뒤쪽 사이에 새 슬라이드
 // (한 줄짜리 슬라이드는 그 줄이 첫 줄이자 마지막 줄이라 네 가지 모두 가능)
 // keepTwo(2줄 유지)를 켜면 슬라이드마다 2줄을 유지한다:
-//   붙여서 2줄을 넘으면 넘친 줄을 같은 방향으로 연쇄해서 밀고(맨 앞/맨 뒤까지 넘치면 새 슬라이드),
-//   줄이 빠진 슬라이드는 반대쪽 이웃에서 연쇄로 당겨와 채운다.
+//   붙여서 2줄을 넘으면 넘친 줄을 같은 방향으로 연쇄해서 민다(맨 앞/맨 뒤까지 넘치면 새 슬라이드).
+//   줄이 빠진 슬라이드는 채우지 않고 1줄로 남긴다.
 // 끄면 옆 슬라이드로 옮기기만 한다 (3줄이 되면 3줄 그대로).
 
 const MAX_LINES = 2;
@@ -149,22 +149,16 @@ function planDrop(blocks, src, target, keepTwo) {
     const before = serialize(groups.map(g => g.map(l => l.text)));
     const source = groups[src.slide];
     const moved = source.splice(src.line, 1)[0];
-    // 앞으로 옮기면 소스는 첫 줄을 잃고 뒤에서 채우고, 뒤로 옮기면 마지막 줄을 잃고 앞에서 채운다
     const backward = target.type === 'line' ? target.slide < src.slide : target.at <= src.slide;
 
     if (target.type === 'new') groups.splice(target.at, 0, [moved]);
     else if (backward) groups[target.slide].push(moved);
     else groups[target.slide].unshift(moved);
 
-    // 2줄 유지: 넘친 슬라이드는 같은 방향으로 밀고, 줄이 빠진 슬라이드는 반대쪽에서 당겨 채운다
-    if (keepTwo) {
-        if (target.type === 'line') {
-            if (backward) pushBackward(groups, target.slide);
-            else pushForward(groups, target.slide);
-        }
-        const s = groups.indexOf(source);   // 앞에 새 슬라이드가 생겼을 수 있어 위치를 다시 찾는다
-        if (backward) pullFromNext(groups, s);
-        else pullFromPrevious(groups, s);
+    // 2줄 유지: 넘친 슬라이드는 같은 방향으로 민다 (줄이 빠진 슬라이드는 그대로)
+    if (keepTwo && target.type === 'line') {
+        if (backward) pushBackward(groups, target.slide);
+        else pushForward(groups, target.slide);
     }
 
     const result = groups.filter(g => g.length > 0);
@@ -190,26 +184,5 @@ function pushForward(groups, i) {
         if (i === groups.length - 1) { groups.push(extra); return; }
         groups[i + 1].unshift(...extra);
         i++;
-    }
-}
-
-// i번째 슬라이드가 모자라면 뒤 슬라이드의 앞쪽 줄을 연쇄해서 당겨온다
-function pullFromNext(groups, i) {
-    while (i < groups.length - 1 && groups[i].length < MAX_LINES) {
-        const next = groups[i + 1];
-        groups[i].push(...next.splice(0, MAX_LINES - groups[i].length));
-        if (next.length === 0) groups.splice(i + 1, 1);
-        else i++;
-    }
-}
-
-// i번째 슬라이드가 모자라면 앞 슬라이드의 뒤쪽 줄을 연쇄해서 당겨온다
-function pullFromPrevious(groups, i) {
-    while (i > 0 && groups[i].length < MAX_LINES) {
-        const prev = groups[i - 1];
-        const need = MAX_LINES - groups[i].length;
-        groups[i].unshift(...prev.splice(Math.max(0, prev.length - need)));
-        if (prev.length === 0) groups.splice(i - 1, 1);
-        i--;
     }
 }
