@@ -125,6 +125,7 @@ class Backend(QObject):
 
     def __init__(self, art_provider):
         super().__init__()
+        self._state = app_state.load()
         self._art = art_provider
         self._scraper = MelonScraper()
         self._pool = ThreadPoolExecutor(max_workers=4)
@@ -185,17 +186,17 @@ class Backend(QObject):
                            'availablePt': round(box.available_pt, 1), 'exact': box.exact})
 
     # ── 첫 실행 튜토리얼 ── (name: "search" | "editor")
+    # 시작할 때 한 번 읽어 메모리에 둔다. 저장에 실패해도 이번 실행에서는 다시 띄우지 않는다
     @Slot(str, result=bool)
     def tutorialSeen(self, name):
-        return name in app_state.load().get('tutorials_seen', [])
+        return name in self._state.get('tutorials_seen', [])
 
     @Slot(str)
     def markTutorialSeen(self, name):
-        state = app_state.load()
-        seen = state.get('tutorials_seen', [])
+        seen = self._state.get('tutorials_seen', [])
         if name not in seen:
-            state['tutorials_seen'] = seen + [name]
-            app_state.save(state)
+            self._state['tutorials_seen'] = seen + [name]
+            app_state.save(self._state)
 
     # ── 멜론 ──
     DETAIL_CACHE_MAX = 40

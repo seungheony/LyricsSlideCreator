@@ -59,9 +59,11 @@ python scripts/build.py 1.2.0   # 버전 기록(scripts/set_version.py) + Nuitka
 **주요 패턴**:
 - `src/`, `src/utils/`, `src/qml_ui/`에 빈 `__init__.py`가 있는 일반 패키지. 모듈은 `from src.utils.x import ...`로 불러온다(프로젝트 루트에서 실행). `sys.path` 주입 없음
 - 프로젝트 루트의 `template.pptx`가 필수이며 실행 파일에 번들됨
+- 라이선스: MIT(`LICENSE`). 빌드할 때 `scripts/third_party_notices.py`가 설치된 패키지(`requirements.txt`와 의존 패키지)에서 `THIRD_PARTY_NOTICES.txt`를 `build/`에 만들어 `LICENSE`와 함께 앱에 넣는다. 런타임 패키지를 추가·변경하면 고지가 자동으로 따라온다
 - 메모리 내 PPT 생성(BytesIO), 임시 파일 미사용
 - 앱 폴더 밖에 파일을 남기지 않는다: QML 디스크 캐시·GPU 파이프라인 캐시를 끈다(`app.py`). 설정 저장 등 새 기능을 넣을 때도 이 원칙을 지킨다
-  - 앱 상태 기록(첫 실행 튜토리얼을 봤는지)은 앱 폴더 안 `app_state.json`(`src/utils/app_state.py`). 업데이트하면 앱 폴더가 새로 깔려 기록도 초기화되고(튜토리얼 다시 표시), 쓸 수 없으면 무시한다
+  - 앱 상태 기록(첫 실행 튜토리얼을 봤는지, `src/utils/app_state.py`): 개발 모드·Windows는 앱 폴더 안 `app_state.json`(업데이트하면 앱 폴더가 새로 깔려 기록도 초기화되어 튜토리얼이 다시 나온다). Nuitka로 빌드한 macOS 앱은 번들 안(서명이 깨지고 읽기 전용 위치면 저장 안 됨)이 아니라 번들 ID(`io.github.seungheony.lyricsslidecreator`)의 환경설정 plist에 `defaults write`로 키별로 쓴다 — OS 파일 대화상자가 쓰는 같은 파일이라 새 파일이 생기지 않는다(`BUNDLE_ID`는 `scripts/build.py`와 같게 유지). `Backend`가 시작할 때 한 번 읽어 메모리에 두므로 저장에 실패해도 그 실행에서는 튜토리얼이 다시 뜨지 않고, 쓸 수 없으면 무시한다
+  - 첫 실행 튜토리얼(`Tour` `required`)은 닫기·Esc 없이 끝까지 보거나 '건너뛰기'로 끝낸다. 건너뛰면 모든 화면의 튜토리얼을 본 것으로 기록하고, 끝내거나 건너뛰면 "? 버튼으로 언제든 다시 볼 수 있어요" 토스트를 띄운다(`Main.qml` `finishTutorial`/`skipTutorial`)
   - 허용된 예외(OS가 남기는 기록): OS 기본 파일 대화상자의 마지막 폴더 기록(macOS `~/Library/Preferences/<앱>.plist`, Windows 레지스트리), macOS Metal 셰이더 캐시(`/var/folders/.../C/<앱>/com.apple.metal`)
 - 사용자에게 보이는 문구(QML·backend.py·updater.py)는 해요체로 쓰고 제목에는 마침표를 붙이지 않는다. 용어는 '내 템플릿'·'PPT'로 통일
 - 테스트: `tests/`(unittest). 프로젝트 루트에서 `python -m unittest discover -s tests -t .` (화면 없이 돌도록 `tests/__init__.py`가 `QT_QPA_PLATFORM=offscreen`을 설정하고 `QGuiApplication`을 만든다). 정적 검사는 `ruff check --select F401,E722 .`. 둘 다 PR·push 때 `.github/workflows/check.yml`이 돌린다(빌드는 하지 않음)

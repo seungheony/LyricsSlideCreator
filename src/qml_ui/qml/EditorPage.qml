@@ -438,8 +438,8 @@ Item {
 
     // ── 도움말 (? 버튼) ──
     // 처음 편집 화면에 들어왔을 때: 모든 튜토리얼을 이어서 끝까지 보여준다
-    function showFirstRunTour() {
-        help.firstRun(() => backend.markTutorialSeen("editor"))
+    function showFirstRunTour(onFinished, onSkipped) {
+        help.firstRun(onFinished, onSkipped)
     }
 
     EditorHelp {
