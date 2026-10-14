@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$SCRIPT")/.."
 
-REPO=seungheony/lyricsSlide_Creator
+REPO=seungheony/LyricsSlideCreator
 
 die() { echo "오류: $*" >&2; exit 1; }
 tag_exists() { git rev-parse -q --verify "refs/tags/$1" >/dev/null; }

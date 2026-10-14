@@ -29,7 +29,7 @@ import requests
 
 from src.utils.version import is_newer, parse_version
 
-REPO = 'seungheony/lyricsSlide_Creator'
+REPO = 'seungheony/LyricsSlideCreator'
 # LSC_UPDATE_API: 업데이트 기능을 실제 릴리스 없이 시험할 때 다른 주소(로컬 서버 등)를 쓰기 위한 환경변수
 RELEASES_API = os.environ.get('LSC_UPDATE_API') or f'https://api.github.com/repos/{REPO}/releases?per_page=20'
 RELEASES_PAGE = f'https://github.com/{REPO}/releases'

@@ -18,14 +18,14 @@ from src.utils import updater
 
 NOTES_GENERATED = """<!-- Release notes generated using configuration in .github/release.yml -->
 ## What's Changed
-* feat: 줄바꿈 경고 표시 by @seungheony in https://github.com/seungheony/lyricsSlide_Creator/pull/12
-* fix(updater): 다운로드 취소 by @seungheony in https://github.com/seungheony/lyricsSlide_Creator/pull/13
-* 검색 속도 개선 by @dependabot[bot] in https://github.com/seungheony/lyricsSlide_Creator/pull/14
+* feat: 줄바꿈 경고 표시 by @seungheony in https://github.com/seungheony/LyricsSlideCreator/pull/12
+* fix(updater): 다운로드 취소 by @seungheony in https://github.com/seungheony/LyricsSlideCreator/pull/13
+* 검색 속도 개선 by @dependabot[bot] in https://github.com/seungheony/LyricsSlideCreator/pull/14
 
 ## New Contributors
-* @someone made their first contribution in https://github.com/seungheony/lyricsSlide_Creator/pull/9
+* @someone made their first contribution in https://github.com/seungheony/LyricsSlideCreator/pull/9
 
-**Full Changelog**: https://github.com/seungheony/lyricsSlide_Creator/compare/v1.2.0...v1.2.1
+**Full Changelog**: https://github.com/seungheony/LyricsSlideCreator/compare/v1.2.0...v1.2.1
 """
 
 
@@ -39,7 +39,7 @@ class ReleaseNotes(unittest.TestCase):
                          '* 줄바꿈 경고 표시\n* 다운로드 취소\n* 검색 속도 개선')
 
     def test_signing_policy_link_removed(self):
-        link = '[Code signing policy](https://github.com/seungheony/lyricsSlide_Creator#code-signing-policy)'
+        link = '[Code signing policy](https://github.com/seungheony/LyricsSlideCreator#code-signing-policy)'
         self.assertEqual(updater.release_notes(link + '\n\n' + NOTES_GENERATED),
                          '* 줄바꿈 경고 표시\n* 다운로드 취소\n* 검색 속도 개선')
         self.assertEqual(updater.release_notes(link), '')
