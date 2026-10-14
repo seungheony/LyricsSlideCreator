@@ -96,7 +96,7 @@ Popup {
         }
         Text {
             visible: dialog.detail !== ""
-            text: "계속되면 '오류 정보 복사'를 눌러 내용을 알려 주세요."
+            text: "계속되면 '문제 알리기'로 알려 주세요. 오류 정보를 복사해 두니 붙여 넣기만 하면 돼요."
             color: Theme.text3
             font.family: Theme.font
             font.pixelSize: 12
@@ -120,6 +120,17 @@ Popup {
                     backend.copyErrorReport(dialog.title, dialog.detail)
                     dialog.copied = true
                     copiedTimer.restart()
+                }
+            }
+            // 오류 정보를 복사하고 GitHub 문의 화면을 연다
+            AppButton {
+                text: "문제 알리기"
+                variant: "ghost"; size: "small"
+                onClicked: {
+                    backend.copyErrorReport(dialog.title, dialog.detail)
+                    dialog.copied = true
+                    copiedTimer.restart()
+                    Qt.openUrlExternally(backend.feedbackUrl())
                 }
             }
         }

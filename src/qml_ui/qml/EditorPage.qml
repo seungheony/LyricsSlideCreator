@@ -51,6 +51,7 @@ Item {
 
     signal backRequested()
     signal addSongRequested()
+    signal feedbackRequested()
 
     // 머리글의 제목·가수 입력칸에 커서가 있다 (이때 ⌘Z는 그 칸의 되돌리기, Esc는 입력칸에서 빠져나오기)
     readonly property bool headerFocused: titleField.activeFocus || artistField.activeFocus
@@ -1254,6 +1255,15 @@ Item {
                         font.pixelSize: 12
                     }
                     HelpButton { label: "PPT 생성"; onClicked: help.generate() }
+                }
+                // '문의하기' (Main의 FeedbackDialog). 튜토리얼 강조 영역(templateRow)에 들어가지 않게 밖에 둔다
+                AppButton {
+                    Layout.leftMargin: 8
+                    text: "문의하기"
+                    glyph: "message"
+                    variant: "ghost"
+                    size: "small"
+                    onClicked: page.feedbackRequested()
                 }
                 Item { Layout.fillWidth: true }
                 // 꺼진 버튼은 호버를 받지 못해, 바깥에 둔 영역으로 이유를 보여 준다

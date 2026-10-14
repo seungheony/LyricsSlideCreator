@@ -224,6 +224,7 @@ ApplicationWindow {
         transform: Translate { x: win.editorActive ? 0 : 24; Behavior on x { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } } }
         Behavior on opacity { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
         toastHost: toast
+        onFeedbackRequested: feedbackDialog.open()
         dialog: dialog
         tour: tour
         confirmDialog: confirmDialog
@@ -308,6 +309,9 @@ ApplicationWindow {
             onClicked: win.checkUpdateManually()
         }
     }
+
+    // '문의하기' 창: 편집 화면 아래 막대의 버튼(EditorPage feedbackRequested)으로 연다 (오류 창의 '문제 알리기'는 바로 GitHub를 연다)
+    FeedbackDialog { id: feedbackDialog; objectName: "feedbackDialog" }
 
     ToastHost {
         id: toast

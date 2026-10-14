@@ -1,0 +1,42 @@
+name: 문의하기
+description: 안 되는 기능, 불편한 점, 있었으면 하는 기능 무엇이든 알려 주세요
+labels: [from-app]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        알려 주셔서 고마워요. 이 글은 누구나 볼 수 있으니 이름·연락처 같은 개인정보는 쓰지 마세요.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 어떤 이야기인가요?
+      options:
+        - 잘 안 돼요 (오류·이상한 동작)
+        - 이런 기능이 있으면 좋겠어요
+        - 그 밖의 질문·이야기
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 내용
+      description: 무엇을 하다가 어떤 일이 있었는지, 또는 어떤 기능이 왜 필요한지 편하게 적어 주세요
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: 오류 정보 (오류가 났다면)
+      description: 오류 창의 '오류 정보 복사'나 '문제 알리기'를 눌렀다면 여기에 붙여 넣어 주세요
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: 앱 버전
+      description: 앱에서 열었다면 자동으로 채워져요
+      placeholder: v1.3.0
+  - type: input
+    id: os
+    attributes:
+      label: 운영체제
+      placeholder: macOS 15 / Windows 11
