@@ -186,3 +186,60 @@ function pushForward(groups, i) {
         i++;
     }
 }
+
+// ── 3줄 이상 슬라이드 (2줄 유지 중 확인) ──
+// 슬라이드 내용(줄을 \n으로 이은 것)이 열쇠: kept[열쇠] === true면 '그대로 두기'한 슬라이드라 다시 묻지 않는다
+
+function slideKey(lines) { return lines.join('\n'); }
+
+// 3줄 이상인데 아직 묻지 않은 슬라이드 번호
+function longSlides(groups, kept) {
+    const out = [];
+    groups.forEach((lines, i) => { if (lines.length > MAX_LINES && kept[slideKey(lines)] !== true) out.push(i); });
+    return out;
+}
+
+// 물어본 슬라이드(keys)만 2줄씩 나눈다 (나머지는 그대로). 반환: { groups, count: 나눈 슬라이드 수 }
+function splitAsked(groups, keys) {
+    const asked = {};
+    keys.forEach(k => { asked[k] = true; });
+    let count = 0;
+    const out = [];
+    groups.forEach(lines => {
+        if (lines.length > MAX_LINES && asked[slideKey(lines)] === true) { count++; out.push(...regroup(lines, MAX_LINES)); }
+        else out.push(lines);
+    });
+    return { groups: out, count: count };
+}
+
+// ── 콘티 (여러 곡을 한 PPT로) ──
+
+// from번째 항목을 빼서 to번째 자리에 넣은 새 배열 (to는 뺀 뒤 기준)
+function moveItem(list, from, to) {
+    const out = list.slice();
+    if (from < 0 || from >= out.length) return out;
+    const item = out.splice(from, 1)[0];
+    out.splice(Math.max(0, Math.min(to, out.length)), 0, item);
+    return out;
+}
+
+// PPT 전체 장 수: 곡별 슬라이드 + 처음·곡 사이·끝의 빈 슬라이드 (ppt_engine.setlist_chunks와 같은 규칙,
+// 슬라이드가 없는 곡은 건너뜀). 만들 슬라이드가 없으면 0
+function deckSize(counts) {
+    const filled = counts.filter(n => n > 0);
+    if (!filled.length) return 0;
+    return filled.reduce((a, n) => a + n, 0) + filled.length + 1;
+}
+
+// PPT 이름(기본 파일 이름·문서 제목): 곡이 하나면 '제목 — 가수', 여럿이면 'YYYY-MM-DD 예배 가사'
+function deckTitle(songs, date) {
+    if (!songs.length) return '';
+    if (songs.length === 1) return [songs[0].title, songs[0].artist].filter(Boolean).join(' — ');
+    const pad = n => (n < 10 ? '0' : '') + n;
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' 예배 가사';
+}
+
+// 파일 이름에 쓸 수 없는 글자를 바꾼다
+function safeFileName(name) {
+    return (name || 'lyrics').replace(/[\/\\:*?"<>|]/g, '_');
+}

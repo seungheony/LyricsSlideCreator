@@ -4,7 +4,7 @@ import unittest
 
 from pptx import Presentation
 
-from src.utils.ppt_engine import PPTBuilder, clean_lyrics_text
+from src.utils.ppt_engine import PPTBuilder, clean_lyrics_text, setlist_chunks
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE = os.path.join(ROOT, 'template.pptx')
@@ -17,6 +17,11 @@ def lyrics_shape(slide):
 
 def slide_texts(prs):
     return [lyrics_shape(s).text_frame.text for s in prs.slides]
+
+
+def all_texts(prs):
+    """슬라이드마다 글상자 글자를 모두 이은 것 (빈 슬라이드는 '')"""
+    return [''.join(sh.text_frame.text for sh in s.shapes if sh.has_text_frame) for s in prs.slides]
 
 
 class PPTBuilderTest(unittest.TestCase):
@@ -51,6 +56,38 @@ class PPTBuilderTest(unittest.TestCase):
         self.assertEqual(clean_lyrics_text('가\x00나​다\t라\r\n마 바'), '가나다 라\n마\n바')
         prs = self.build(['가\x0b나'])
         self.assertEqual(slide_texts(prs), ['가\n나'])
+
+    # ── 콘티 ──
+    def build_setlist(self, songs, title='콘티'):
+        buf = PPTBuilder(TEMPLATE).generate_setlist_to_memory(songs, title=title)
+        return Presentation(io.BytesIO(buf.getvalue()))
+
+    def test_setlist_chunks_blank_slides(self):
+        songs = [{'title': 'A', 'artist': 'x', 'chunks': ['a1', 'a2']},
+                 {'title': 'B', 'artist': 'y', 'chunks': ['b1']},
+                 {'title': 'C', 'artist': 'z', 'chunks': ['c1', 'c2', 'c3']}]
+        self.assertEqual(setlist_chunks(songs),
+                         [None, 'a1', 'a2', None, 'b1', None, 'c1', 'c2', 'c3', None])
+
+    def test_setlist_chunks_single_song_and_empty(self):
+        self.assertEqual(setlist_chunks([{'title': 'A', 'artist': '', 'chunks': ['a1']}]), [None, 'a1', None])
+        # 슬라이드가 없는 곡은 건너뛰어 빈 슬라이드가 겹치지 않는다
+        songs = [{'title': 'A', 'chunks': ['a1']}, {'title': 'B', 'chunks': []},
+                 {'title': 'C', 'chunks': ['  ']}, {'title': 'D', 'chunks': ['d1']}]
+        self.assertEqual(setlist_chunks(songs), [None, 'a1', None, 'd1', None])
+        self.assertEqual(setlist_chunks([]), [None])
+
+    def test_setlist_ppt_order_and_blank_slides(self):
+        songs = [{'title': 'A', 'artist': 'x', 'chunks': ['가\n나', '다']},
+                 {'title': 'B', 'artist': 'y', 'chunks': ['라']}]
+        prs = self.build_setlist(songs)
+        self.assertEqual(all_texts(prs), ['', '가\n나', '다', '', '라', ''])
+        # 빈 슬라이드도 템플릿을 그대로 복사한 것(배경·가사 상자 있음)이고 가사 상자만 비어 있다
+        for i in (0, 3, 5):
+            boxes = [sh for sh in prs.slides[i].shapes if sh.has_text_frame]
+            self.assertEqual(len(boxes), 1)
+            self.assertEqual(boxes[0].text_frame.text, '')
+        self.assertEqual(prs.core_properties.title, '콘티')
 
     def test_save_to_file_is_atomic(self):
         import tempfile

@@ -261,6 +261,47 @@ class EditorJs(unittest.TestCase):
         g = [['a']]
         self.assertIsNone(self.drop(g, {'slide': 0, 'line': 0}, {'type': 'new', 'at': 0}, False))
 
+    # ── 3줄 이상 슬라이드 ──
+    def test_long_slides_skips_kept(self):
+        g = [['a', 'b', 'c'], ['d'], ['e', 'f', 'g', 'h']]
+        self.assertEqual(self.call(f'longSlides({json.dumps(g)}, {{}})'), [0, 2])
+        self.assertEqual(self.call(f'longSlides({json.dumps(g)}, {{"a\\nb\\nc": true}})'), [2])
+
+    def test_split_asked_only_splits_asked(self):
+        g = [['a', 'b', 'c'], ['d'], ['e', 'f', 'g', 'h']]
+        got = self.call(f'splitAsked({json.dumps(g)}, ["e\\nf\\ng\\nh"])')
+        self.assertEqual(got, {'groups': [['a', 'b', 'c'], ['d'], ['e', 'f'], ['g', 'h']], 'count': 1})
+        got = self.call(f'splitAsked({json.dumps(g)}, [])')
+        self.assertEqual(got, {'groups': g, 'count': 0})
+
+    # ── 콘티 ──
+    def test_move_item(self):
+        self.assertEqual(self.call('moveItem(["a","b","c"], 0, 2)'), ['b', 'c', 'a'])
+        self.assertEqual(self.call('moveItem(["a","b","c"], 2, 0)'), ['c', 'a', 'b'])
+        self.assertEqual(self.call('moveItem(["a","b","c"], 1, 1)'), ['a', 'b', 'c'])
+        self.assertEqual(self.call('moveItem(["a","b","c"], 0, 9)'), ['b', 'c', 'a'])   # 넘치면 끝으로
+        self.assertEqual(self.call('moveItem(["a","b"], 5, 0)'), ['a', 'b'])            # 없는 항목은 그대로
+
+    def test_deck_size_counts_blank_slides(self):
+        # 처음·곡 사이·끝에 빈 슬라이드 (ppt_engine.setlist_chunks와 같은 규칙)
+        self.assertEqual(self.call('deckSize([2, 1, 3])'), 6 + 4)
+        self.assertEqual(self.call('deckSize([5])'), 5 + 2)
+        self.assertEqual(self.call('deckSize([2, 0, 3])'), 5 + 3)   # 빈 곡은 건너뜀
+        self.assertEqual(self.call('deckSize([0, 0])'), 0)
+        self.assertEqual(self.call('deckSize([])'), 0)
+
+    def test_deck_title(self):
+        one = json.dumps([{'title': '은혜', 'artist': '손경민'}], ensure_ascii=False)
+        self.assertEqual(self.call(f'deckTitle({one}, new Date(2026, 9, 4))'), '은혜 — 손경민')
+        two = json.dumps([{'title': 'A', 'artist': 'x'}, {'title': 'B', 'artist': 'y'}])
+        self.assertEqual(self.call(f'deckTitle({two}, new Date(2026, 9, 4))'), '2026-10-04 예배 가사')
+        self.assertEqual(self.call('deckTitle([{"title": "A", "artist": ""}], new Date())'), 'A')
+        self.assertEqual(self.call('deckTitle([], new Date())'), '')
+
+    def test_safe_file_name(self):
+        self.assertEqual(self.call('safeFileName("a/b:c?")'), 'a_b_c_')
+        self.assertEqual(self.call('safeFileName("")'), 'lyrics')
+
 
 if __name__ == '__main__':
     unittest.main()
