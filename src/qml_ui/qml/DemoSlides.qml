@@ -234,6 +234,8 @@ Rectangle {
                 height: Math.max(92, lineCol.implicitHeight + 40)
                 radius: Theme.radiusSm
                 color: Theme.slideBg
+                border.width: 1
+                border.color: Theme.slideBorder
                 scale: root.pressedSlide === slot.index ? 0.98 : 1
                 Behavior on scale { NumberAnimation { duration: 100 } }
 

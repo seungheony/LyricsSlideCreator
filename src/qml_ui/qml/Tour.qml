@@ -161,7 +161,7 @@ Popup {
                     Layout.fillWidth: true
                     Text {
                         text: (tour.index + 1) + " / " + tour.steps.length
-                        color: Theme.primary
+                        color: Theme.primaryText
                         font.family: Theme.font
                         font.pixelSize: 12
                         font.weight: Font.Bold

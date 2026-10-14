@@ -8,14 +8,14 @@ Item {
     width: card.width
     height: card.height
 
-    property var actionHandler: null
+    property var actions: []       // [{ label, handler }]
 
     function show(message, options) {
         options = options || {}
         label.text = message
         host.error = !!options.error
-        actionButton.text = options.actionLabel || ""
-        host.actionHandler = options.onAction || null
+        host.actions = options.actions
+                       || (options.actionLabel ? [{ label: options.actionLabel, handler: options.onAction }] : [])
         hideTimer.interval = options.duration || 2600
         card.state = "shown"
         hideTimer.restart()
@@ -25,6 +25,15 @@ Item {
     property bool error: false
 
     Timer { id: hideTimer; onTriggered: host.hide() }
+
+    // 마우스를 올려 두는 동안은 사라지지 않는다
+    HoverHandler {
+        target: card
+        onHoveredChanged: {
+            if (hovered) hideTimer.stop()
+            else if (card.state === "shown") hideTimer.restart()
+        }
+    }
 
     Rectangle {
         id: card
@@ -56,34 +65,40 @@ Item {
             }
             Text {
                 id: label
+                width: Math.min(implicitWidth, 380)
+                elide: Text.ElideRight
                 color: "white"
                 font.family: Theme.font
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
                 anchors.verticalCenter: parent.verticalCenter
             }
-            Button {
-                id: actionButton
-                visible: text !== ""
-                anchors.verticalCenter: parent.verticalCenter
-                hoverEnabled: true
-                implicitHeight: 28
-                leftPadding: 10; rightPadding: 10
-                contentItem: Text {
-                    text: actionButton.text
-                    color: Theme.primary
-                    font.family: Theme.font
-                    font.pixelSize: 13
-                    font.weight: Font.Bold
-                    verticalAlignment: Text.AlignVCenter
-                }
-                background: Rectangle {
-                    radius: 7
-                    color: Qt.rgba(1, 1, 1, actionButton.hovered ? 0.2 : 0.12)
-                }
-                onClicked: {
-                    if (host.actionHandler) host.actionHandler()
-                    host.hide()
+            Repeater {
+                model: host.actions
+                delegate: Button {
+                    id: actionButton
+                    required property var modelData
+                    anchors.verticalCenter: parent.verticalCenter
+                    hoverEnabled: true
+                    implicitHeight: 28
+                    leftPadding: 10; rightPadding: 10
+                    contentItem: Text {
+                        text: actionButton.modelData.label
+                        color: Theme.primary
+                        font.family: Theme.font
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: 7
+                        color: Qt.rgba(1, 1, 1, actionButton.hovered ? 0.2 : 0.12)
+                    }
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    onClicked: {
+                        host.hide()
+                        if (actionButton.modelData.handler) actionButton.modelData.handler()
+                    }
                 }
             }
         }

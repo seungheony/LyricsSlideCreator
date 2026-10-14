@@ -91,14 +91,14 @@ def download(info, progress=None):
         sums = requests.get(info['sums_url'], timeout=15)
         sums.raise_for_status()
     except requests.RequestException as e:
-        raise UpdateError(f'체크섬 파일을 받지 못했습니다.\n{e}')
+        raise UpdateError(f'체크섬 파일을 받지 못했어요.\n{e}')
     expected = None
     for line in sums.text.splitlines():
         parts = line.split()
         if len(parts) == 2 and parts[1].lstrip('*') == info['name']:
             expected = parts[0].lower()
     if not expected:
-        raise UpdateError('체크섬 파일에 설치 파일 정보가 없습니다.')
+        raise UpdateError('체크섬 파일에 설치 파일 정보가 없어요.')
 
     path = os.path.join(UPDATE_DIR, info['name'])
     digest = hashlib.sha256()
@@ -115,7 +115,7 @@ def download(info, progress=None):
                     if progress:
                         progress(done, total)
     except requests.RequestException as e:
-        raise UpdateError(f'다운로드 중 연결이 끊겼습니다.\n{e}')
+        raise UpdateError(f'다운로드 중 연결이 끊겼어요.\n{e}')
 
     if digest.hexdigest() != expected:
         shutil.rmtree(UPDATE_DIR, ignore_errors=True)
@@ -143,25 +143,25 @@ def install(package_path):
     elif system == 'Darwin':
         _install_macos(package_path)
     else:
-        raise UpdateError('이 OS에서는 자동 업데이트를 지원하지 않습니다.')
+        raise UpdateError('이 OS에서는 자동 업데이트를 지원하지 않아요.')
 
 
 def _install_macos(zip_path):
     app = current_app_bundle()
     if not app:
-        raise UpdateError('빌드된 앱에서만 업데이트할 수 있습니다.')
+        raise UpdateError('빌드된 앱에서만 업데이트할 수 있어요.')
     if '/AppTranslocation/' in app:
         # 다운로드한 앱을 옮기지 않고 바로 실행하면 macOS가 읽기 전용 임시 위치에서 실행한다
         raise UpdateError('앱을 "응용 프로그램" 폴더로 옮긴 뒤 다시 실행하면 업데이트할 수 있어요.')
     if not os.access(os.path.dirname(app), os.W_OK):
-        raise UpdateError(f'앱이 있는 폴더에 쓸 권한이 없습니다.\n{os.path.dirname(app)}')
+        raise UpdateError(f'앱이 있는 폴더에 쓸 권한이 없어요.\n{os.path.dirname(app)}')
 
     extract_dir = os.path.join(UPDATE_DIR, 'extracted')
     shutil.rmtree(extract_dir, ignore_errors=True)
     subprocess.run(['ditto', '-x', '-k', zip_path, extract_dir], check=True)
     apps = glob.glob(os.path.join(extract_dir, '*.app'))
     if not apps:
-        raise UpdateError('받은 파일에 앱이 들어 있지 않습니다.')
+        raise UpdateError('받은 파일에 앱이 들어 있지 않아요.')
 
     # 앱이 완전히 종료된 뒤 교체하고 다시 연다. 끝나면 임시 폴더도 지운다.
     script = os.path.join(UPDATE_DIR, 'apply.sh')

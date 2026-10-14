@@ -51,7 +51,7 @@ QtObject {
               body: "<b>빈 줄</b>로 구분된 덩어리 하나가 슬라이드 한 장이 돼요. 가사를 고치면 오른쪽 미리보기에 바로 반영돼요." },
             { target: autoSplitRow, demo: autoSplitDemo, title: "자동 나누기",
               body: "가사 전체를 처음부터 <b>1줄씩</b> 또는 <b>2줄씩</b> 다시 나눠요. 곡을 처음 불러오면 2줄씩 나뉘어 있어요.<br>"
-                  + "직접 나눈 것은 사라지지만 <b>되돌리기(" + Theme.mod + "Z)</b>로 되돌릴 수 있어요." }
+                  + "직접 나눈 것은 사라지지만 <b>되돌리기(" + Theme.undoKey + ")</b>로 되돌릴 수 있어요." }
         ]
     }
 
@@ -67,8 +67,8 @@ QtObject {
               body: "<b>첫 줄</b>은 앞 슬라이드로, <b>마지막 줄</b>은 뒤 슬라이드로 끌어서 옮길 수 있어요. "
                   + "슬라이드 <b>사이</b>에 놓으면 새 슬라이드가 돼요." },
             { target: historyRow, demo: historyDemo, title: "되돌리기",
-              body: "모든 편집은 되돌릴 수 있어요. <b>" + Theme.mod + "Z</b> 되돌리기, <b>"
-                  + (Qt.platform.os === "osx" ? "⇧⌘Z" : "Ctrl+Y") + "</b> 다시 실행." }
+              body: "모든 편집은 되돌릴 수 있어요. <b>" + Theme.undoKey + "</b> 되돌리기, <b>"
+                  + Theme.redoKey + "</b> 다시 실행." }
         ]
     }
 
@@ -89,12 +89,12 @@ QtObject {
         return [
             customTemplate
                 ? { target: templateRow, demo: templateDemo, title: "템플릿",
-                    body: "PPT의 배경·글꼴·글자 위치를 정하는 PowerPoint 파일이에요. "
+                    body: "PPT의 배경·글꼴·글자 위치를 정하는 파일이에요. "
                         + "템플릿 첫 슬라이드에서 <b>'가사'</b>라고 적힌 글상자 자리에 각 슬라이드의 가사가 들어가요.<br>"
-                        + "<b>변경</b>을 눌러 직접 만든 .pptx로 바꿀 수 있어요." }
+                        + "<b>변경</b>을 눌러 내 템플릿(.pptx)으로 바꿀 수 있어요." }
                 : { target: templateRow, title: "템플릿",
                     body: "PPT의 배경·글꼴·글자 위치를 정하는 파일이에요. 지금은 <b>기본 템플릿</b>으로 만들어지고, "
-                        + "직접 만든 템플릿은 추후 지원할 예정이에요." },
+                        + "내 템플릿은 나중에 지원할 예정이에요." },
             { target: generateButton, demo: generateDemo, title: "PPT 생성",
               body: "저장할 위치를 고르면 미리보기의 슬라이드 수만큼 PPT가 만들어져요.<br>단축키: <b>"
                   + Theme.mod + "Enter</b>" }

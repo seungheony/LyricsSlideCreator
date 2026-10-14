@@ -20,6 +20,7 @@ Button {
     font.weight: Font.DemiBold
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
+    HoverHandler { cursorShape: Qt.PointingHandCursor }
 
     readonly property color fg: variant === "primary" ? Theme.primaryText
                                : variant === "danger" ? "white"
@@ -63,7 +64,7 @@ Button {
         color: {
             if (control.variant === "primary") return control.hovered && control.enabled ? Theme.primarySoftHover : Theme.primarySoft
             if (control.variant === "danger") return Theme.danger
-            if (control.variant === "ghost") return control.hovered ? Theme.surface2 : "transparent"
+            if (control.variant === "ghost") return control.hovered ? Theme.surface2 : Theme.surface2Clear
             return control.hovered ? Theme.border : Theme.surface2
         }
         Behavior on color { ColorAnimation { duration: Theme.fast } }

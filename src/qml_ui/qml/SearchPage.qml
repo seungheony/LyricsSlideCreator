@@ -87,7 +87,7 @@ Item {
                         width: rows.width
                         height: 72
                         radius: Theme.radius
-                        color: d.hover === index ? Theme.surface : "transparent"
+                        color: d.hover === index ? Theme.surface : Theme.surfaceClear
                         Behavior on color { ColorAnimation { duration: Theme.fast } }
                         RowLayout {
                             anchors.fill: parent
@@ -102,13 +102,14 @@ Item {
                                 Text { text: "가수 · 앨범"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13 }
                             }
                             Icon {
+                                id: demoArrow
                                 glyph: d.loading && d.hover === row.index ? "loader" : "chevron-right"
                                 color: Theme.text3
                                 opacity: d.hover === row.index ? 1 : 0
                                 RotationAnimation on rotation {
                                     running: d.loading && d.hover === row.index
                                     from: 0; to: 360; duration: 800; loops: Animation.Infinite
-                                    onStopped: parent.rotation = 0
+                                    onStopped: demoArrow.rotation = 0
                                 }
                             }
                         }
@@ -126,11 +127,16 @@ Item {
 
     signal songClicked(var song)
 
-    function focusSearch() { input.forceActiveFocus() }
+    function focusSearch() { input.forceActiveFocus(); input.selectAll() }
+
+    property string searchedKeyword: ""   // 마지막으로 검색한 검색어 (검색 중 같은 검색어 중복 요청 방지)
 
     function doSearch() {
+        Qt.inputMethod.commit()    // 한글 조합 중인 글자를 확정한 뒤 읽는다
         const keyword = input.text.trim()
         if (!keyword) return
+        if (searching && keyword === searchedKeyword) return
+        searchedKeyword = keyword
         token++
         hasResults = true
         searching = true
@@ -145,7 +151,7 @@ Item {
             if (t !== page.token) return
             page.searching = false
             page.results = JSON.parse(json)
-            page.emptyText = page.results.length ? "" : "검색 결과가 없습니다"
+            page.emptyText = page.results.length ? "" : "검색 결과가 없어요"
         }
     }
 
@@ -288,12 +294,12 @@ Item {
                         leftPadding: 12
                         topPadding: 10
                         bottomPadding: 10
-                        Rectangle { width: 52; height: 52; radius: 8; color: Theme.surface2 }
+                        Rectangle { width: 52; height: 52; radius: 8; color: Theme.skeleton }
                         Column {
                             spacing: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            Rectangle { width: 180 + (index * 37) % 90; height: 12; radius: 6; color: Theme.surface2 }
-                            Rectangle { width: 100 + (index * 23) % 60; height: 12; radius: 6; color: Theme.surface2 }
+                            Rectangle { width: 180 + (index * 37) % 90; height: 12; radius: 6; color: Theme.skeleton }
+                            Rectangle { width: 100 + (index * 23) % 60; height: 12; radius: 6; color: Theme.skeleton }
                         }
                         SequentialAnimation on opacity {
                             running: page.searching
@@ -335,7 +341,7 @@ Item {
                     width: ListView.view.width
                     height: 72
                     radius: Theme.radius
-                    color: hover.containsMouse ? Theme.surface : "transparent"
+                    color: hover.containsMouse ? Theme.surface : Theme.surfaceClear
                     Behavior on color { ColorAnimation { duration: Theme.fast } }
 
                     // 나타날 때 아래에서 살짝 올라온다
@@ -373,7 +379,7 @@ Item {
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 52
                             radius: 8
-                            placeholder: Theme.surface2
+                            placeholder: Theme.skeleton
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -399,6 +405,7 @@ Item {
                             }
                         }
                         Icon {
+                            id: arrow
                             glyph: row.loading ? "loader" : "chevron-right"
                             color: Theme.text3
                             opacity: row.loading || hover.containsMouse ? 1 : 0
@@ -406,7 +413,7 @@ Item {
                             RotationAnimation on rotation {
                                 running: row.loading
                                 from: 0; to: 360; duration: 800; loops: Animation.Infinite
-                                onStopped: parent.rotation = 0
+                                onStopped: arrow.rotation = 0
                             }
                         }
                     }
