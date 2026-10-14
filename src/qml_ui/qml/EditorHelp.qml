@@ -40,9 +40,9 @@ QtObject {
     function slides() { tour.start(slidesSteps()) }
     function keepTwoHelp() { tour.start(keepTwoSteps()) }
     function generate() { tour.start(generateSteps()) }
-    function firstRun(onFinished) {
+    function firstRun(onFinished, onSkipped) {
         tour.start(lyricsSteps().concat(slidesSteps(), keepTwoSteps(), generateSteps()),
-                   { required: true, onFinished: onFinished })
+                   { required: true, onFinished: onFinished, onSkipped: onSkipped })
     }
 
     function lyricsSteps() {

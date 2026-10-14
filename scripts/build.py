@@ -20,6 +20,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+from scripts.third_party_notices import generate as generate_notices  # noqa: E402
 from src.utils.version import parse_version  # noqa: E402
 
 # 화면에 보이는 이름. 파일 이름·번들 ID 등 업데이트와 연결된 내부 이름(APP_FILE_NAME, BUNDLE_ID)은 바꾸지 않는다
@@ -30,6 +31,7 @@ BUNDLE_ID = 'io.github.seungheony.lyricsslidecreator'
 BUILD_INFO = os.path.join(ROOT, 'src', 'utils', '_build_info.py')
 DIST = os.path.join(ROOT, 'dist')
 BUILD = os.path.join(ROOT, 'build')
+NOTICES = os.path.join(BUILD, 'THIRD_PARTY_NOTICES.txt')
 # 앱 아이콘 (scripts/make_icons.py로 생성)
 ICON_DIR = os.path.join(ROOT, 'assets', 'app-icon')
 
@@ -59,6 +61,9 @@ def numeric_version(version):
 
 
 def nuitka(version, extra):
+    # 서드파티 라이선스 고지: 설치된 패키지에서 만들어 앱에 넣는다 (src/·assets/가 아닌 build/에 만든다)
+    os.makedirs(BUILD, exist_ok=True)
+    print(f'서드파티 라이선스 고지: {generate_notices(NOTICES)}개 패키지', flush=True)
     excludes = []
     for name in EXCLUDED_QT:
         excludes += [f'--noinclude-dlls=*{name}*', f'--noinclude-data-files=*{name}*']
@@ -71,6 +76,8 @@ def nuitka(version, extra):
         '--include-data-dir=assets=assets',
         '--include-data-dir=src/qml_ui/qml=src/qml_ui/qml',
         '--include-data-files=template.pptx=template.pptx',
+        '--include-data-files=LICENSE=LICENSE',
+        f'--include-data-files={NOTICES}=THIRD_PARTY_NOTICES.txt',
         f'--output-dir={BUILD}',
         f'--product-name={APP_NAME}', f'--product-version={numeric_version(version)}',
         f'--file-version={numeric_version(version)}', '--company-name=seungheony',
