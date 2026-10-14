@@ -1,6 +1,8 @@
 import errno
 import json
 import os
+import subprocess
+import sys
 import threading
 import traceback
 from concurrent.futures import ThreadPoolExecutor
@@ -170,11 +172,11 @@ class Backend(QObject):
             try:
                 det = self._scraper.get_song_detail(song_id)
                 if not det or not det.get('lyrics'):
-                    det = {'error': '가사 정보를 가져오지 못했습니다.\n네트워크 상태를 확인하거나 다른 곡으로 시도해보세요.'}
+                    det = {'error': '가사 정보를 가져오지 못했어요.\n네트워크 상태를 확인하거나 다른 곡을 시도해 보세요.'}
                 elif det.get('image_url'):
                     self._download_art(song_id, det['image_url'])
             except Exception:
-                det = {'error': '가사를 불러오는 중 오류가 발생했습니다.', 'detail': traceback.format_exc()}
+                det = {'error': '가사를 불러오다 문제가 생겼어요.', 'detail': traceback.format_exc()}
             self.detailFinished.emit(token, json.dumps(det, ensure_ascii=False))
         self._pool.submit(work)
 
@@ -213,12 +215,12 @@ class Backend(QObject):
 
         def work():
             if not os.path.exists(template):
-                result = {'error': '템플릿 파일을 찾을 수 없습니다.', 'detail': f'경로: {template}'}
+                result = {'error': '템플릿 파일을 찾지 못했어요.', 'detail': f'경로: {template}'}
             else:
                 try:
                     buffer = PPTBuilder(template).generate_slides_to_memory(chunks, song_title)
                     if not buffer:
-                        result = {'error': 'PPT 생성 실패.', 'detail': '메모리에서 PPT 객체를 생성하지 못했습니다.'}
+                        result = {'error': 'PPT를 만들지 못했어요', 'detail': '메모리에서 PPT 객체를 만들지 못했어요.'}
                     else:
                         try:
                             PPTBuilder.save_to_file(buffer, save_path)
@@ -226,9 +228,25 @@ class Backend(QObject):
                         except OSError as e:
                             result = _save_error(e, save_path)
                 except Exception:
-                    result = {'error': 'PPT 생성 중 예외가 발생했습니다.', 'detail': traceback.format_exc()}
+                    result = {'error': 'PPT를 만들다 문제가 생겼어요', 'detail': traceback.format_exc()}
             self.generateFinished.emit(json.dumps(result, ensure_ascii=False))
         self._pool.submit(work)
+
+    @Slot(str)
+    def revealInFolder(self, path):
+        """저장한 PPT를 파일 관리자에서 선택해 보여준다 (사용자가 누를 때만 호출)."""
+        path = os.path.normpath(path)
+        if not os.path.exists(path):
+            return
+        try:
+            if sys.platform == 'darwin':
+                subprocess.Popen(['open', '-R', path])
+            elif sys.platform == 'win32':
+                subprocess.Popen(['explorer', f'/select,{path}'])
+            else:
+                subprocess.Popen(['xdg-open', os.path.dirname(path)])
+        except OSError:
+            pass
 
     # ── 업데이트 ──
     @Slot()
@@ -258,7 +276,7 @@ class Backend(QObject):
                 self.updateFailed.emit(str(e))
                 return
             except Exception as e:
-                self.updateFailed.emit(f'업데이트 중 오류가 발생했습니다.\n{e}')
+                self.updateFailed.emit(f'업데이트하다 문제가 생겼어요.\n{e}')
                 return
             self.updateReady.emit()
         self._pool.submit(work)

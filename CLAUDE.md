@@ -60,4 +60,5 @@ python scripts/build.py 1.2.0   # 버전 기록(scripts/set_version.py) + Nuitka
 - 앱 폴더 밖에 파일을 남기지 않는다: QML 디스크 캐시·GPU 파이프라인 캐시를 끈다(`app.py`). 설정 저장 등 새 기능을 넣을 때도 이 원칙을 지킨다
   - 앱 상태 기록(첫 실행 튜토리얼을 봤는지)은 앱 폴더 안 `app_state.json`(`src/utils/app_state.py`). 업데이트하면 앱 폴더가 새로 깔려 기록도 초기화되고(튜토리얼 다시 표시), 쓸 수 없으면 무시한다
   - 허용된 예외(OS가 남기는 기록): OS 기본 파일 대화상자의 마지막 폴더 기록(macOS `~/Library/Preferences/<앱>.plist`, Windows 레지스트리), macOS Metal 셰이더 캐시(`/var/folders/.../C/<앱>/com.apple.metal`)
+- 사용자에게 보이는 문구(QML·backend.py·updater.py)는 해요체로 쓰고 제목에는 마침표를 붙이지 않는다. 용어는 '내 템플릿'·'PPT'로 통일
 - 자동화된 테스트 스위트 없음

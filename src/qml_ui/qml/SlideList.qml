@@ -65,6 +65,7 @@ Item {
     }
 
     function moveDrag(scenePos) {
+        if (!drag.active) return    // Esc로 취소한 뒤에도 마우스 이동 이벤트가 이어진다
         drag.pointer = scenePos
         updateTarget()
     }
@@ -86,6 +87,8 @@ Item {
         }
         indicator.visible = false
     }
+
+    onBlocksChanged: if (drag.active) cancelDrag()    // 끄는 중 목록이 다시 만들어지면 고스트·삽입선을 치운다
 
     function cardTop(i) { col.forceLayout(); const it = rep.itemAt(i); return it.y + it.cardY }
     function cardBottom(i) { col.forceLayout(); const it = rep.itemAt(i); return it.y + it.cardY + it.cardHeight }
@@ -265,6 +268,8 @@ Item {
                         height: Math.max(92, lines.implicitHeight + 40)
                         radius: Theme.radiusSm
                         color: Theme.slideBg
+                        border.width: 1
+                        border.color: Theme.slideBorder
 
                         readonly property bool isActive: slot.index === list.active
                         readonly property bool hovered: cardHover.hovered && !drag.active

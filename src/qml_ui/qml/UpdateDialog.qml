@@ -49,7 +49,7 @@ Popup {
             Layout.fillWidth: true
             text: dialog.stage === "notes" ? "v" + dialog.version + " 변경 내용"
                 : dialog.stage === "downloading" ? "업데이트 받는 중…"
-                : dialog.stage === "installing" ? "업데이트를 설치합니다"
+                : dialog.stage === "installing" ? "업데이트를 설치하고 있어요"
                 : dialog.stage === "error" ? "업데이트하지 못했어요"
                 : "v" + dialog.version + "으로 업데이트할까요?"
             color: Theme.text
@@ -71,6 +71,7 @@ Popup {
                 x: 12; y: 12
                 text: dialog.notes
                 textFormat: Text.MarkdownText
+                linkColor: Theme.primaryText
                 wrapMode: Text.Wrap
                 color: Theme.text2
                 font.family: Theme.font
@@ -109,7 +110,7 @@ Popup {
                 }
             }
             Text {
-                text: dialog.stage === "installing" ? "잠시 후 앱이 다시 시작됩니다"
+                text: dialog.stage === "installing" ? "잠시 후 앱이 다시 시작돼요"
                                                     : Math.round(dialog.progress * 100) + "%"
                 color: Theme.text3
                 font.family: Theme.font
