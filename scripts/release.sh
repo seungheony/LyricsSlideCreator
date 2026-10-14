@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# 릴리스 태그를 달고 올린다. 태그가 올라가면 GitHub Actions가 빌드·검증·릴리스를 한다.
+# 릴리스 도우미. 인자 없이 실행하면 하나씩 물어보며 진행한다:  ./scripts/release.sh
 #
-#   ./scripts/release.sh beta 1.2.0         → v1.2.0-beta.N (N은 자동) → 프리릴리스. 베타 사용자에게만 업데이트 알림
-#   ./scripts/release.sh stable             → 마지막 베타와 같은 커밋에 v1.2.0 → 정식 릴리스. 모든 사용자에게 알림
-#                                             릴리스가 만들어질 때까지 기다린 뒤 그 버전의 베타 릴리스를 지울지 묻는다
-#   ./scripts/release.sh clean-betas 1.2.0  → 정식 v1.2.0 릴리스가 있으면 v1.2.0-beta.* 릴리스를 지운다 (stable에서 못 지웠을 때)
+#   1) 베타 배포         버전을 물어 v1.2.0-beta.N 태그(N은 자동) → 프리릴리스. 베타 사용자에게만 업데이트 알림
+#   2) 정식 배포         마지막 베타와 같은 커밋에 v1.2.0 태그 → 정식 릴리스. 모든 사용자에게 알림
+#                        릴리스가 만들어질 때까지 기다린 뒤 그 버전의 베타 릴리스를 지울지 묻는다
+#   3) 베타 릴리스 정리  정식 릴리스가 있으면 그 버전의 베타 릴리스를 지운다 (정식 배포 때 못 지웠을 때)
 #
-# master가 아니거나 원격보다 뒤처져 있으면 master로 바꾸고 최신으로 받을지(git pull) 묻고, 받은 뒤 처음부터 다시 실행한다.
+# 태그가 올라가면 GitHub Actions가 빌드·검증·릴리스를 한다.
+# 배포는 최신 master에서 한다: master가 아니거나 원격보다 뒤처져 있으면 master로 바꾸고 최신으로 받을지(git pull) 묻고,
+# 받은 뒤 master에 있는 최신 release.sh로 처음부터 다시 실행한다.
 # 베타 릴리스는 Releases 페이지에서만 지우고 git 태그는 남긴다 (scripts/notes_start_tag.py가 태그로 릴리스 노트 범위를 정한다).
 # 베타를 쓰던 사람은 정식 버전이 더 새 버전이라 그대로 업데이트된다.
 # 절차와 테스트 항목: docs/RELEASE_CHECKLIST.md
@@ -19,10 +21,35 @@ REPO=seungheony/lyricsSlide_Creator
 die() { echo "오류: $*" >&2; exit 1; }
 tag_exists() { git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
 
-usage() {
-    sed -n '4,7p' "$SCRIPT" | sed 's/^#   /  /'
-    exit 1
+# y/N 질문. y면 0
+confirm() {
+    local answer
+    read -r -p "$1 [y/N] " answer || return 1
+    [ "$answer" = "y" ] || [ "$answer" = "Y" ]
 }
+
+# 버전을 물어본다 (1.2.0 형식, 앞의 v는 붙여도 됨). 기본값이 있으면 Enter로 고른다
+ask_version() {
+    local default="$1" input
+    while true; do
+        read -r -p "버전 (예: 1.2.0)${default:+ [Enter: $default]}: " input || die "취소했습니다"
+        input="${input:-$default}"
+        input="${input#v}"
+        if [[ "$input" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$input"
+            return
+        fi
+        echo "1.2.0 형식으로 입력하세요." >&2
+    done
+}
+
+# $1이 $2보다 높은 버전인지 (v1.10.0 > v1.9.0)
+version_gt() {
+    [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
+}
+
+latest_stable_tag() { git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true; }
+latest_beta_tag() { git tag --list 'v*-beta.*' | sort -V | tail -n 1 || true; }
 
 # 정식 릴리스가 파일 3개(Windows 설치 파일, macOS zip, 체크섬)와 함께 올라가 있는지
 stable_release_ready() {
@@ -36,7 +63,7 @@ stable_release_ready() {
 
 # 정식 릴리스를 확인한 뒤 그 버전의 베타 릴리스를 지운다 (목록을 보여주고 확인을 받는다)
 clean_betas() {
-    local stable="$1" betas answer tag
+    local stable="$1" betas tag
     stable_release_ready "$stable" \
         || die "정식 $stable 릴리스가 아직 없거나 파일이 다 올라가지 않았습니다. 베타 릴리스는 지우지 않았습니다"
     betas=$(gh release list --repo "$REPO" --limit 100 --json tagName \
@@ -48,9 +75,8 @@ clean_betas() {
     echo
     echo "정식 $stable 릴리스를 확인했습니다. 이 버전의 베타 릴리스를 Releases 페이지에서 지웁니다 (git 태그는 남김):"
     echo "$betas" | sed 's/^/  /'
-    read -r -p "지울까요? [y/N] " answer
-    if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
-        echo "지우지 않았습니다. 나중에 지우려면: ./scripts/release.sh clean-betas ${stable#v}"
+    if ! confirm "지울까요?"; then
+        echo "지우지 않았습니다. 나중에 지우려면 ./scripts/release.sh 를 실행해 '3) 베타 릴리스 정리'를 고르세요."
         return
     fi
     for tag in $betas; do
@@ -80,7 +106,7 @@ wait_for_release_run() {
 # master이고 원격과 같으면 그대로 진행. 아니면 master로 바꾸고 최신으로 받을지 묻고,
 # 받은 뒤에는 master에 있는 최신 release.sh로 처음부터 다시 실행한다 (작업 브랜치의 오래된 스크립트로 배포하지 않도록)
 ensure_master() {
-    local branch answer
+    local branch
     branch=$(git rev-parse --abbrev-ref HEAD)
     if [ "$branch" = master ]; then
         [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ] && return
@@ -89,63 +115,105 @@ ensure_master() {
     fi
     [ -z "$(git status --porcelain)" ] || die "커밋하지 않은 변경이 있습니다. 커밋하거나 정리한 뒤 다시 실행하세요"
     if [ "$branch" = master ]; then
-        read -r -p "로컬 master가 원격보다 뒤처져 있습니다. 최신으로 받은(git pull) 뒤 진행할까요? [y/N] " answer
+        confirm "로컬 master가 원격보다 뒤처져 있습니다. 최신으로 받은(git pull) 뒤 진행할까요?" \
+            || die "취소했습니다. master를 최신으로 받은 뒤 실행하세요"
     else
-        read -r -p "지금 브랜치는 $branch 입니다. master로 바꾸고 최신으로 받은(git pull) 뒤 진행할까요? [y/N] " answer
+        confirm "지금 브랜치는 $branch 입니다. master로 바꾸고 최신으로 받은(git pull) 뒤 진행할까요?" \
+            || die "취소했습니다. master 브랜치에서 최신으로 받은 뒤 실행하세요"
     fi
-    [ "$answer" = "y" ] || [ "$answer" = "Y" ] || die "취소했습니다. master 브랜치에서 최신으로 받은 뒤 실행하세요"
     git checkout --quiet master || die "master로 바꾸지 못했습니다"
     git pull --ff-only --quiet origin master \
         || die "원격 master를 받지 못했습니다 (로컬 master에 원격에 없는 커밋이 있는지 확인하세요)"
     echo "master를 최신으로 받았습니다: $(git log -1 --format='%h %s')"
     [ "$branch" = master ] || echo "(원래 브랜치로 돌아가려면: git checkout $branch)"
     echo
-    exec "$SCRIPT" "$@"
+    exec "$SCRIPT"
 }
 
 # ── 실행 ──
 # 실행 중에 master로 바꾸면 이 파일이 바뀌므로, 본문을 함수로 감싸 미리 다 읽어 둔다 (맨 끝 한 줄에서 실행)
 main() {
-    [ $# -ge 1 ] || usage
+    [ $# -eq 0 ] || echo "참고: 인자 없이 실행하면 하나씩 묻습니다. 넘긴 인자($*)는 쓰지 않습니다."
+    git fetch --quiet --tags origin
+    ensure_master
+    [ -z "$(git status --porcelain)" ] || die "커밋하지 않은 변경이 있습니다"
 
-    # 입력은 브랜치를 바꾸기 전에 확인한다
-    case "$1" in
-        clean-betas)
-            version="${2:-}"
-            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "버전을 1.2.0 형식으로 주세요 (예: ./scripts/release.sh clean-betas 1.2.0)"
+    local stable_tag beta_tag pending="" choice action version default n later
+    stable_tag=$(latest_stable_tag)
+    beta_tag=$(latest_beta_tag)
+    # 아직 정식으로 나가지 않은 마지막 베타 = 정식 배포 대상
+    if [ -n "$beta_tag" ] && ! tag_exists "${beta_tag%-beta.*}"; then
+        pending="$beta_tag"
+    fi
+
+    echo "master:       $(git log -1 --format='%h %s')"
+    echo "마지막 정식:  ${stable_tag:-없음}"
+    echo "마지막 베타:  ${beta_tag:-없음}"
+    echo
+    echo "무엇을 할까요?"
+    echo "  1) 베타 배포         프리릴리스. 베타 사용자에게만 업데이트 알림"
+    if [ -n "$pending" ]; then
+        echo "  2) 정식 배포         $pending 과 같은 커밋에 ${pending%-beta.*}. 모든 사용자에게 알림"
+    else
+        echo "  2) 정식 배포         (정식으로 낼 베타가 없음)"
+    fi
+    echo "  3) 베타 릴리스 정리  정식 배포 뒤 남은 그 버전의 베타 릴리스 지우기"
+    echo "  q) 그만두기"
+    while true; do
+        read -r -p "선택: " choice || die "취소했습니다"
+        case "$choice" in
+            1) action=beta; break ;;
+            2)
+                if [ -n "$pending" ]; then
+                    action=stable
+                    break
+                fi
+                echo "정식으로 낼 베타가 없습니다. 먼저 베타를 배포하세요."
+                ;;
+            3) action=clean; break ;;
+            q|Q) echo "그만뒀습니다."; exit 0 ;;
+            *) echo "1, 2, 3, q 중에서 고르세요." ;;
+        esac
+    done
+    echo
+
+    case "$action" in
+        clean)
+            echo "정리할 버전 (정식 릴리스가 올라가 있어야 합니다)"
+            version=$(ask_version "${stable_tag#v}")
             clean_betas "v$version"
             return
             ;;
         beta)
-            version="${2:-}"
-            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "버전을 1.2.0 형식으로 주세요 (예: ./scripts/release.sh beta 1.2.0)"
-            ;;
-        stable) ;;
-        *) usage ;;
-    esac
-
-    git fetch --quiet --tags origin
-    ensure_master "$@"
-    [ -z "$(git status --porcelain)" ] || die "커밋하지 않은 변경이 있습니다"
-
-    case "$1" in
-        beta)
-            tag_exists "v$version" && die "정식 v$version 이 이미 있습니다. 더 높은 버전을 쓰세요"
+            # 아직 정식으로 나가지 않은 베타가 있으면 그 버전이 기본값 (다음 베타 번호로)
+            default=""
+            if [ -n "$pending" ]; then
+                default="${pending%-beta.*}"
+                default="${default#v}"
+            fi
+            while true; do
+                version=$(ask_version "$default")
+                if tag_exists "v$version"; then
+                    echo "v$version 은 이미 정식 배포됐습니다. 더 높은 버전을 입력하세요."
+                elif [ -n "$stable_tag" ] && ! version_gt "v$version" "$stable_tag"; then
+                    echo "마지막 정식 $stable_tag 보다 높은 버전을 입력하세요."
+                else
+                    break
+                fi
+                default=""
+            done
             n=1
             while tag_exists "v$version-beta.$n"; do n=$((n + 1)); done
             tag="v$version-beta.$n"
             commit=$(git rev-parse HEAD)
             ;;
         stable)
-            beta=$(git tag --list 'v*-beta.*' | sort -V | tail -n 1)
-            [ -n "$beta" ] || die "베타 태그가 없습니다. 먼저 ./scripts/release.sh beta <버전> 으로 베타를 내세요"
-            tag="${beta%-beta.*}"
-            tag_exists "$tag" && die "$tag 는 이미 정식 배포되었습니다 (마지막 베타: $beta)"
-            commit=$(git rev-list -n 1 "$beta")
-            echo "마지막 베타 $beta 를 정식 $tag 로 배포합니다."
+            tag="${pending%-beta.*}"
+            commit=$(git rev-list -n 1 "$pending")
+            echo "마지막 베타 $pending 를 정식 $tag 로 배포합니다."
             later=$(git rev-list --count "$commit..HEAD")
             if [ "$later" -gt 0 ]; then
-                echo "참고: master에 $beta 이후 커밋 ${later}개가 더 있습니다. 이 커밋들은 이번 정식 버전에 포함되지 않습니다."
+                echo "참고: master에 $pending 이후 커밋 ${later}개가 더 있습니다. 이 커밋들은 이번 정식 버전에 포함되지 않습니다."
             fi
             ;;
     esac
@@ -154,8 +222,7 @@ main() {
     echo "  태그:   $tag"
     echo "  커밋:   $(git log -1 --format='%h %s' "$commit")"
     echo
-    read -r -p "이 태그를 올릴까요? 올리면 릴리스가 만들어지고 사용자에게 업데이트 알림이 갑니다. [y/N] " answer
-    [ "$answer" = "y" ] || [ "$answer" = "Y" ] || die "취소했습니다"
+    confirm "이 태그를 올릴까요? 올리면 릴리스가 만들어지고 사용자에게 업데이트 알림이 갑니다." || die "취소했습니다"
 
     git tag "$tag" "$commit"
     git push origin "$tag"
@@ -163,13 +230,13 @@ main() {
     echo "올렸습니다. 진행 상황: https://github.com/$REPO/actions"
 
     # 정식 배포: 릴리스가 실제로 만들어진 뒤에만 그 버전의 베타 릴리스를 정리한다
-    if [ "$1" = stable ]; then
+    if [ "$action" = stable ]; then
         echo
         if wait_for_release_run "$tag"; then
             clean_betas "$tag"
         else
             echo "릴리스가 정상적으로 끝나지 않아 베타 릴리스는 지우지 않았습니다. 확인: https://github.com/$REPO/actions"
-            echo "정식 릴리스가 올라간 뒤 지우려면: ./scripts/release.sh clean-betas ${tag#v}"
+            echo "정식 릴리스가 올라간 뒤 ./scripts/release.sh 를 실행해 '3) 베타 릴리스 정리'를 고르세요."
             exit 1
         fi
     fi
