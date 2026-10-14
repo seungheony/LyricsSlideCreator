@@ -6,11 +6,13 @@
 #                                             릴리스가 만들어질 때까지 기다린 뒤 그 버전의 베타 릴리스를 지울지 묻는다
 #   ./scripts/release.sh clean-betas 1.2.0  → 정식 v1.2.0 릴리스가 있으면 v1.2.0-beta.* 릴리스를 지운다 (stable에서 못 지웠을 때)
 #
+# master가 아니거나 원격보다 뒤처져 있으면 master로 바꾸고 최신으로 받을지(git pull) 묻고, 받은 뒤 처음부터 다시 실행한다.
 # 베타 릴리스는 Releases 페이지에서만 지우고 git 태그는 남긴다 (scripts/notes_start_tag.py가 태그로 릴리스 노트 범위를 정한다).
 # 베타를 쓰던 사람은 정식 버전이 더 새 버전이라 그대로 업데이트된다.
 # 절차와 테스트 항목: docs/RELEASE_CHECKLIST.md
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+cd "$(dirname "$SCRIPT")/.."
 
 REPO=seungheony/lyricsSlide_Creator
 
@@ -18,7 +20,7 @@ die() { echo "오류: $*" >&2; exit 1; }
 tag_exists() { git rev-parse -q --verify "refs/tags/$1" >/dev/null; }
 
 usage() {
-    sed -n '4,7p' "$0" | sed 's/^#   /  /'
+    sed -n '4,7p' "$SCRIPT" | sed 's/^#   /  /'
     exit 1
 }
 
@@ -75,69 +77,102 @@ wait_for_release_run() {
     gh run watch "$run" --repo "$REPO" --exit-status --interval 30
 }
 
-# ── 실행 ──
-[ $# -ge 1 ] || usage
-
-case "$1" in
-    clean-betas)
-        version="${2:-}"
-        [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "버전을 1.2.0 형식으로 주세요 (예: ./scripts/release.sh clean-betas 1.2.0)"
-        clean_betas "v$version"
-        exit 0
-        ;;
-    beta|stable) ;;
-    *) usage ;;
-esac
-
-git fetch --quiet --tags origin
-[ "$(git rev-parse --abbrev-ref HEAD)" = master ] || die "master 브랜치에서 실행하세요 (git checkout master)"
-[ -z "$(git status --porcelain)" ] || die "커밋하지 않은 변경이 있습니다"
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ] || die "로컬 master가 원격과 다릅니다 (git pull 후 다시 실행)"
-
-case "$1" in
-    beta)
-        version="${2:-}"
-        [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "버전을 1.2.0 형식으로 주세요 (예: ./scripts/release.sh beta 1.2.0)"
-        tag_exists "v$version" && die "정식 v$version 이 이미 있습니다. 더 높은 버전을 쓰세요"
-        n=1
-        while tag_exists "v$version-beta.$n"; do n=$((n + 1)); done
-        tag="v$version-beta.$n"
-        commit=$(git rev-parse HEAD)
-        ;;
-    stable)
-        beta=$(git tag --list 'v*-beta.*' | sort -V | tail -n 1)
-        [ -n "$beta" ] || die "베타 태그가 없습니다. 먼저 ./scripts/release.sh beta <버전> 으로 베타를 내세요"
-        tag="${beta%-beta.*}"
-        tag_exists "$tag" && die "$tag 는 이미 정식 배포되었습니다 (마지막 베타: $beta)"
-        commit=$(git rev-list -n 1 "$beta")
-        echo "마지막 베타 $beta 를 정식 $tag 로 배포합니다."
-        later=$(git rev-list --count "$commit..HEAD")
-        if [ "$later" -gt 0 ]; then
-            echo "참고: master에 $beta 이후 커밋 ${later}개가 더 있습니다. 이 커밋들은 이번 정식 버전에 포함되지 않습니다."
-        fi
-        ;;
-esac
-
-echo
-echo "  태그:   $tag"
-echo "  커밋:   $(git log -1 --format='%h %s' "$commit")"
-echo
-read -r -p "이 태그를 올릴까요? 올리면 릴리스가 만들어지고 사용자에게 업데이트 알림이 갑니다. [y/N] " answer
-[ "$answer" = "y" ] || [ "$answer" = "Y" ] || die "취소했습니다"
-
-git tag "$tag" "$commit"
-git push origin "$tag"
-echo
-echo "올렸습니다. 진행 상황: https://github.com/$REPO/actions"
-
-# 정식 배포: 릴리스가 실제로 만들어진 뒤에만 그 버전의 베타 릴리스를 정리한다
-if [ "$1" = stable ]; then
-    echo
-    if wait_for_release_run "$tag"; then
-        clean_betas "$tag"
-    else
-        echo "릴리스가 정상적으로 끝나지 않아 베타 릴리스는 지우지 않았습니다. 확인: https://github.com/$REPO/actions"
-        echo "정식 릴리스가 올라간 뒤 지우려면: ./scripts/release.sh clean-betas ${tag#v}"
-        exit 1
+# master이고 원격과 같으면 그대로 진행. 아니면 master로 바꾸고 최신으로 받을지 묻고,
+# 받은 뒤에는 master에 있는 최신 release.sh로 처음부터 다시 실행한다 (작업 브랜치의 오래된 스크립트로 배포하지 않도록)
+ensure_master() {
+    local branch answer
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    if [ "$branch" = master ]; then
+        [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ] && return
+        git merge-base --is-ancestor HEAD origin/master \
+            || die "로컬 master에 원격에 없는 커밋이 있습니다. 확인한 뒤 다시 실행하세요"
     fi
-fi
+    [ -z "$(git status --porcelain)" ] || die "커밋하지 않은 변경이 있습니다. 커밋하거나 정리한 뒤 다시 실행하세요"
+    if [ "$branch" = master ]; then
+        read -r -p "로컬 master가 원격보다 뒤처져 있습니다. 최신으로 받은(git pull) 뒤 진행할까요? [y/N] " answer
+    else
+        read -r -p "지금 브랜치는 $branch 입니다. master로 바꾸고 최신으로 받은(git pull) 뒤 진행할까요? [y/N] " answer
+    fi
+    [ "$answer" = "y" ] || [ "$answer" = "Y" ] || die "취소했습니다. master 브랜치에서 최신으로 받은 뒤 실행하세요"
+    git checkout --quiet master || die "master로 바꾸지 못했습니다"
+    git pull --ff-only --quiet origin master \
+        || die "원격 master를 받지 못했습니다 (로컬 master에 원격에 없는 커밋이 있는지 확인하세요)"
+    echo "master를 최신으로 받았습니다: $(git log -1 --format='%h %s')"
+    [ "$branch" = master ] || echo "(원래 브랜치로 돌아가려면: git checkout $branch)"
+    echo
+    exec "$SCRIPT" "$@"
+}
+
+# ── 실행 ──
+# 실행 중에 master로 바꾸면 이 파일이 바뀌므로, 본문을 함수로 감싸 미리 다 읽어 둔다 (맨 끝 한 줄에서 실행)
+main() {
+    [ $# -ge 1 ] || usage
+
+    # 입력은 브랜치를 바꾸기 전에 확인한다
+    case "$1" in
+        clean-betas)
+            version="${2:-}"
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "버전을 1.2.0 형식으로 주세요 (예: ./scripts/release.sh clean-betas 1.2.0)"
+            clean_betas "v$version"
+            return
+            ;;
+        beta)
+            version="${2:-}"
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "버전을 1.2.0 형식으로 주세요 (예: ./scripts/release.sh beta 1.2.0)"
+            ;;
+        stable) ;;
+        *) usage ;;
+    esac
+
+    git fetch --quiet --tags origin
+    ensure_master "$@"
+    [ -z "$(git status --porcelain)" ] || die "커밋하지 않은 변경이 있습니다"
+
+    case "$1" in
+        beta)
+            tag_exists "v$version" && die "정식 v$version 이 이미 있습니다. 더 높은 버전을 쓰세요"
+            n=1
+            while tag_exists "v$version-beta.$n"; do n=$((n + 1)); done
+            tag="v$version-beta.$n"
+            commit=$(git rev-parse HEAD)
+            ;;
+        stable)
+            beta=$(git tag --list 'v*-beta.*' | sort -V | tail -n 1)
+            [ -n "$beta" ] || die "베타 태그가 없습니다. 먼저 ./scripts/release.sh beta <버전> 으로 베타를 내세요"
+            tag="${beta%-beta.*}"
+            tag_exists "$tag" && die "$tag 는 이미 정식 배포되었습니다 (마지막 베타: $beta)"
+            commit=$(git rev-list -n 1 "$beta")
+            echo "마지막 베타 $beta 를 정식 $tag 로 배포합니다."
+            later=$(git rev-list --count "$commit..HEAD")
+            if [ "$later" -gt 0 ]; then
+                echo "참고: master에 $beta 이후 커밋 ${later}개가 더 있습니다. 이 커밋들은 이번 정식 버전에 포함되지 않습니다."
+            fi
+            ;;
+    esac
+
+    echo
+    echo "  태그:   $tag"
+    echo "  커밋:   $(git log -1 --format='%h %s' "$commit")"
+    echo
+    read -r -p "이 태그를 올릴까요? 올리면 릴리스가 만들어지고 사용자에게 업데이트 알림이 갑니다. [y/N] " answer
+    [ "$answer" = "y" ] || [ "$answer" = "Y" ] || die "취소했습니다"
+
+    git tag "$tag" "$commit"
+    git push origin "$tag"
+    echo
+    echo "올렸습니다. 진행 상황: https://github.com/$REPO/actions"
+
+    # 정식 배포: 릴리스가 실제로 만들어진 뒤에만 그 버전의 베타 릴리스를 정리한다
+    if [ "$1" = stable ]; then
+        echo
+        if wait_for_release_run "$tag"; then
+            clean_betas "$tag"
+        else
+            echo "릴리스가 정상적으로 끝나지 않아 베타 릴리스는 지우지 않았습니다. 확인: https://github.com/$REPO/actions"
+            echo "정식 릴리스가 올라간 뒤 지우려면: ./scripts/release.sh clean-betas ${tag#v}"
+            exit 1
+        fi
+    fi
+}
+
+main "$@"; exit
