@@ -5,15 +5,15 @@ import subprocess
 import sys
 import threading
 import traceback
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
-import requests
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QImage
 from PySide6.QtQml import QQmlImageProviderBase
 from PySide6.QtQuick import QQuickImageProvider
 
-from src.utils.melon_api import MelonScraper
+from src.utils.melon_api import MelonError, MelonScraper
 from src.utils.ppt_engine import PPTBuilder
 from src.utils.line_fit import LineFit
 from src.utils.helpers import resource_path
@@ -27,9 +27,11 @@ class AlbumArtProvider(QQuickImageProvider):
     이미지는 Python(requests)이 내려받으므로 Qt의 HTTPS/TLS 플러그인에 의존하지 않는다.
     """
 
+    MAX_IMAGES = 200    # 넘으면 가장 오래 안 쓴 것부터 버린다
+
     def __init__(self):
         super().__init__(QQmlImageProviderBase.ImageType.Image)
-        self._images = {}
+        self._images = OrderedDict()
         self._lock = threading.Lock()
 
     def put(self, key, data):
@@ -38,15 +40,24 @@ class AlbumArtProvider(QQuickImageProvider):
             return False
         with self._lock:
             self._images[key] = img
+            self._images.move_to_end(key)
+            while len(self._images) > self.MAX_IMAGES:
+                self._images.popitem(last=False)
         return True
 
     def has(self, key):
         with self._lock:
-            return key in self._images
+            if key in self._images:
+                self._images.move_to_end(key)
+                return True
+            return False
 
     def requestImage(self, id, size, requested_size):
+        key = id.split('?')[0]
         with self._lock:
-            img = self._images.get(id.split('?')[0], QImage())
+            img = self._images.get(key, QImage())
+            if key in self._images:
+                self._images.move_to_end(key)
         if size is not None and not img.isNull():
             size.setWidth(img.width())
             size.setHeight(img.height())
@@ -68,6 +79,33 @@ def _save_error(e, path):
     return {'error': msg, 'detail': detail}
 
 
+def search_error(e):
+    """검색 실패 원인별 안내 (해요체)"""
+    if e.kind == 'network':
+        msg = '인터넷 연결을 확인해 주세요.\n멜론에 연결하지 못했어요.'
+    elif e.kind == 'http':
+        msg = f'멜론이 요청을 받아 주지 않아요 (오류 코드 {e.status}).\n잠시 뒤에 다시 시도해 주세요.'
+    else:
+        msg = '검색 결과를 읽지 못했어요.\n멜론 화면이 바뀐 것 같아요. 앱을 최신 버전으로 업데이트해 주세요.'
+    return {'kind': e.kind, 'status': e.status, 'message': msg}
+
+
+def detail_error(det):
+    """가사를 못 얻은 원인별 안내 (해요체). det['reason']: adult, no_lyrics, not_found, network, http, parse"""
+    reason = det.get('reason')
+    if reason == 'adult':
+        return '19금 곡이라 가사를 가져올 수 없어요.\n멜론이 성인 인증을 한 로그인 사용자에게만 가사를 보여 줘요.'
+    if reason == 'no_lyrics':
+        return '멜론에 가사가 등록되지 않은 곡이에요.\n다른 곡을 골라 보세요.'
+    if reason == 'not_found':
+        return '멜론에서 이 곡을 찾을 수 없어요.\n삭제되었거나 비공개된 곡일 수 있어요.'
+    if reason == 'network':
+        return '인터넷 연결을 확인해 주세요.\n멜론에 연결하지 못했어요.'
+    if reason == 'http':
+        return f'멜론이 요청을 받아 주지 않아요 (오류 코드 {det.get("status")}).\n잠시 뒤에 다시 시도해 주세요.'
+    return '가사를 읽지 못했어요.\n멜론 화면이 바뀐 것 같아요. 앱을 최신 버전으로 업데이트해 주세요.'
+
+
 class Backend(QObject):
     """QML에서 backend.* 로 호출하는 브리지.
 
@@ -75,8 +113,8 @@ class Backend(QObject):
     다른 스레드에서 emit한 시그널은 Qt가 메인 스레드로 넘겨주므로 QML에서 안전하게 받을 수 있다.
     """
 
-    searchFinished = Signal(int, str)    # token, JSON 배열
-    detailFinished = Signal(int, str)    # token, JSON 객체 (error 키가 있으면 실패)
+    searchFinished = Signal(int, str)    # token, JSON 객체 {results, error}  (error: null 또는 {kind, status, message})
+    detailFinished = Signal(int, str)    # token, JSON 객체 (error 키가 있으면 실패). 앨범아트는 뒤따라 artReady로 온다
     artReady = Signal(str)               # song_id
     generateFinished = Signal(str)       # JSON 객체 (path 또는 error)
     templateChanged = Signal()
@@ -89,8 +127,12 @@ class Backend(QObject):
         super().__init__()
         self._art = art_provider
         self._scraper = MelonScraper()
-        self._pool = ThreadPoolExecutor(max_workers=6)
-        self._art_requested = set()
+        self._pool = ThreadPoolExecutor(max_workers=4)
+        self._thumb_pool = ThreadPoolExecutor(max_workers=3)   # 검색 결과 썸네일 전용: 곡 열기·검색을 막지 않게 따로 둔다
+        self._thumb_gen = 0              # 검색할 때마다 올린다: 이전 검색의 대기 중 썸네일 작업은 버린다
+        self._art_inflight = set()
+        self._detail_cache = OrderedDict()   # song_id → 받은 상세(가사·이미지 URL·원인). 곡 열기에 재사용
+        self._detail_lock = threading.Lock()
         self._template_path = resource_path("template.pptx")
         self._line_fit = None            # 템플릿 글상자 기준 줄바꿈 계산기 (처음 쓸 때 만든다, 실패하면 False)
         self._update = None
@@ -156,28 +198,56 @@ class Backend(QObject):
             app_state.save(state)
 
     # ── 멜론 ──
+    DETAIL_CACHE_MAX = 40
+
+    def _detail(self, song_id):
+        """곡 상세. 같은 곡을 다시 받지 않도록 연결 문제가 아닌 결과는 메모리에 보관한다"""
+        with self._detail_lock:
+            det = self._detail_cache.get(song_id)
+            if det:
+                self._detail_cache.move_to_end(song_id)
+                return det
+        det = self._scraper.get_song_detail(song_id)
+        if det['reason'] not in ('network', 'http', 'parse'):
+            with self._detail_lock:
+                self._detail_cache[song_id] = det
+                while len(self._detail_cache) > self.DETAIL_CACHE_MAX:
+                    self._detail_cache.popitem(last=False)
+        return det
+
     @Slot(int, str)
     def search(self, token, keyword):
+        self._thumb_gen += 1             # 이전 검색 결과의 대기 중 썸네일은 더 받지 않는다
+
         def work():
+            error = None
             try:
                 results = self._scraper.search_song(keyword.strip())
+            except MelonError as e:
+                results, error = [], search_error(e)
             except Exception:
-                results = []
-            self.searchFinished.emit(token, json.dumps(results, ensure_ascii=False))
+                traceback.print_exc()
+                results, error = [], search_error(MelonError('parse'))
+            self.searchFinished.emit(token, json.dumps({'results': results, 'error': error}, ensure_ascii=False))
         self._pool.submit(work)
 
     @Slot(int, str)
     def songDetail(self, token, song_id):
         def work():
+            image_url = ''
             try:
-                det = self._scraper.get_song_detail(song_id)
-                if not det or not det.get('lyrics'):
-                    det = {'error': '가사 정보를 가져오지 못했어요.\n네트워크 상태를 확인하거나 다른 곡을 시도해 보세요.'}
-                elif det.get('image_url'):
-                    self._download_art(song_id, det['image_url'])
+                det = self._detail(song_id)
+                image_url = det.get('image_url', '')
+                if det['reason']:
+                    out = {'error': detail_error(det)}
+                else:
+                    out = {'song_id': song_id, 'lyrics': det['lyrics']}
             except Exception:
-                det = {'error': '가사를 불러오다 문제가 생겼어요.', 'detail': traceback.format_exc()}
-            self.detailFinished.emit(token, json.dumps(det, ensure_ascii=False))
+                out = {'error': '가사를 불러오다 문제가 생겼어요.', 'detail': traceback.format_exc()}
+            # 가사를 먼저 보내고, 앨범아트는 뒤에 받는다 (편집 화면은 artReady로 나중에 채운다)
+            self.detailFinished.emit(token, json.dumps(out, ensure_ascii=False))
+            if image_url and 'error' not in out and not self._art.has(song_id):
+                self._download_art(song_id, image_url)
         self._pool.submit(work)
 
     @Slot(str)
@@ -186,19 +256,27 @@ class Backend(QObject):
         if self._art.has(song_id):
             self.artReady.emit(song_id)
             return
-        if song_id in self._art_requested:
+        if song_id in self._art_inflight:
             return
-        self._art_requested.add(song_id)
+        self._art_inflight.add(song_id)
+        gen = self._thumb_gen
 
         def work():
-            url = self._scraper.get_album_image_url(song_id)
-            if url:
-                self._download_art(song_id, url)
-        self._pool.submit(work)
+            try:
+                if gen != self._thumb_gen:
+                    return               # 그 사이 새 검색을 했다
+                det = self._detail(song_id)
+                if det.get('image_url'):
+                    self._download_art(song_id, det['image_url'])
+            except Exception:
+                traceback.print_exc()
+            finally:
+                self._art_inflight.discard(song_id)   # 실패해도 다음에 다시 받을 수 있다
+        self._thumb_pool.submit(work)
 
     def _download_art(self, song_id, url):
         try:
-            resp = requests.get(url, headers=self._scraper.headers, timeout=10)
+            resp = self._scraper.get(url)
             if resp.status_code == 200 and self._art.put(song_id, resp.content):
                 self.artReady.emit(song_id)
         except Exception:
@@ -283,3 +361,4 @@ class Backend(QObject):
 
     def shutdown(self):
         self._pool.shutdown(wait=False, cancel_futures=True)
+        self._thumb_pool.shutdown(wait=False, cancel_futures=True)

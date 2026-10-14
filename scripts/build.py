@@ -67,7 +67,7 @@ def nuitka(version, extra):
     run([
         sys.executable, '-m', 'nuitka', '--assume-yes-for-downloads',
         '--enable-plugin=pyside6', '--include-qt-plugins=qml,imageformats',
-        '--nofollow-import-to=PySide6.QtWidgets', '--nofollow-import-to=tkinter',
+        '--nofollow-import-to=PySide6.QtWidgets', '--include-package=truststore', '--nofollow-import-to=tkinter',
         '--include-data-dir=assets=assets',
         '--include-data-dir=src/qml_ui/qml=src/qml_ui/qml',
         '--include-data-files=template.pptx=template.pptx',
