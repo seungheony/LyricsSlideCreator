@@ -1,8 +1,5 @@
 from pptx import Presentation
 import copy
-from pptx.util import Pt
-from pptx.enum.text import PP_ALIGN
-from lxml import etree
 import io
 import os
 import re
@@ -136,7 +133,7 @@ class PPTBuilder:
             rId = self.prs.slides._sldIdLst[index].rId
             self.prs.part.drop_rel(rId)
             del self.prs.slides._sldIdLst[index]
-        except: pass
+        except Exception: pass
 
     @staticmethod
     def save_to_file(buffer, output_path):
@@ -158,7 +155,3 @@ class PPTBuilder:
             raise
         return True
 
-    @staticmethod
-    def split_lyrics(full_lyrics, lines_per_slide=2):
-        lines = [l.strip() for l in full_lyrics.split('\n') if l.strip()]
-        return ["\n".join(lines[i:i+lines_per_slide]) for i in range(0, len(lines), lines_per_slide)]

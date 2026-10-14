@@ -6,7 +6,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
-from PySide6.QtCore import QObject, QSize, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QImage
 from PySide6.QtQml import QQmlImageProviderBase
 from PySide6.QtQuick import QQuickImageProvider

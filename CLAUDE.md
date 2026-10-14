@@ -47,17 +47,21 @@ python scripts/build.py 1.2.0   # 버전 기록(scripts/set_version.py) + Nuitka
 **리소스** (`assets/`): Pretendard 폰트(템플릿 폰트와 동일), SVG 아이콘.
 
 **백엔드** (`src/utils/`):
-- `melon_api.py` — `MelonScraper` 클래스가 멜론에서 노래 검색 결과와 가사/앨범아트를 스크래핑. BeautifulSoup + 정규식 사용. 멜론 HTML 구조 변경 시 깨질 수 있음.
+- `melon_api.py` — `MelonScraper` 클래스가 멜론에서 노래 검색 결과와 가사/앨범아트를 스크래핑. 요청은 `MelonScraper`, HTML 해석은 순수 함수 `parse_search(html)`/`parse_detail(html)`로 나뉘어 있다. BeautifulSoup + 정규식 사용. 멜론 HTML 구조 변경 시 깨질 수 있음.
 - `ppt_engine.py` — `PPTBuilder` 클래스가 템플릿 PPTX를 로드하고, 슬라이드 구조를 딥카피하여 서식 유지, "가사" 플레이스홀더 텍스트를 교체, `BytesIO`로 메모리 내 슬라이드 생성.
 - `line_fit.py` — PPT에서 가사 한 줄이 글상자 폭을 넘어 줄바꿈되는지 미리 계산(`LineFit.ratio`, 1 초과면 줄바꿈). 값은 코드에 두지 않고 템플릿 가사 글상자(`ppt_engine.find_lyrics_shape`, PPT 생성과 같은 글상자)에서 PowerPoint 상속 순서(런→문단→목록 스타일→레이아웃→마스터→텍스트 스타일→기본값, 테마 글꼴)대로 폭·안쪽 여백·글꼴·크기·굵게·자간·커닝 등을 읽는다. 폭은 PowerPoint 규칙 그대로(16.109 Mac에서 200줄로 확인): 글자별 설계 폭을 1/8pt로 반올림해 합산, 커닝은 글꼴에 예전 방식 `kern` 표가 있을 때만(GPOS 무시), 합 > 쓸 수 있는 폭이면 줄바꿈, `hangingPunct`면 줄 끝 문장부호 한 글자(`HANGING_PUNCT`)는 제외. 비율은 반올림하지 않는다(1/8pt만 넘어도 줄바꿈). 글꼴이 이 컴퓨터에 없으면 어림값(`exact=False`). 템플릿 내장 글꼴은 MTX 압축이라 쓰지 않음. 결과는 `SlideList`에 줄별 경고로 표시
-- `helpers.py` — `resource_path()`가 PyInstaller(`sys._MEIPASS`)에서는 번들 폴더, 그 외(개발 모드·Nuitka)에서는 프로젝트 루트 기준으로 경로를 해석.
+- `helpers.py` — `resource_path()`가 프로젝트 루트(개발 모드·Nuitka 빌드 모두 이 파일 위치 기준) 아래 경로를 돌려준다.
 - `version.py` — `get_version()`은 빌드 시 기록된 버전, 개발 모드에서는 "TEST". `parse_version()`/`is_newer()`로 릴리스 태그(v1.2.0, v1.2.0-beta.1, v1.1-beta) 비교.
 
 **주요 패턴**:
-- `__init__.py` 파일 없음. `sys.path` 주입으로 모듈 탐색
+- `src/`, `src/utils/`, `src/qml_ui/`에 빈 `__init__.py`가 있는 일반 패키지. 모듈은 `from src.utils.x import ...`로 불러온다(프로젝트 루트에서 실행). `sys.path` 주입 없음
 - 프로젝트 루트의 `template.pptx`가 필수이며 실행 파일에 번들됨
 - 메모리 내 PPT 생성(BytesIO), 임시 파일 미사용
 - 앱 폴더 밖에 파일을 남기지 않는다: QML 디스크 캐시·GPU 파이프라인 캐시를 끈다(`app.py`). 설정 저장 등 새 기능을 넣을 때도 이 원칙을 지킨다
   - 앱 상태 기록(첫 실행 튜토리얼을 봤는지)은 앱 폴더 안 `app_state.json`(`src/utils/app_state.py`). 업데이트하면 앱 폴더가 새로 깔려 기록도 초기화되고(튜토리얼 다시 표시), 쓸 수 없으면 무시한다
   - 허용된 예외(OS가 남기는 기록): OS 기본 파일 대화상자의 마지막 폴더 기록(macOS `~/Library/Preferences/<앱>.plist`, Windows 레지스트리), macOS Metal 셰이더 캐시(`/var/folders/.../C/<앱>/com.apple.metal`)
-- 자동화된 테스트 스위트 없음
+- 테스트: `tests/`(unittest). 프로젝트 루트에서 `python -m unittest discover -s tests -t .` (화면 없이 돌도록 `tests/__init__.py`가 `QT_QPA_PLATFORM=offscreen`을 설정하고 `QGuiApplication`을 만든다). 정적 검사는 `ruff check --select F401,E722 .`. 둘 다 PR·push 때 `.github/workflows/check.yml`이 돌린다(빌드는 하지 않음)
+  - `test_editor_js.py`: `editor.js`에서 `.pragma library` 줄만 빼고 `QJSEngine`에 불러 시험(parseBlocks·serialize·regroup·resolveDrop·planDrop). 편집 규칙을 바꾸면 여기도 고칠 것
+  - `test_melon_parse.py`: `melon_api.parse_search`/`parse_detail`을 `tests/fixtures/`의 HTML 조각으로 시험. 멜론 구조가 바뀌면 조각을 새로 떠서 갱신(개인정보 없는 최소 조각만)
+  - 그 밖에 `test_version.py`, `test_line_fit.py`(기준 폭), `test_ppt_engine.py`(만든 PPT를 python-pptx로 다시 열어 확인)
+  - Qt 글꼴·이미지 API를 쓰는 시험은 앱 객체가 먼저 있어야 한다. Python을 일부러 죽이는 시험은 쓰지 않는다
