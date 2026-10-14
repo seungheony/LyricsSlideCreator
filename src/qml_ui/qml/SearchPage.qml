@@ -10,6 +10,7 @@ Item {
     property bool searching: false
     property var results: []
     property string emptyText: ""
+    property string errorText: ""     // 검색을 못 했을 때 원인 안내 ('결과 없음'과 구분)
     property string loadingId: ""     // 가사를 불러오는 중인 곡
     property int token: 0             // 오래된 검색 응답 무시용
     property var tour: null
@@ -142,6 +143,7 @@ Item {
         searching = true
         results = []
         emptyText = ""
+        errorText = ""
         backend.search(token, keyword)
     }
 
@@ -150,8 +152,10 @@ Item {
         function onSearchFinished(t, json) {
             if (t !== page.token) return
             page.searching = false
-            page.results = JSON.parse(json)
-            page.emptyText = page.results.length ? "" : "검색 결과가 없어요"
+            const res = JSON.parse(json)
+            page.results = res.results
+            page.errorText = res.error ? res.error.message : ""
+            page.emptyText = res.results.length || res.error ? "" : "검색 결과가 없어요"
         }
     }
 
@@ -321,6 +325,31 @@ Item {
                 Text { text: page.emptyText; color: Theme.text3; font.family: Theme.font; font.pixelSize: 14 }
             }
 
+            // 검색 실패 (연결·응답·화면 변경)
+            Column {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 48
+                spacing: 14
+                visible: !page.searching && page.errorText !== ""
+                Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "music"; size: 36; color: Theme.warning; opacity: 0.8 }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    horizontalAlignment: Text.AlignHCenter
+                    text: page.errorText
+                    textFormat: Text.PlainText
+                    color: Theme.text2
+                    font.family: Theme.font
+                    font.pixelSize: 14
+                    lineHeight: 1.4
+                }
+                AppButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "다시 시도"
+                    variant: "primary"
+                    onClicked: page.doSearch()
+                }
+            }
+
             ListView {
                 id: list
                 anchors.fill: parent
@@ -384,15 +413,36 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 3
-                            Text {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: row.modelData.title
-                                textFormat: Text.PlainText
-                                color: Theme.text
-                                font.family: Theme.font
-                                font.pixelSize: 15
-                                font.weight: Font.DemiBold
-                                elide: Text.ElideRight
+                                spacing: 6
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: row.modelData.title
+                                    textFormat: Text.PlainText
+                                    color: Theme.text
+                                    font.family: Theme.font
+                                    font.pixelSize: 15
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                }
+                                // 19금: 멜론이 성인 인증한 사용자에게만 가사를 보여 줘서 가져올 수 없다
+                                Rectangle {
+                                    visible: row.modelData.adult === true
+                                    implicitWidth: adultLabel.implicitWidth + 10
+                                    implicitHeight: 18
+                                    radius: 4
+                                    color: Theme.warningSoft
+                                    Text {
+                                        id: adultLabel
+                                        anchors.centerIn: parent
+                                        text: "19"
+                                        color: Theme.warning
+                                        font.family: Theme.font
+                                        font.pixelSize: 11
+                                        font.weight: Font.Bold
+                                    }
+                                }
                             }
                             Text {
                                 Layout.fillWidth: true
