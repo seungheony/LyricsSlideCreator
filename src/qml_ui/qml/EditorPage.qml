@@ -255,19 +255,37 @@ Item {
         return out
     }
 
-    // then: 답한 뒤 이어서 할 일 (PPT 생성의 저장 대화상자). 어느 쪽을 골라도 이어서 한다
-    function askLongSlides(fresh, then) {
+    // 입력칸에서 벗어났을 때: 나눌지, 그대로 둘지
+    function askLongSlides(fresh) {
         const keys = fresh.map(i => blocks[i].lines.join("\n"))
-        const names = fresh.slice(0, 5).map(i => (i + 1) + "번").join(", ") + (fresh.length > 5 ? " 등" : "")
         confirmDialog.ask({
             title: "3줄 이상인 슬라이드가 있어요",
-            message: names + " 슬라이드가 3줄 이상이에요. '2줄 유지' 중인데 2줄씩 나눌까요?",
+            message: longNames(fresh) + " 슬라이드가 3줄 이상이에요. '2줄 유지' 중인데 2줄씩 나눌까요?",
             confirmText: "2줄씩 나누기",
             cancelText: "그대로 두기",
-            onConfirm: () => { splitLongSlides(keys); if (then) then() },
-            onCancel: () => { keepLong(keys); if (then) then() }
+            onConfirm: () => splitLongSlides(keys),
+            onCancel: () => keepLong(keys)
         })
         slideList.flash(fresh[0])
+    }
+
+    // PPT 생성 전: 그대로 만들지(주 버튼), 편집 화면으로 돌아가 2줄씩 나눌지. Esc·바깥 클릭은 아무것도 하지 않음
+    function askLongBeforeGenerate(fresh) {
+        const keys = fresh.map(i => blocks[i].lines.join("\n"))
+        confirmDialog.ask({
+            title: "3줄 이상인 슬라이드가 있어요",
+            message: longNames(fresh) + " 슬라이드가 3줄 이상이에요. 그대로 PPT를 만들까요, 2줄씩 나눌까요?",
+            confirmText: "그대로 PPT 생성",
+            cancelText: "2줄씩 나누기",
+            onConfirm: () => { keepLong(keys); openSaveDialog() },
+            onCancel: () => splitLongSlides(keys),
+            onDismiss: null
+        })
+        slideList.flash(fresh[0])
+    }
+
+    function longNames(fresh) {
+        return fresh.slice(0, 5).map(i => (i + 1) + "번").join(", ") + (fresh.length > 5 ? " 등" : "")
     }
 
     // 입력칸에서 벗어난 뒤 잠깐 기다렸다가 묻는다. 그 사이 PPT 생성·뒤로·창 전환이 있었으면 묻지 않는다
@@ -281,7 +299,7 @@ Item {
         if (generating || generateButton.pressed || backButton.pressed) return
         prepareEdit()
         const fresh = freshLongSlides()
-        if (fresh.length) askLongSlides(fresh, null)
+        if (fresh.length) askLongSlides(fresh)
     }
 
     Connections {
@@ -449,7 +467,7 @@ Item {
         if (!blocks.length) return    // 버튼과 단축키는 가사가 있을 때만 켜지지만 한 번 더 막는다
         longCheckTimer.stop()
         const fresh = keepTwo && confirmDialog ? freshLongSlides() : []
-        if (fresh.length) askLongSlides(fresh, openSaveDialog)
+        if (fresh.length) askLongBeforeGenerate(fresh)
         else openSaveDialog()
     }
 

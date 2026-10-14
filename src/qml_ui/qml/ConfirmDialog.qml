@@ -4,7 +4,8 @@ import QtQuick.Layouts
 import "."
 
 // 두 가지 중 하나를 고르는 확인창.
-// ask({ title, message, confirmText, cancelText, onConfirm, onCancel })
+// ask({ title, message, confirmText, cancelText, onConfirm, onCancel, onDismiss })
+// onDismiss: Esc·바깥 클릭으로 닫을 때. 없으면 '취소'와 같다
 // 이미 떠 있으면(열리거나 닫히는 중 포함) 덮어쓰지 않고 차례를 기다린다.
 Popup {
     id: dialog
@@ -14,6 +15,8 @@ Popup {
     property string cancelText: "취소"
     property var onConfirm: null
     property var onCancel: null
+    property var onDismiss: null
+    property bool hasDismiss: false
     property var queue: []
 
     function ask(opts) {
@@ -35,6 +38,8 @@ Popup {
         cancelText = opts.cancelText || "취소"
         onConfirm = opts.onConfirm || null
         onCancel = opts.onCancel || null
+        hasDismiss = opts.onDismiss !== undefined
+        onDismiss = opts.onDismiss || null
         open()
     }
 
@@ -42,6 +47,18 @@ Popup {
         const cb = confirmed ? onConfirm : onCancel
         onConfirm = null
         onCancel = null
+        onDismiss = null
+        close()
+        if (cb) cb()
+    }
+
+    // Esc·바깥 클릭: onDismiss가 있으면 그것만(없어도 아무 일 없음), 지정하지 않았으면 '취소'
+    function dismiss() {
+        if (!hasDismiss) { finish(false); return }
+        const cb = onDismiss
+        onConfirm = null
+        onCancel = null
+        onDismiss = null
         close()
         if (cb) cb()
     }
@@ -56,7 +73,7 @@ Popup {
 
     Overlay.modal: Rectangle {
         color: Qt.rgba(0, 0, 0, 0.4)
-        MouseArea { anchors.fill: parent; onClicked: dialog.finish(false) }
+        MouseArea { anchors.fill: parent; onClicked: dialog.dismiss() }
     }
 
     enter: Transition {
@@ -69,7 +86,7 @@ Popup {
 
     contentItem: ColumnLayout {
         spacing: 8
-        Keys.onEscapePressed: dialog.finish(false)
+        Keys.onEscapePressed: dialog.dismiss()
         Keys.onReturnPressed: dialog.finish(true)
         focus: true
 

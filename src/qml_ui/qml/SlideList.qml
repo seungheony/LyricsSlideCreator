@@ -437,15 +437,6 @@ Item {
                                         Behavior on color { ColorAnimation { duration: Theme.fast } }
                                     }
 
-                                    // PPT 줄바꿈 경고 (왼쪽 여백, 나누기 가위 버튼과 겹치지 않는 자리)
-                                    Icon {
-                                        visible: lineItem.wraps
-                                        x: -22
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        glyph: "alert"; size: 14
-                                        color: Theme.slideWarning
-                                    }
-
                                     Text {
                                         id: lineText
                                         anchors.centerIn: parent
