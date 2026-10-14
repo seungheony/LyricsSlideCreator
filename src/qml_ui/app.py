@@ -1,7 +1,7 @@
 import os
 import sys
 
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QSize, QTimer, QUrl
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QMetaObject, QSize, QTimer, QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -68,6 +68,10 @@ def create_app(argv):
     ctx.setContextProperty('backend', backend)
     ctx.setContextProperty('assetsUrl', QUrl.fromLocalFile(resource_path('assets')).toString())
     engine.load(QUrl.fromLocalFile(resource_path(os.path.join('src', 'qml_ui', 'qml', 'Main.qml'))))
+    for window in engine.rootObjects():
+        # 창이 열릴 화면의 작업 영역(작업 표시줄·메뉴 막대 제외)에 맞춰 크기·위치를 정하고 보인다
+        window.setProperty('workArea', window.screen().availableGeometry())
+        QMetaObject.invokeMethod(window, 'fitToScreen')
     if sys.platform != 'darwin':
         # Windows: 창마다 아이콘을 지정한다 (작업 표시줄·창 제목줄)
         icon = window_icon()
