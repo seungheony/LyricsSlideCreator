@@ -158,6 +158,7 @@ ApplicationWindow {
     // ── 페이지 (좌우로 살짝 밀리며 전환) ──
     SearchPage {
         id: searchPage
+        bottomInset: resumeChip.visible ? resumeChip.height + 12 : 0
         anchors.top: updateBanner.bottom
         anchors.left: parent.left
         anchors.right: parent.right
@@ -200,7 +201,8 @@ ApplicationWindow {
         width: Math.min(chipRow.implicitWidth + 36, parent.width - 32)
         height: 40
         radius: 20
-        color: chipArea.containsMouse || win.addMode ? Theme.primarySoft : Theme.surface
+        // 올렸을 때도 뒤의 목록이 비치지 않도록 불투명한 색으로 섞는다
+        color: chipArea.containsMouse || win.addMode ? Qt.tint(Theme.surface, Theme.primarySoft) : Theme.surface
         border.width: 1
         border.color: chipArea.containsMouse || win.addMode ? Theme.primary : Theme.border
         opacity: !win.editorActive && win.hasSetlist && !searchPage.loadingId ? 1 : 0

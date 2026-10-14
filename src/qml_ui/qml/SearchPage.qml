@@ -19,8 +19,9 @@ Item {
     property bool fallback: false     // 곡 검색 결과가 없어서 가사 검색 결과를 대신 보여 주는 중
     property int total: 0             // 멜론이 알려 준 전체 건수
     property bool loadingMore: false
+    property real bottomInset: 0      // 화면 아래에 떠 있는 표시('편집 중' 칩)가 가리는 높이
     property string moreError: ""
-    // 목록은 ListModel에 이어 붙인다 (배열을 통째로 바꾸면 '더 보기'를 눌렀을 때 스크롤이 맨 위로 돌아간다)
+    // 목록은 ListModel에 이어 붙인다 (배열을 통째로 바꾸면 다음 쪽을 붙일 때 스크롤이 맨 위로 돌아간다)
     ListModel { id: resultModel }
     function setResults(items) {
         resultModel.clear()
@@ -176,7 +177,7 @@ Item {
         backend.searchPage(token, keyword, mode, 1)
     }
 
-    property string searchedText: ""      // 마지막으로 검색한 검색어 (더 보기에 쓴다)
+    property string searchedText: ""      // 마지막으로 검색한 검색어 (다음 쪽을 받을 때 쓴다)
 
     // 다음 쪽을 받아 목록 끝에 붙인다
     function loadMore() {
@@ -198,7 +199,7 @@ Item {
         function onSearchFinished(t, json) {
             if (t !== page.token) return
             const res = JSON.parse(json)
-            if (res.start > 1) {                       // 더 보기
+            if (res.start > 1) {                       // 다음 쪽
                 page.loadingMore = false
                 if (res.error) { page.moreError = "더 불러오지 못했어요. 다시 시도해 주세요."; return }
                 const seen = {}
@@ -460,9 +461,16 @@ Item {
                 model: resultModel
                 spacing: 4
                 clip: true
-                bottomMargin: 40
+                bottomMargin: 40 + page.bottomInset
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar {}
+
+                // 끝 근처까지 내려오면 다음 쪽을 자동으로 받는다 (받는 중이면 loadMore가 막고, 실패하면 '다시 시도'를 누를 때까지 멈춘다)
+                function checkEnd() {
+                    if (page.moreError === "" && contentHeight > 0 && contentY + height > contentHeight - 400) page.loadMore()
+                }
+                onContentYChanged: checkEnd()
+                onContentHeightChanged: checkEnd()
 
                 header: Text {
                     width: list.width
@@ -496,10 +504,18 @@ Item {
                             font.pixelSize: 13
                         }
                         AppButton {
+                            visible: page.moreError !== ""
                             Layout.alignment: Qt.AlignHCenter
-                            text: page.loadingMore ? "불러오는 중…" : "더 보기"
-                            enabled: !page.loadingMore
+                            text: "다시 시도"
                             onClicked: page.loadMore()
+                        }
+                        Icon {
+                            visible: page.loadingMore && page.moreError === ""
+                            Layout.alignment: Qt.AlignHCenter
+                            glyph: "loader"
+                            size: 20
+                            color: Theme.text3
+                            RotationAnimator on rotation { running: page.loadingMore; from: 0; to: 360; duration: 900; loops: Animation.Infinite }
                         }
                     }
                 }
