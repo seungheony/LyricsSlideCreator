@@ -8,7 +8,7 @@ CI가 매번 자동으로 확인하는 것: 빌드, 화면·폰트·템플릿 �
 ## 1. 베타 배포
 
 - [ ] 배포할 내용이 master에 머지되어 있음
-- [ ] `git checkout master && git pull` 후 `./scripts/release.sh beta 1.2.0` (베타 번호는 자동)
+- [ ] `./scripts/release.sh` → `1) 베타 배포` → 버전 입력 (베타 번호는 자동. master가 아니거나 최신이 아니면 master로 바꾸고 pull할지 물음)
 - [ ] Actions가 끝나면 [Releases](https://github.com/seungheony/lyricsSlide_Creator/releases)에 프리릴리스와 파일 3개(`-Setup.exe`, `-macOS.zip`, `SHA256SUMS.txt`)가 있는지 확인
 
 ## 2. 업데이트 테스트 (Windows, macOS 각각)
@@ -39,11 +39,13 @@ CI가 매번 자동으로 확인하는 것: 빌드, 화면·폰트·템플릿 �
 - [ ] 만든 PPT를 PowerPoint에서 열어 가사·줄 간격·Pretendard 서체 확인 (가능하면 Pretendard가 없는 PC에서)
 - [ ] (macOS) 다크 모드/라이트 모드에서 화면 확인
 
-문제가 있으면 고쳐서 master에 머지한 뒤 `./scripts/release.sh beta 1.2.0`으로 다음 베타(`v1.2.0-beta.2`)를 내고 1번부터 다시 합니다.
+문제가 있으면 고쳐서 master에 머지한 뒤 `./scripts/release.sh` → `1) 베타 배포`로 다음 베타(`v1.2.0-beta.2`)를 내고 1번부터 다시 합니다.
 
 ## 4. 정식 배포
 
-- [ ] `./scripts/release.sh stable` (마지막 베타와 **같은 커밋**에 정식 태그)
-- [ ] Actions가 끝나면 정식 릴리스와 파일 3개 확인 (같은 커밋에서 다시 빌드되며 CI 검증도 다시 실행됨)
+- [ ] `./scripts/release.sh` → `2) 정식 배포` (마지막 베타와 **같은 커밋**에 정식 태그). 터미널을 닫지 말고 Actions가 끝날 때까지 기다림(20분쯤)
+- [ ] 정식 릴리스와 파일 3개가 확인되면 이 버전의 베타 릴리스 목록이 나옴 → `y`로 지움 (git 태그는 남음)
+  - 기다리다 멈췄거나 지우지 않았으면, 정식 릴리스가 올라간 뒤 `./scripts/release.sh` → `3) 베타 릴리스 정리`
+- [ ] Releases 페이지에 정식 릴리스만 남았는지 확인 (같은 커밋에서 다시 빌드되며 CI 검증도 다시 실행됨)
 - [ ] 릴리스 노트 확인 (이전 정식 버전 이후 변경 전체가 들어감, 필요하면 릴리스 페이지에서 수정)
 - [ ] (첫 정식 릴리스만) 릴리스 노트에 안내 추가: "v1.1-beta 이하를 쓰던 분은 이번 버전을 직접 한 번 설치해주세요. 이후부터는 앱에서 자동으로 업데이트됩니다."
