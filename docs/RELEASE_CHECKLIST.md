@@ -9,7 +9,7 @@ CI가 매번 자동으로 확인하는 것: 빌드, 화면·폰트·템플릿 �
 
 - [ ] 배포할 내용이 master에 머지되어 있음
 - [ ] `./scripts/release.sh` → `1) 베타 배포` → 버전 입력 (베타 번호는 자동. master가 아니거나 최신이 아니면 master로 바꾸고 pull할지 물음)
-- [ ] Actions가 끝나면 [Releases](https://github.com/seungheony/lyricsSlide_Creator/releases)에 프리릴리스와 파일 3개(`-Setup.exe`, `-macOS.zip`, `SHA256SUMS.txt`)가 있는지 확인
+- [ ] Actions가 끝나면 [Releases](https://github.com/seungheony/LyricsSlideCreator/releases)에 프리릴리스와 파일 3개(`-Setup.exe`, `-macOS.zip`, `SHA256SUMS.txt`)가 있는지 확인
 
 ## 2. 업데이트 테스트 (Windows, macOS 각각)
 

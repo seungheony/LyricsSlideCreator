@@ -12,7 +12,7 @@
 
 ## 설치 (사용자)
 
-[Releases](https://github.com/seungheony/lyricsSlide_Creator/releases)에서 최신 버전을 받습니다.
+[Releases](https://github.com/seungheony/LyricsSlideCreator/releases)에서 최신 버전을 받습니다.
 
 *   **Windows**: `LyricsSlideCreator-<버전>-Setup.exe` 실행. 관리자 권한 없이 현재 사용자 계정에 설치됩니다. 제거는 `설정 → 앱` 또는 `제어판 → 프로그램 제거`에서 합니다.
     *   서명되지 않은 설치 파일이라 "Windows의 PC 보호" 창이 뜰 수 있습니다. **추가 정보 → 실행**을 누르면 설치됩니다.
@@ -104,7 +104,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 
 *   **서명 대상**: 이 저장소의 소스에서 GitHub Actions(GitHub 호스팅 러너, [`release.yml`](.github/workflows/release.yml))로 빌드한 Windows 릴리스 파일(`LyricsSlideCreator.exe`, `LyricsSlideCreator-<버전>-Setup.exe`)만 서명합니다. 함께 들어 있는 서드파티 라이브러리(Python, Qt 등)는 각 배포처의 파일을 그대로 씁니다.
 *   **승인**: 서명 요청은 릴리스마다 아래 승인자가 직접 확인하고 승인합니다.
-*   **배포처**: 공식 배포처는 이 저장소의 [Releases](https://github.com/seungheony/lyricsSlide_Creator/releases)뿐입니다. 각 릴리스의 `SHA256SUMS.txt`로 파일을 확인할 수 있습니다.
+*   **배포처**: 공식 배포처는 이 저장소의 [Releases](https://github.com/seungheony/LyricsSlideCreator/releases)뿐입니다. 각 릴리스의 `SHA256SUMS.txt`로 파일을 확인할 수 있습니다.
 *   **macOS**: macOS 앱은 이 프로그램 대상이 아니며, 아직 Apple Developer ID로 서명·공증하지 않았습니다.
 
 ### Team roles
