@@ -63,6 +63,9 @@ Popup {
         if (cb) cb()
     }
 
+    // 다시 열 때 지난번에 포커스했던 버튼이 남아 있으면 Enter가 그 버튼을 누른다: 내용 전체로 되돌린다
+    onAboutToShow: contentItem.forceActiveFocus()
+
     parent: Overlay.overlay
     anchors.centerIn: parent
     width: Math.min(420, parent.width - 32)
@@ -88,6 +91,7 @@ Popup {
         spacing: 8
         Keys.onEscapePressed: dialog.dismiss()
         Keys.onReturnPressed: dialog.finish(true)
+        Keys.onEnterPressed: dialog.finish(true)
         focus: true
 
         Text {

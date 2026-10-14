@@ -617,7 +617,20 @@ Item {
         revealAnim.restart()
     }
 
+    // 붙여넣기 직전: 들어온 내용을 바로 한 단계로 남기도록 표시한다 (단축키·오른쪽 클릭 메뉴 공통)
+    function notePaste() {
+        flushTyping()
+        recordNextInput = true
+        Qt.callLater(() => { recordNextInput = false })   // 붙여 넣을 게 없었으면 풀어 둔다
+    }
+
     function blurLyrics() { page.forceActiveFocus() }
+
+    // 입력칸에서 Tab·Shift+Tab: 포커스 순서의 다음·이전 컨트롤로
+    function moveFocusFrom(item, forward) {
+        const next = item.nextItemInFocusChain(forward)
+        if (next && next !== item) next.forceActiveFocus(forward ? Qt.TabFocusReason : Qt.BacktabFocusReason)
+    }
     function cancelDrag() { slideList.cancelDrag() }
 
     // ── 도움말 (? 버튼) ──
@@ -801,9 +814,7 @@ Item {
                     glyph: "chevron-left"
                     variant: "ghost"
                     onClicked: page.backRequested()
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 600
-                    ToolTip.text: "뒤로 (Esc)"
+                    AppToolTip { visible: backButton.hovered; delay: 600; text: "뒤로 (Esc)" }
                 }
                 RoundedImage {
                     id: art
@@ -835,6 +846,7 @@ Item {
                         onEditingFinished: page.setSongInfo(text, artistField.text)
                         onAccepted: artistField.forceActiveFocus()
                         Accessible.name: "곡 제목"
+                        ContextMenu.menu: AppTextMenu { editor: titleField }
                     }
                     RowLayout {
                         Layout.fillWidth: true
@@ -856,6 +868,7 @@ Item {
                             onEditingFinished: page.setSongInfo(titleField.text, text)
                             onAccepted: lyrics.forceActiveFocus()
                             Accessible.name: "가수"
+                            ContextMenu.menu: AppTextMenu { editor: artistField }
                         }
                         Text {
                             visible: !!(page.song && page.song.album)
@@ -886,6 +899,7 @@ Item {
             // 콘티 (곡 목록)
             SetlistPanel {
                 id: setlistPanel
+                objectName: "setlistPanel"
                 Layout.fillHeight: true
                 Layout.preferredWidth: 200
                 Layout.minimumWidth: 200
@@ -912,7 +926,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 34
                     Text { text: "가사"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
-                    HelpButton { Layout.leftMargin: 2; onClicked: help.lyrics() }
+                    HelpButton { Layout.leftMargin: 2; label: "가사 편집"; onClicked: help.lyrics() }
                     Item { Layout.fillWidth: true }
                     RowLayout {
                         id: autoSplitRow
@@ -938,10 +952,11 @@ Item {
                                 background: Rectangle {
                                     radius: 8
                                     color: splitBtn.hovered ? Theme.primarySoft : Theme.surface
-                                    border.width: 1
-                                    border.color: splitBtn.hovered ? Theme.primary : Theme.border
+                                    border.width: splitBtn.visualFocus ? 2 : 1
+                                    border.color: splitBtn.hovered || splitBtn.visualFocus ? Theme.primary : Theme.border
                                 }
                                 onClicked: page.autoSplit(modelData)
+                                Accessible.name: "자동 나누기 " + text
                             }
                         }
                     }
@@ -964,6 +979,7 @@ Item {
 
                         TextArea {
                             id: lyrics
+                            objectName: "lyricsInput"
                             padding: 14
                             color: Theme.text
                             font.family: Theme.font
@@ -996,17 +1012,29 @@ Item {
                             onCursorPositionChanged: if (!page.applying) page.syncActiveFromCaret()
                             onActiveFocusChanged: if (!activeFocus) longCheckTimer.restart()
 
+                            // Tab은 탭 문자를 넣지 않고 다음(Shift+Tab은 이전) 컨트롤로 옮긴다. PPT에 탭이 남지 않고, 키보드로 뒤쪽 버튼에 닿는다
+                            Keys.onTabPressed: (event) => { page.moveFocusFrom(lyrics, true); event.accepted = true }
+                            Keys.onBacktabPressed: (event) => { page.moveFocusFrom(lyrics, false); event.accepted = true }
+                            Accessible.name: "가사"
+
+                            // 오른쪽 클릭 메뉴: 한국어, 되돌리기·다시 실행은 앱의 히스토리로
+                            ContextMenu.menu: AppTextMenu {
+                                editor: lyrics
+                                useHistory: true
+                                canUndo: page.histIdx > 0
+                                canRedo: page.histIdx < page.hist.length - 1
+                                undo: page.undo
+                                redo: page.redo
+                                beforePaste: page.notePaste
+                            }
+
                             // ⌘Z / ⇧⌘Z 는 앱 전체 히스토리로 처리
                             Keys.onPressed: (event) => {
                                 if (page.dragging) return
                                 if (event.matches(StandardKey.Undo)) { page.undo(); event.accepted = true }
                                 else if (event.matches(StandardKey.Redo)) { page.redo(); event.accepted = true }
                                 else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) page.flushTyping()
-                                else if (event.matches(StandardKey.Paste)) {
-                                    page.flushTyping()
-                                    page.recordNextInput = true
-                                    Qt.callLater(() => { page.recordNextInput = false })   // 붙여 넣을 게 없었으면 풀어 둔다
-                                }
+                                else if (event.matches(StandardKey.Paste)) page.notePaste()
                             }
 
                             // 미리보기에서 누른 슬라이드 위치를 잠깐 강조 (revealInText)
@@ -1085,12 +1113,14 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: page.showNextWrap()
                         }
-                        ToolTip.visible: wrapArea.containsMouse
-                        ToolTip.delay: 400
-                        ToolTip.text: "PPT에서 글상자 폭을 넘어 두 줄로 나뉘는 줄이 있어요. 누르면 차례로 보여줘요"
-                                      + (page.fitBasis ? "\n기준: " + page.fitBasis : "")
+                        AppToolTip {
+                            visible: wrapArea.containsMouse
+                            delay: 400
+                            text: "PPT에서 글상자 폭을 넘어 두 줄로 나뉘는 줄이 있어요. 누르면 차례로 보여줘요"
+                                  + (page.fitBasis ? "\n기준: " + page.fitBasis : "")
+                        }
                     }
-                    HelpButton { Layout.leftMargin: 2; onClicked: help.slides() }
+                    HelpButton { Layout.leftMargin: 2; label: "슬라이드"; onClicked: help.slides() }
                     Item { Layout.fillWidth: true }
                     RowLayout {
                         id: keepTwoRow
@@ -1098,22 +1128,34 @@ Item {
                         Layout.rightMargin: 6
                         CheckBox {
                             id: keepTwoBox
+                            objectName: "keepTwoBox"
                             text: "2줄 유지"
                             checked: page.keepTwo
                             onToggled: page.keepTwo = checked
                             hoverEnabled: true
                             spacing: 6
                             padding: 4
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 500
-                            ToolTip.text: "줄을 옮길 때 넘치는 줄을 연쇄로 밀어서 슬라이드마다 2줄을 넘지 않게 해요. 줄을 준 슬라이드는 1줄로 남아요"
+                            AppToolTip {
+                                visible: keepTwoBox.hovered
+                                text: "줄을 옮길 때 넘치는 줄을 연쇄로 밀어서 슬라이드마다 2줄을 넘지 않게 해요. 줄을 준 슬라이드는 1줄로 남아요"
+                            }
                             indicator: Rectangle {
                                 x: keepTwoBox.leftPadding
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 16; height: 16; radius: 4
                                 color: keepTwoBox.checked ? Theme.primary : Theme.surface
                                 border.width: keepTwoBox.checked ? 0 : 1.5
-                                border.color: keepTwoBox.hovered ? Theme.primary : Theme.border
+                                border.color: keepTwoBox.hovered || keepTwoBox.visualFocus ? Theme.primary : Theme.border
+                                // 키보드 포커스 링
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: -3
+                                    radius: 7
+                                    color: "transparent"
+                                    border.width: 2
+                                    border.color: Theme.primary
+                                    visible: keepTwoBox.visualFocus
+                                }
                                 Icon { anchors.centerIn: parent; visible: keepTwoBox.checked; glyph: "check"; size: 11; color: "white" }
                             }
                             contentItem: Text {
@@ -1126,7 +1168,7 @@ Item {
                                 verticalAlignment: Text.AlignVCenter
                             }
                         }
-                        HelpButton { onClicked: help.keepTwoHelp() }
+                        HelpButton { label: "2줄 유지"; onClicked: help.keepTwoHelp() }
                     }
                     RowLayout {
                         id: historyRow
@@ -1135,13 +1177,15 @@ Item {
                             glyph: "undo"; variant: "ghost"; size: "small"
                             enabled: page.histIdx > 0
                             onClicked: page.undo()
-                            ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "되돌리기 (" + Theme.undoKey + ")"
+                            Accessible.name: "되돌리기"
+                            AppToolTip { visible: parent.hovered; delay: 600; text: "되돌리기 (" + Theme.undoKey + ")" }
                         }
                         AppButton {
                             glyph: "redo"; variant: "ghost"; size: "small"
                             enabled: page.histIdx < page.hist.length - 1
                             onClicked: page.redo()
-                            ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "다시 실행 (" + Theme.redoKey + ")"
+                            Accessible.name: "다시 실행"
+                            AppToolTip { visible: parent.hovered; delay: 600; text: "다시 실행 (" + Theme.redoKey + ")" }
                         }
                     }
                 }
@@ -1209,7 +1253,7 @@ Item {
                         font.family: Theme.font
                         font.pixelSize: 12
                     }
-                    HelpButton { onClicked: help.generate() }
+                    HelpButton { label: "PPT 생성"; onClicked: help.generate() }
                 }
                 Item { Layout.fillWidth: true }
                 // 꺼진 버튼은 호버를 받지 못해, 바깥에 둔 영역으로 이유를 보여 준다
@@ -1218,6 +1262,7 @@ Item {
                     implicitHeight: generateButton.implicitHeight
                     AppButton {
                         id: generateButton
+                        objectName: "generateButton"
                         anchors.fill: parent
                         text: "PPT 생성"
                         variant: "primary"
@@ -1227,13 +1272,12 @@ Item {
                         onClicked: page.generate()
                     }
                     MouseArea {
+                        id: generateHint
                         anchors.fill: parent
                         visible: !generateButton.enabled
                         hoverEnabled: true
                         acceptedButtons: Qt.NoButton
-                        ToolTip.visible: containsMouse
-                        ToolTip.delay: 300
-                        ToolTip.text: "가사를 입력하면 만들 수 있어요"
+                        AppToolTip { visible: generateHint.containsMouse; delay: 300; text: "가사를 입력하면 만들 수 있어요" }
                     }
                 }
             }

@@ -5,7 +5,7 @@ from unittest import mock
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from src.qml_ui.backend import AlbumArtProvider, Backend, detail_error, search_error  # noqa: E402
+from src.qml_ui.backend import AlbumArtProvider, Backend, detail_error, error_report, search_error  # noqa: E402
 from src.utils.melon_api import MelonError  # noqa: E402
 
 
@@ -25,6 +25,20 @@ class Messages(unittest.TestCase):
         self.assertIn('찾을 수 없', texts['not_found'])
         self.assertIn('인터넷 연결', texts['network'])
         self.assertEqual(len(set(texts.values())), 6)
+
+
+class ErrorReport(unittest.TestCase):
+    def test_home_folder_is_masked(self):
+        home = os.path.expanduser('~')
+        text = error_report('PPT를 만들지 못했어요', f'File "{home}/app/x.py", line 3\nValueError: boom', version='1.2.3')
+        self.assertIn('v1.2.3', text)
+        self.assertIn('PPT를 만들지 못했어요', text)
+        self.assertIn('ValueError: boom', text)
+        self.assertNotIn(home, text)
+        self.assertIn('~/app/x.py', text)
+
+    def test_empty_detail(self):
+        self.assertTrue(error_report('제목', '', version='1').endswith('제목\n'))
 
 
 class ArtCache(unittest.TestCase):
@@ -131,7 +145,23 @@ class BackendFlow(unittest.TestCase):
             self.backend.songDetail(1, '1')
             self.backend.songDetail(2, '1')
         self.assertIn('인터넷 연결', self.events[0][1]['error'])
+        self.assertTrue(self.events[0][1]['retry'])    # 연결 문제는 다시 시도하면 될 수 있다
         self.assertEqual(get.call_count, 2)    # 연결 문제는 보관하지 않는다
+
+    def test_detail_retry_only_when_it_may_help(self):
+        for reason, retry in (('network', True), ('http', True), ('no_lyrics', False), ('adult', False), ('not_found', False)):
+            self.events.clear()
+            det = {'song_id': 'r' + reason, 'lyrics': '', 'image_url': '', 'reason': reason, 'status': 503}
+            with mock.patch.object(self.backend._scraper, 'get_song_detail', return_value=det):
+                self.backend.songDetail(1, 'r' + reason)
+            self.assertEqual(self.events[0][1]['retry'], retry, reason)
+
+    def test_detail_exception_can_retry_and_keeps_traceback(self):
+        with mock.patch.object(self.backend._scraper, 'get_song_detail', side_effect=ValueError('boom')):
+            self.backend.songDetail(1, 'x')
+        out = self.events[0][1]
+        self.assertTrue(out['retry'])
+        self.assertTrue(out['detail'].strip().endswith('ValueError: boom'))   # 대화상자 요약은 이 마지막 줄
 
     def test_stale_thumbnail_dropped_and_retry_allowed(self):
         calls = []

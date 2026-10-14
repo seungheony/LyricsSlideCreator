@@ -1,7 +1,7 @@
 import os
 import sys
 
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QMetaObject, QSize, QTimer, QUrl
+from PySide6.QtCore import QBuffer, QByteArray, QCoreApplication, QIODevice, QMetaObject, QSize, QTimer, QTranslator, QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -20,6 +20,14 @@ def load_fonts():
     font = QFont('Pretendard')
     font.setPixelSize(14)
     QGuiApplication.setFont(font)
+
+
+def install_translations(app):
+    """Qt가 직접 쓰는 문구(macOS 앱 메뉴의 '끝내기'·'숨기기' 등)를 한국어로. 앱 화면은 항상 한국어라 시스템 언어와 상관없이 적용한다.
+    번역 파일은 PySide6 안에서 찾지 않고 앱에 포함한다(빌드된 앱에는 Qt 번역 폴더가 없다)"""
+    translator = QTranslator(app)
+    if translator.load(resource_path(os.path.join('assets', 'translations', 'qtbase_ko.qm'))):
+        app.installTranslator(translator)
 
 
 def window_icon():
@@ -47,6 +55,7 @@ def create_app(argv):
     app = QGuiApplication(argv)
     app.setApplicationName('Lyrics Slide Creator')   # 내부 이름 (바꾸지 않는다)
     app.setApplicationDisplayName('가사 슬라이드 생성기')
+    install_translations(app)
     # 창·작업 표시줄 아이콘 (개발 모드에서도 Python 기본 아이콘 대신 앱 아이콘이 보이도록)
     if sys.platform == 'darwin':
         # macOS: 개발 모드에서 Dock 아이콘도 앱 아이콘으로
@@ -120,6 +129,10 @@ def check_runtime():
             problems.append('메모리에서 PPT를 만들지 못했습니다')
     except Exception as e:
         problems.append(f'메모리에서 PPT를 만들지 못했습니다: {e}')
+
+    # Qt 한국어 번역(앱 메뉴의 '끝내기' 등)이 들어갔는지
+    if QCoreApplication.translate('MAC_APPLICATION_MENU', 'Quit %1') == 'Quit %1':
+        problems.append('Qt 한국어 번역(assets/translations/qtbase_ko.qm)을 불러오지 못했습니다')
 
     # 멜론 앨범아트는 JPEG: imageformats 플러그인(qjpeg)이 빠지면 그림이 보이지 않는다
     image = QImage(4, 4, QImage.Format.Format_RGB32)

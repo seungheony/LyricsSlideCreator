@@ -123,8 +123,8 @@ Item {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 spacing: 3
-                                Text { text: "노래 제목 " + (row.index + 1); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
-                                Text { text: "가수 · 앨범"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13 }
+                                Text { Layout.fillWidth: true; text: "노래 제목 " + (row.index + 1); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
+                                Text { Layout.fillWidth: true; text: "가수 · 앨범"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13 }
                             }
                             Icon {
                                 id: demoArrow
@@ -155,6 +155,13 @@ Item {
     signal manualRequested(var info)
 
     function focusSearch() { input.forceActiveFocus(); input.selectAll() }
+    // 검색칸에서 ↓: 결과 목록의 첫 곡으로. 목록이 없거나 검색 중이면 하지 않는다
+    function focusList() {
+        if (searching || !resultModel.count) return false
+        if (list.currentIndex < 0) list.currentIndex = 0
+        list.forceActiveFocus(Qt.TabFocusReason)
+        return true
+    }
 
     property string searchedKeyword: ""   // 마지막으로 검색한 검색어 (검색 중 같은 검색어 중복 요청 방지)
 
@@ -268,6 +275,7 @@ Item {
 
             // 제목 가운데 정렬이 흐트러지지 않도록 레이아웃 밖에서 오른쪽에 붙인다
             HelpButton {
+                label: "검색 화면"
                 anchors.left: parent.right
                 anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
@@ -332,6 +340,9 @@ Item {
                     selectByMouse: true
                     focus: true
                     onAccepted: page.doSearch()
+                    Keys.onDownPressed: (event) => { event.accepted = page.focusList() }
+                    Accessible.name: "검색어"
+                    ContextMenu.menu: AppTextMenu { editor: input }
                 }
                 // 검색 방식 전환
                 Rectangle {
@@ -358,6 +369,20 @@ Item {
                                 Accessible.role: Accessible.RadioButton
                                 Accessible.name: modelData.label
                                 Accessible.checked: on
+                                Accessible.onPressAction: page.setMode(modelData.key)
+                                // Tab으로 닿고, Space·Enter로 고른다 (포커스가 있으면 테두리)
+                                activeFocusOnTab: true
+                                Keys.onSpacePressed: page.setMode(modelData.key)
+                                Keys.onReturnPressed: page.setMode(modelData.key)
+                                Keys.onEnterPressed: page.setMode(modelData.key)
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: parent.radius
+                                    color: "transparent"
+                                    border.width: 2
+                                    border.color: Theme.primary
+                                    visible: parent.activeFocus
+                                }
                                 Text {
                                     id: label
                                     anchors.centerIn: parent
@@ -396,9 +421,7 @@ Item {
             variant: "ghost"
             size: "small"
             onClicked: page.manualRequested({ title: "", artist: "" })
-            ToolTip.visible: hovered
-            ToolTip.delay: 500
-            ToolTip.text: "멜론에 없는 곡은 가사를 직접 붙여 넣어 만들 수 있어요"
+            AppToolTip { visible: manualButton.hovered; text: "멜론에 없는 곡은 가사를 직접 붙여 넣어 만들 수 있어요" }
         }
 
         // ── 결과 ──
@@ -479,6 +502,7 @@ Item {
 
             ListView {
                 id: list
+                objectName: "resultList"
                 anchors.fill: parent
                 visible: !page.searching
                 model: resultModel
@@ -487,6 +511,23 @@ Item {
                 bottomMargin: 40 + page.bottomInset
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar {}
+
+                // 키보드: 검색칸 ↓ 또는 Tab으로 들어와 ↑↓로 고르고 Enter로 연다. 첫 곡에서 ↑는 검색칸으로
+                currentIndex: -1
+                activeFocusOnTab: count > 0
+                keyNavigationEnabled: true
+                onActiveFocusChanged: if (activeFocus && currentIndex < 0 && count > 0) currentIndex = 0
+                Keys.onUpPressed: (event) => {
+                    if (currentIndex > 0) { event.accepted = false; return }
+                    input.forceActiveFocus(Qt.BacktabFocusReason)
+                    event.accepted = true
+                }
+                function openCurrent() {
+                    if (currentItem) page.songClicked(currentItem.modelData)
+                }
+                Keys.onReturnPressed: openCurrent()
+                Keys.onEnterPressed: openCurrent()
+                Keys.onSpacePressed: openCurrent()
 
                 // 끝 근처까지 내려오면 다음 쪽을 자동으로 받는다 (받는 중이면 loadMore가 막고, 실패하면 '다시 시도'를 누를 때까지 멈춘다)
                 function checkEnd() {
@@ -555,12 +596,18 @@ Item {
                     readonly property var modelData: ({ song_id: song_id, title: title, artist: artist,
                                                         album: album, adult: adult, snippet: snippet })
                     readonly property bool loading: page.loadingId === song_id
+                    readonly property bool focused: ListView.isCurrentItem && list.activeFocus
 
                     width: ListView.view.width
                     height: modelData.snippet ? 100 : 72
                     radius: Theme.radius
-                    color: hover.containsMouse ? Theme.surface : Theme.surfaceClear
+                    color: hover.containsMouse || focused ? Theme.surface : Theme.surfaceClear
+                    border.width: focused ? 2 : 0
+                    border.color: Theme.primary
                     Behavior on color { ColorAnimation { duration: Theme.fast } }
+                    Accessible.role: Accessible.Button
+                    Accessible.name: [title, artist, album].filter(Boolean).join(", ")
+                    Accessible.onPressAction: page.songClicked(modelData)
 
                     // 나타날 때 아래에서 살짝 올라온다
                     opacity: 0
@@ -660,7 +707,7 @@ Item {
                             id: arrow
                             glyph: row.loading ? "loader" : "chevron-right"
                             color: Theme.text3
-                            opacity: row.loading || hover.containsMouse ? 1 : 0
+                            opacity: row.loading || hover.containsMouse || row.focused ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: Theme.fast } }
                             RotationAnimation on rotation {
                                 running: row.loading

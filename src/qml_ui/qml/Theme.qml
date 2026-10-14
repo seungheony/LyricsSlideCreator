@@ -33,6 +33,9 @@ QtObject {
     // 다크 모드에서 슬라이드 카드와 바탕이 구분되도록 옅은 테두리
     readonly property color slideBorder: dark ? Qt.rgba(1, 1, 1, 0.08) : "transparent"
     readonly property color toastBg: "#191F28"
+    // 툴팁: 라이트에서는 토스트처럼 어두운 상자, 다크에서는 바탕보다 한 단계 밝은 상자(검은 바탕에 같은 색이면 묻힌다)
+    readonly property color tooltipBg: dark ? "#2C3137" : "#191F28"
+    readonly property color tooltipText: "#F2F4F6"
 
     readonly property int radius: 14
     readonly property int radiusSm: 10

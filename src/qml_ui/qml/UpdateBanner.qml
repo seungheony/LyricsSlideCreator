@@ -49,6 +49,6 @@ Rectangle {
         }
         AppButton { text: "변경 내용"; variant: "ghost"; size: "small"; onClicked: banner.notesClicked() }
         AppButton { text: "업데이트"; variant: "primary"; size: "small"; onClicked: banner.updateClicked() }
-        AppButton { glyph: "x"; variant: "ghost"; size: "small"; onClicked: banner.dismissed() }
+        AppButton { glyph: "x"; variant: "ghost"; size: "small"; Accessible.name: "알림 닫기"; onClicked: banner.dismissed() }
     }
 }

@@ -56,15 +56,56 @@ ColumnLayout {
             color: Theme.surface2
             Text { id: songCount; anchors.centerIn: parent; text: panel.entries.length + "곡"; color: Theme.text2; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
         }
-        HelpButton { onClicked: panel.helpRequested() }
+        HelpButton { label: "콘티"; onClicked: panel.helpRequested() }
         Item { Layout.fillWidth: true }
+    }
+
+    // 키보드로 고른 줄 (모델이 새로 만들어져도 유지하려고 ListView의 currentIndex를 쓰지 않는다)
+    property int focusRow: -1
+    function moveFocusRow(delta) {
+        focusRow = Math.max(0, Math.min(entries.length - 1, focusRow + delta))
+        list.positionViewAtIndex(focusRow, ListView.Contain)
     }
 
     ListView {
         id: list
+        objectName: "setlistList"
         Layout.fillWidth: true
         Layout.fillHeight: true
         model: panel.entries
+        // 키보드: Tab으로 들어와 ↑↓로 고르고 Enter·Space로 그 곡을 편집, Delete로 콘티에서 빼기, Alt+↑↓로 순서 바꾸기
+        activeFocusOnTab: count > 0
+        keyNavigationEnabled: false
+        Accessible.role: Accessible.List
+        Accessible.name: "콘티"
+        onActiveFocusChanged: {
+            if (!activeFocus) return
+            const at = panel.entries.findIndex(e => e.id === panel.current)
+            if (panel.focusRow < 0 || panel.focusRow >= panel.entries.length) panel.focusRow = Math.max(0, at)
+        }
+        Keys.onPressed: (event) => {
+            const alt = (event.modifiers & Qt.AltModifier) !== 0
+            if (event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
+                const delta = event.key === Qt.Key_Up ? -1 : 1
+                const to = panel.focusRow + delta
+                if (alt) {
+                    if (to >= 0 && to < panel.entries.length) {
+                        panel.moveRequested(panel.focusRow, to)
+                        panel.focusRow = to
+                    }
+                } else panel.moveFocusRow(delta)
+                event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                if (panel.entries[panel.focusRow]) panel.selected(panel.entries[panel.focusRow].id)
+                event.accepted = true
+            } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
+                if (panel.entries.length > 1 && panel.entries[panel.focusRow]) {
+                    panel.removeRequested(panel.focusRow)
+                    panel.focusRow = Math.min(panel.focusRow, panel.entries.length - 1)    // 빼고 난 뒤의 곡 수 기준
+                }
+                event.accepted = true
+            }
+        }
         spacing: panel.rowGap
         clip: true
         interactive: panel.dragFrom < 0
@@ -90,6 +131,7 @@ ColumnLayout {
             required property var modelData
             readonly property bool isCurrent: modelData.id === panel.current
             readonly property bool dragged: panel.dragFrom === index
+            readonly property bool focused: list.activeFocus && panel.focusRow === index
             width: ListView.view.width
             height: panel.rowHeight
             z: dragged ? 2 : 0
@@ -101,8 +143,11 @@ ColumnLayout {
                 y: row.dragged ? panel.dragDy : 0
                 radius: Theme.radiusSm
                 color: row.isCurrent ? Theme.primarySoft : area.containsMouse || row.dragged ? Theme.surface : Theme.surfaceClear
-                border.width: row.isCurrent || row.dragged ? 1 : 0
-                border.color: row.isCurrent ? Theme.focusBorder : Theme.border
+                border.width: row.focused ? 2 : row.isCurrent || row.dragged ? 1 : 0
+                border.color: row.focused ? Theme.primary : row.isCurrent ? Theme.focusBorder : Theme.border
+                Accessible.role: Accessible.ListItem
+                Accessible.name: row.modelData.title + ", " + row.modelData.slides + "장"
+                Accessible.selected: row.isCurrent
                 opacity: row.dragged ? 0.9 : 1
                 Behavior on color { ColorAnimation { duration: Theme.fast } }
 
@@ -193,9 +238,8 @@ ColumnLayout {
                     variant: "ghost"
                     size: "small"
                     onClicked: panel.removeRequested(row.index)
-                    ToolTip.visible: hovered
-                    ToolTip.delay: 500
-                    ToolTip.text: "콘티에서 빼기"
+                    Accessible.name: "'" + row.modelData.title + "' 콘티에서 빼기"
+                    AppToolTip { visible: removeButton.hovered; text: "콘티에서 빼기" }
                 }
             }
         }
