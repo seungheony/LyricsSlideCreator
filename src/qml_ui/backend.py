@@ -1,3 +1,4 @@
+import errno
 import json
 import os
 import threading
@@ -48,6 +49,21 @@ class AlbumArtProvider(QQuickImageProvider):
             size.setWidth(img.width())
             size.setHeight(img.height())
         return img
+
+
+def _save_error(e, path):
+    """저장 실패 원인별 안내 (해요체)."""
+    detail = f'경로: {path}\n{type(e).__name__}: {e}'
+    if isinstance(e, FileNotFoundError):
+        msg = '저장할 폴더를 찾을 수 없어요. 폴더가 지워졌거나 USB·네트워크 드라이브가 빠졌는지 확인하고 다른 위치에 저장해 보세요.'
+    elif isinstance(e, PermissionError) or getattr(e, 'errno', None) in (errno.EACCES, errno.EPERM, errno.EROFS):
+        msg = ('이 파일에 쓸 수 없어요. PowerPoint 등에서 같은 파일이 열려 있다면 닫고 다시 시도하거나, '
+               '다른 이름·다른 폴더에 저장해 보세요. 읽기 전용 폴더일 수도 있어요.')
+    elif getattr(e, 'errno', None) in (errno.ENOSPC, getattr(errno, 'EDQUOT', errno.ENOSPC)):
+        msg = '저장 공간이 부족해요. 디스크 공간을 확보하거나 다른 드라이브에 저장해 보세요.'
+    else:
+        msg = '파일을 저장하지 못했어요. 다른 이름이나 다른 폴더에 저장해 보세요.'
+    return {'error': msg, 'detail': detail}
 
 
 class Backend(QObject):
@@ -187,8 +203,8 @@ class Backend(QObject):
             pass
 
     # ── PPT 생성 ──
-    @Slot(str, str)
-    def generatePpt(self, chunks_json, file_url):
+    @Slot(str, str, str)
+    def generatePpt(self, chunks_json, file_url, song_title=''):
         chunks = json.loads(chunks_json)
         save_path = QUrl(file_url).toLocalFile() or file_url
         if not save_path.lower().endswith('.pptx'):
@@ -200,13 +216,15 @@ class Backend(QObject):
                 result = {'error': '템플릿 파일을 찾을 수 없습니다.', 'detail': f'경로: {template}'}
             else:
                 try:
-                    buffer = PPTBuilder(template).generate_slides_to_memory(chunks)
+                    buffer = PPTBuilder(template).generate_slides_to_memory(chunks, song_title)
                     if not buffer:
                         result = {'error': 'PPT 생성 실패.', 'detail': '메모리에서 PPT 객체를 생성하지 못했습니다.'}
-                    elif not PPTBuilder.save_to_file(buffer, save_path):
-                        result = {'error': '파일 저장 실패.', 'detail': f'다음 경로에 파일을 쓸 수 없습니다:\n{save_path}\n\n권한 문제를 확인해주세요.'}
                     else:
-                        result = {'path': save_path}
+                        try:
+                            PPTBuilder.save_to_file(buffer, save_path)
+                            result = {'path': save_path}
+                        except OSError as e:
+                            result = _save_error(e, save_path)
                 except Exception:
                     result = {'error': 'PPT 생성 중 예외가 발생했습니다.', 'detail': traceback.format_exc()}
             self.generateFinished.emit(json.dumps(result, ensure_ascii=False))

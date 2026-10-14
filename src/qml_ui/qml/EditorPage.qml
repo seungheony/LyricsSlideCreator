@@ -344,7 +344,7 @@ Item {
         onAccepted: {
             page.lastSaveFolder = saveDialog.currentFolder
             page.generating = true
-            backend.generatePpt(JSON.stringify(page.blocks.map(b => b.lines.join("\n"))), selectedFile.toString())
+            backend.generatePpt(JSON.stringify(page.blocks.map(b => b.lines.join("\n"))), selectedFile.toString(), page.song ? page.song.title + " — " + page.song.artist : "")
         }
     }
 
