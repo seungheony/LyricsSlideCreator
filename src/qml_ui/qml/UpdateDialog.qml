@@ -163,13 +163,11 @@ Popup {
             lineHeight: 1.4
             wrapMode: Text.Wrap
         }
-        Text {
+        AppButton {
             visible: dialog.stage === "error" && dialog.errorDetail !== ""
-            text: detailBox.visible ? "▾ 자세히" : "▸ 자세히"
-            color: Theme.text3
-            font.family: Theme.font
-            font.pixelSize: 12
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: detailBox.visible = !detailBox.visible }
+            text: detailBox.visible ? "자세히 ▾" : "자세히 ▸"
+            variant: "ghost"; size: "small"
+            onClicked: detailBox.visible = !detailBox.visible
         }
         ScrollView {
             id: detailBox
@@ -178,8 +176,10 @@ Popup {
             Layout.preferredHeight: 140
             background: Rectangle { radius: 8; color: Theme.surface2 }
             TextArea {
+                id: detailText
                 text: dialog.errorDetail
                 readOnly: true
+                ContextMenu.menu: AppTextMenu { editor: detailText }
                 selectByMouse: true
                 wrapMode: TextEdit.Wrap
                 color: Theme.text2

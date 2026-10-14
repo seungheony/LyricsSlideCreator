@@ -21,6 +21,9 @@ Button {
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
     HoverHandler { cursorShape: Qt.PointingHandCursor }
+    // 키보드로 눌러지도록 (Space는 기본 동작). 확인창·튜토리얼에서 포커스된 버튼이 실행된다
+    Keys.onReturnPressed: click()
+    Keys.onEnterPressed: click()
 
     readonly property color fg: variant === "primary" ? Theme.primaryText
                                : variant === "danger" ? "white"
@@ -67,6 +70,9 @@ Button {
             if (control.variant === "ghost") return control.hovered ? Theme.surface2 : Theme.surface2Clear
             return control.hovered ? Theme.border : Theme.surface2
         }
+        // Tab으로 포커스가 왔을 때(visualFocus) 위치가 보이도록
+        border.width: control.visualFocus ? 2 : 0
+        border.color: Theme.primary
         Behavior on color { ColorAnimation { duration: Theme.fast } }
     }
 

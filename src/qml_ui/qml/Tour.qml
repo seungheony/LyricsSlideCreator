@@ -10,6 +10,7 @@ import "."
 //   끝까지 보면 opts.onFinished(), 건너뛰면 opts.onSkipped() (없으면 onFinished)
 Popup {
     id: tour
+    objectName: "tour"
 
     property var steps: []
     property int index: 0
@@ -47,6 +48,8 @@ Popup {
     readonly property int pad: 6     // 강조 영역이 대상보다 넓은 정도
     function prev() { if (index > 0) index-- }
 
+    onAboutToShow: contentItem.forceActiveFocus()
+
     parent: Overlay.overlay
     x: 0
     y: 0
@@ -73,18 +76,32 @@ Popup {
         return Qt.rect(p.x - pad, p.y - pad, t.width + pad * 2, t.height + pad * 2)
     }
 
-    // 설명 카드 위치: 강조 영역의 오른쪽 → 왼쪽 → 아래 → 위 순서로 들어갈 자리를 찾는다
+    // 설명 카드: 폭은 강조 영역 옆에 남은 자리에 맞춰 260~360으로 줄인다
+    readonly property int cardMargin: 16
+    readonly property int cardGap: 16
+    readonly property int cardMinWidth: 260
+    readonly property real rightSpace: width - cardMargin - (hole.x + hole.width + cardGap)
+    readonly property real leftSpace: hole.x - cardGap - cardMargin
+    readonly property real cardWidth: {
+        const full = Math.min(360, Math.max(0, width - cardMargin * 2))
+        if (!hasTarget) return full
+        if (rightSpace >= cardMinWidth) return Math.min(360, rightSpace)
+        if (leftSpace >= cardMinWidth) return Math.min(360, leftSpace)
+        return full
+    }
+
+    // 설명 카드 위치: 강조 영역의 오른쪽 → 왼쪽 → 아래 → 위 순서로 들어갈 자리를 찾는다.
+    // 어디에도 들어가지 않으면 강조 영역 밖(남은 자리가 더 넓은 쪽 화면 가장자리)에 붙여, 강조 영역과 예시를 최대한 덜 가린다
     function cardPos(cw, ch) {
-        const m = 16, gap = 16, W = width, H = height, r = hole
+        const m = cardMargin, gap = cardGap, W = width, H = height, r = hole
         const clampX = (v) => Math.max(m, Math.min(W - cw - m, v))
         const clampY = (v) => Math.max(m, Math.min(H - ch - m, v))
         if (!hasTarget) return Qt.point((W - cw) / 2, (H - ch) / 2)
-        if (r.x + r.width + gap + cw <= W - m) return Qt.point(r.x + r.width + gap, clampY(r.y))
-        if (r.x - gap - cw >= m) return Qt.point(r.x - gap - cw, clampY(r.y))
+        if (rightSpace >= cardMinWidth) return Qt.point(r.x + r.width + gap, clampY(r.y))
+        if (leftSpace >= cardMinWidth) return Qt.point(r.x - gap - cw, clampY(r.y))
         if (r.y + r.height + gap + ch <= H - m) return Qt.point(clampX(r.x + r.width / 2 - cw / 2), r.y + r.height + gap)
         if (r.y - gap - ch >= m) return Qt.point(clampX(r.x + r.width / 2 - cw / 2), r.y - gap - ch)
-        // 들어갈 자리가 없으면 강조 영역 안쪽 아래에 겹쳐 띄운다
-        return Qt.point(clampX(r.x + r.width - cw - gap), clampY(r.y + r.height - ch - gap))
+        return Qt.point(rightSpace >= leftSpace ? W - cw - m : m, clampY(r.y + r.height / 2 - ch / 2))
     }
 
     contentItem: Item {
@@ -117,15 +134,6 @@ Popup {
         Rectangle { color: parent.dim; x: 0; y: spot.y; width: Math.max(0, spot.x); height: spot.height }
         Rectangle { color: parent.dim; x: spot.x + spot.width; y: spot.y; width: Math.max(0, parent.width - x); height: spot.height }
 
-        Rectangle {
-            visible: tour.hasTarget
-            x: spot.x; y: spot.y; width: spot.width; height: spot.height
-            radius: 6
-            color: "transparent"
-            border.width: 2
-            border.color: Theme.primary
-        }
-
         // ── 예시 동작 ── 강조 영역이 자리를 잡은 뒤에 만들어, 대상 위치를 정확히 계산할 수 있게 한다
         // (바인딩으로 두면 단계가 바뀌는 순간 새 예시가 이전 위치에 잠깐 만들어져 깜빡이므로 직접 넣고 뺀다)
         Loader {
@@ -146,13 +154,23 @@ Popup {
             }
         }
 
+        // 강조 테두리: 예시(불투명한 복제본) 위에 그려야 가려지지 않는다
+        Rectangle {
+            visible: tour.hasTarget
+            x: spot.x; y: spot.y; width: spot.width; height: spot.height
+            radius: 6
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.primary
+        }
+
         // ── 설명 카드 ──
         Rectangle {
             id: card
             readonly property point pos: tour.cardPos(width, height)
             x: pos.x
             y: pos.y
-            width: 360
+            width: tour.cardWidth
             height: body.implicitHeight + 40
             radius: 16
             color: Theme.surface

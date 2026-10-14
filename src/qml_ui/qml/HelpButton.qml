@@ -11,7 +11,10 @@ Button {
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
     HoverHandler { cursorShape: Qt.PointingHandCursor }
-    Accessible.name: "도움말"
+    property string label: ""    // 어느 부분의 도움말인지 (화면 읽기용 이름: "<label> 도움말")
+    Accessible.name: label ? label + " 도움말" : "도움말"
+    Keys.onReturnPressed: click()
+    Keys.onEnterPressed: click()
 
     contentItem: Text {
         text: "?"
@@ -31,13 +34,11 @@ Button {
         y: (control.height - height) / 2
         radius: width / 2
         color: control.hovered ? Theme.primarySoft : Qt.rgba(Theme.primarySoft.r, Theme.primarySoft.g, Theme.primarySoft.b, 0)
-        border.width: 1.5
-        border.color: control.hovered ? Theme.primary : Theme.text3
-        opacity: control.hovered ? 1 : 0.7
+        border.width: control.visualFocus ? 2.5 : 1.5
+        border.color: control.hovered || control.visualFocus ? Theme.primary : Theme.text3
+        opacity: control.hovered || control.visualFocus ? 1 : 0.7
         Behavior on color { ColorAnimation { duration: Theme.fast } }
     }
 
-    ToolTip.visible: hovered
-    ToolTip.delay: 400
-    ToolTip.text: "사용 방법 보기"
+    AppToolTip { visible: control.hovered; delay: 400; text: "사용 방법 보기" }
 }

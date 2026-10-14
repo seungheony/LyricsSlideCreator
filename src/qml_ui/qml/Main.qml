@@ -176,7 +176,9 @@ ApplicationWindow {
             searchPage.loadingId = ""
             const det = JSON.parse(json)
             if (det.error) {
-                dialog.showError(det.error, det.detail, { text: "직접 입력으로 열기", handler: () => win.openManual(song) })
+                const fresh = win.pendingFresh
+                dialog.showError(det.error, det.detail, { text: "직접 입력으로 열기", handler: () => win.openManual(song) },
+                                 det.retry ? { handler: () => { win.cancelOpen(); win.loadSong(song, fresh) } } : null)
                 return
             }
             win.placeSong(song, det.lyrics, win.pendingFresh)
@@ -194,6 +196,7 @@ ApplicationWindow {
     // ── 페이지 (좌우로 살짝 밀리며 전환) ──
     SearchPage {
         id: searchPage
+        objectName: "searchPage"
         bottomInset: resumeChip.visible ? resumeChip.height + 12 : 0
         anchors.top: updateBanner.bottom
         anchors.left: parent.left
@@ -314,8 +317,8 @@ ApplicationWindow {
         z: 100
     }
 
-    AppDialog { id: dialog }
-    ConfirmDialog { id: confirmDialog }
+    AppDialog { id: dialog; objectName: "errorDialog" }
+    ConfirmDialog { id: confirmDialog; objectName: "confirmDialog" }
 
     Tour { id: tour }
 

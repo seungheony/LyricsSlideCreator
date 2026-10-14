@@ -10,7 +10,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QGuiApplication, QImage
 from PySide6.QtQml import QQmlImageProviderBase
 from PySide6.QtQuick import QQuickImageProvider
 
@@ -91,6 +91,17 @@ def search_error(e):
     return {'kind': e.kind, 'status': e.status, 'message': msg}
 
 
+def error_report(title, detail, version=None):
+    """오류 정보 복사용 글: 버전·운영체제·제목·자세한 내용. 사용자 폴더 경로는 '~'로 바꿔 계정 이름이 새지 않게 한다"""
+    home = os.path.expanduser('~')
+    text = detail or ''
+    if home and home not in ('~', os.sep):
+        for variant in {home, home.replace('\\', '/')}:
+            text = text.replace(variant, '~')
+    head = f'가사 슬라이드 생성기 v{version or get_version()} · {sys.platform}'
+    return '\n'.join([head, title, '', text]).strip() + '\n'
+
+
 def detail_error(det):
     """가사를 못 얻은 원인별 안내 (해요체). det['reason']: adult, no_lyrics, not_found, network, http, parse"""
     reason = det.get('reason')
@@ -150,6 +161,11 @@ class Backend(QObject):
     @Slot(result=str)
     def version(self):
         return get_version()
+
+    @Slot(str, str)
+    def copyErrorReport(self, title, detail):
+        """오류 대화상자의 '오류 정보 복사': 개발자에게 알릴 때 붙여 넣을 글을 클립보드에 둔다"""
+        QGuiApplication.clipboard().setText(error_report(title, detail))
 
     @Slot(result=str)
     def templateName(self):
@@ -271,11 +287,12 @@ class Backend(QObject):
                 det = self._detail(song_id)
                 image_url = det.get('image_url', '')
                 if det['reason']:
-                    out = {'error': detail_error(det)}
+                    # retry: 다시 시도하면 될 수 있는 실패 (연결·응답 문제). 가사가 없는 곡 등은 다시 시도해도 같다
+                    out = {'error': detail_error(det), 'retry': det['reason'] in ('network', 'http')}
                 else:
                     out = {'song_id': song_id, 'lyrics': det['lyrics']}
             except Exception:
-                out = {'error': '가사를 불러오다 문제가 생겼어요.', 'detail': traceback.format_exc()}
+                out = {'error': '가사를 불러오다 문제가 생겼어요.', 'detail': traceback.format_exc(), 'retry': True}
             # 가사를 먼저 보내고, 앨범아트는 뒤에 받는다 (편집 화면은 artReady로 나중에 채운다)
             self.detailFinished.emit(token, json.dumps(out, ensure_ascii=False))
             if image_url and 'error' not in out and not self._art.has(song_id):

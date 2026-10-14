@@ -422,10 +422,12 @@ Item {
                                     width: lines.width
                                     height: lineText.height + 6
 
-                                    ToolTip.visible: wraps && lineMouse.containsMouse && !drag.active
-                                    ToolTip.delay: 300
-                                    ToolTip.text: "PPT에서 두 줄로 나뉘어요 · " + (ratio < 1.005 ? "글상자 폭을 아주 조금 넘어요"
-                                                                                     : "글상자 폭의 " + Math.round(ratio * 100) + "%")
+                                    AppToolTip {
+                                        visible: wraps && lineMouse.containsMouse && !drag.active
+                                        delay: 300
+                                        text: "PPT에서 두 줄로 나뉘어요 · " + (ratio < 1.005 ? "글상자 폭을 아주 조금 넘어요"
+                                                                                : "글상자 폭의 " + Math.round(ratio * 100) + "%")
+                                    }
 
                                     Rectangle {
                                         anchors.centerIn: parent
