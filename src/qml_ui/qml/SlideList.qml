@@ -26,6 +26,7 @@ Item {
     function scrollToTop() { flick.contentY = 0 }
 
     function ensureVisible(idx) {
+        col.forceLayout()
         const it = rep.itemAt(idx)
         if (!it) return
         const top = col.y + it.y + it.cardY
@@ -86,8 +87,8 @@ Item {
         indicator.visible = false
     }
 
-    function cardTop(i) { const it = rep.itemAt(i); return it.y + it.cardY }
-    function cardBottom(i) { const it = rep.itemAt(i); return it.y + it.cardY + it.cardHeight }
+    function cardTop(i) { col.forceLayout(); const it = rep.itemAt(i); return it.y + it.cardY }
+    function cardBottom(i) { col.forceLayout(); const it = rep.itemAt(i); return it.y + it.cardY + it.cardHeight }
 
     // 포인터 위치 → 놓을 위치 계산 및 삽입선 표시
     function updateTarget() {

@@ -147,7 +147,7 @@ ApplicationWindow {
         onActivated: editorPage.undo()
     }
     Shortcut {
-        sequences: [StandardKey.Redo, "Ctrl+Shift+Z"]
+        sequences: [StandardKey.Redo]
         enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
         onActivated: editorPage.redo()
     }

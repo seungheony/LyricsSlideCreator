@@ -3,6 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import QtQuick.Effects
+import QtCore
 import "."
 import "editor.js" as E
 
@@ -21,6 +22,8 @@ Item {
     property int active: -1          // 가사 커서가 위치한 슬라이드
     property bool applying: false    // 코드에서 텍스트를 바꾸는 중 (입력 이벤트 무시)
     property bool generating: false
+    // 세션 동안 마지막으로 PPT를 저장한 폴더(메모리에만 둠). 비어 있으면 문서 폴더
+    property url lastSaveFolder: ""
 
     signal backRequested()
 
@@ -301,7 +304,14 @@ Item {
             return
         }
         const name = (song ? song.title + " — " + song.artist : "lyrics").replace(/[\/\\:*?"<>|]/g, "_")
-        saveDialog.selectedFile = saveDialog.currentFolder + "/" + name + ".pptx"
+        // FileDialog 기본 폴더는 프로세스 작업 폴더(설치 폴더일 수 있음)라 쓰지 않는다
+        let folder = page.lastSaveFolder
+        if (folder.toString() === "") {
+            const docs = StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+            folder = docs.toString() !== "" ? docs : StandardPaths.writableLocation(StandardPaths.DesktopLocation)
+        }
+        saveDialog.currentFolder = folder
+        saveDialog.selectedFile = folder.toString().replace(/\/+$/, "") + "/" + encodeURIComponent(name) + ".pptx"
         saveDialog.open()
     }
 
@@ -332,6 +342,7 @@ Item {
         defaultSuffix: "pptx"
         nameFilters: ["PowerPoint (*.pptx)"]
         onAccepted: {
+            page.lastSaveFolder = saveDialog.currentFolder
             page.generating = true
             backend.generatePpt(JSON.stringify(page.blocks.map(b => b.lines.join("\n"))), selectedFile.toString())
         }
@@ -409,6 +420,7 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: page.song ? page.song.title : ""
+                        textFormat: Text.PlainText
                         color: Theme.text
                         font.family: Theme.font
                         font.pixelSize: 20
@@ -417,7 +429,8 @@ Item {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: page.song ? page.song.artist + " · " + page.song.album : ""
+                        text: page.song ? [page.song.artist, page.song.album].filter(Boolean).join(" · ") : ""
+                        textFormat: Text.PlainText
                         color: Theme.text2
                         font.family: Theme.font
                         font.pixelSize: 14

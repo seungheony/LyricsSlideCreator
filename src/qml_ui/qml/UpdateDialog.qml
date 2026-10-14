@@ -149,6 +149,8 @@ Popup {
                 text: "업데이트"
                 variant: "primary"
                 onClicked: {
+                    // '변경 내용'에서 눌러도 편집 중 경고가 있는 확인 단계를 거친다
+                    if (dialog.stage === "notes") { dialog.stage = "confirm"; return }
                     dialog.progress = 0
                     dialog.stage = "downloading"
                     backend.startUpdate()

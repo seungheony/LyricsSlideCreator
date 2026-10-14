@@ -381,6 +381,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: row.modelData.title
+                                textFormat: Text.PlainText
                                 color: Theme.text
                                 font.family: Theme.font
                                 font.pixelSize: 15
@@ -389,7 +390,8 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: row.modelData.artist + " · " + row.modelData.album
+                                text: [row.modelData.artist, row.modelData.album].filter(Boolean).join(" · ")
+                                textFormat: Text.PlainText
                                 color: Theme.text3
                                 font.family: Theme.font
                                 font.pixelSize: 13

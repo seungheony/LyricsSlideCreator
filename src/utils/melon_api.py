@@ -24,23 +24,25 @@ class MelonScraper:
             
             for row in rows:
                 try:
-                    song_link = row.select_one('a[href*="goSongDetail"]')
-                    if not song_link: continue
-                    
-                    song_id_match = re.search(r"goSongDetail\('(\d+)'\)", song_link['href'])
-                    song_id = song_id_match.group(1) if song_id_match else ""
-                    title = song_link.get_text(strip=True).replace("상세정보 페이지 이동", "").strip()
-                    
-                    artist_div = row.select_one('#artistName')
-                    artist = artist_div.get_text(strip=True) if artist_div else "아티스트 미상"
-                    # 중복 아티스트명 제거 (예: "아티스트아티스트" -> "아티스트")
-                    if artist and len(artist) > 0 and len(artist) % 2 == 0:
-                        half = len(artist) // 2
-                        if artist[:half] == artist[half:]:
-                            artist = artist[:half]
-                    
+                    # 멜론은 검색어를 <b>로 감싸 텍스트 조각을 이으면 띄어쓰기가 사라진다.
+                    # 그래서 조각 대신 속성 값(value/title)을 쓰고 NBSP 등은 공백 하나로 정리한다.
+                    check = row.select_one('input.input_check')
+                    song_id = check.get('value', '') if check else ''
+                    if not song_id:
+                        song_link = row.select_one('a[href*="goSongDetail"]')
+                        m = re.search(r"goSongDetail\('(\d+)'\)", song_link['href']) if song_link else None
+                        song_id = m.group(1) if m else ''
+
+                    title_link = row.select_one('a.fc_gray')
+                    title = ' '.join(((title_link.get('title') or title_link.get_text()) if title_link else '').split())
+                    title = title.replace('상세정보 페이지 이동', '').strip()
+
+                    artists = [' '.join(a.get_text().split()) for a in row.select('#artistName > a')]
+                    artist = ', '.join(a for a in artists if a) or "아티스트 미상"
+
                     album_link = row.select_one('a[href*="goAlbumDetail"]')
-                    album = album_link.get_text(strip=True) if album_link else "앨범 미상"
+                    album = ' '.join((album_link.get('title', '') if album_link else '').split())
+                    album = album.replace(' - 페이지 이동', '').strip() or "앨범 미상"
 
                     if song_id:
                         results.append({'song_id': song_id, 'title': title, 'artist': artist, 'album': album})

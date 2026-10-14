@@ -10,10 +10,7 @@ def global_exception_hook(exctype, value, tb):
     """
     error_msg = "".join(traceback.format_exception(exctype, value, tb))
     print(f"--- UNCAUGHT EXCEPTION ---\n{error_msg}")
-    # 여기에 파일로 저장하는 로직을 추가할 수도 있습니다.
-    # with open("crash_log.txt", "a") as f:
-    #     f.write(f"{error_msg}\n")
-    sys.exit(1)
+    # 종료하지 않는다: 슬롯 예외로 sys.exit를 부르면 QML 핸들러 실행 중 abort로 죽는다
 
 sys.excepthook = global_exception_hook
 # --- 전역 예외 처리기 끝 ---
