@@ -116,11 +116,13 @@ _CONVENTIONAL = r'(?:feat|fix|docs|chore|refactor|test|perf|style|build|ci|rever
 def release_notes(body):
     """릴리스 노트에서 사용자에게 보여 줄 부분(마크다운).
 
-    '## 바뀐 점' 섹션이 있으면 그것만. 없으면 GitHub 자동 노트에서 기여자·PR 주소('by @… in URL'),
+    '## 바뀐 점' 섹션이 있으면 그것만. 없으면 GitHub 자동 노트에서 코드 서명 정책 링크, 기여자·PR 주소('by @… in URL'),
     'Full Changelog', 새 기여자 섹션, 커밋 접두어(feat:, fix: …)를 걷어 낸다.
     """
     text = (body or '').replace('\r\n', '\n')
     text = re.sub(r'<!--.*?-->', '', text, flags=re.S)
+    # 릴리스 페이지에 붙이는 코드 서명 정책 링크(release.yml)는 앱에 보여 주지 않는다
+    text = re.sub(r'^\[Code signing policy\]\([^)]*\)[ \t]*$', '', text, flags=re.M)
     m = re.search(r'^#{1,3}\s*바뀐\s*점\s*$', text, re.M)
     if m:
         rest = text[m.end():]

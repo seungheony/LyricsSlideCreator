@@ -96,6 +96,33 @@ Nuitka로 C 컴파일하므로 macOS는 Xcode Command Line Tools, Windows는 Vis
 4.  **템플릿**: 지금은 기본 템플릿으로 만듭니다. 직접 만든 템플릿은 추후 지원할 예정입니다.
 5.  **PPT 생성**: `PPT 생성`(⌘Enter / Ctrl+Enter)을 눌러 저장합니다. 콘티의 곡을 순서대로 한 파일로 만들고, 처음·곡 사이·끝에 검은 빈 슬라이드를 넣습니다(곡이 하나여도 같음). 기본 파일 이름은 곡이 하나면 '제목 — 가수', 여럿이면 'YYYY-MM-DD 예배 가사'입니다.
 
+## Code signing policy
+
+Windows 배포 파일(앱 실행 파일과 설치 파일)은 [SignPath Foundation](https://signpath.org) 무료 코드 서명 프로그램에 신청해 승인을 기다리고 있습니다. 승인되면 아래 정책에 따라 서명합니다.
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) *(pending approval)*.
+
+*   **서명 대상**: 이 저장소의 소스에서 GitHub Actions(GitHub 호스팅 러너, [`release.yml`](.github/workflows/release.yml))로 빌드한 Windows 릴리스 파일(`LyricsSlideCreator.exe`, `LyricsSlideCreator-<버전>-Setup.exe`)만 서명합니다. 함께 들어 있는 서드파티 라이브러리(Python, Qt 등)는 각 배포처의 파일을 그대로 씁니다.
+*   **승인**: 서명 요청은 릴리스마다 아래 승인자가 직접 확인하고 승인합니다.
+*   **배포처**: 공식 배포처는 이 저장소의 [Releases](https://github.com/seungheony/lyricsSlide_Creator/releases)뿐입니다. 각 릴리스의 `SHA256SUMS.txt`로 파일을 확인할 수 있습니다.
+*   **macOS**: macOS 앱은 이 프로그램 대상이 아니며, 아직 Apple Developer ID로 서명·공증하지 않았습니다.
+
+### Team roles
+
+*   Committers and reviewers: [@seungheony](https://github.com/seungheony)
+*   Approvers: [@seungheony](https://github.com/seungheony)
+
+### Privacy policy
+
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it, except for the update check described below. No personal information is collected or sent.
+
+이 프로그램은 개인정보를 수집하거나 보내지 않습니다. 네트워크 통신은 다음뿐입니다.
+
+*   **멜론(melon.com)**: 사용자가 검색하거나 곡을 고를 때 검색어·곡 번호로 검색 결과, 가사, 앨범아트를 받아 옵니다.
+*   **GitHub(api.github.com, github.com)**: 앱을 실행하면 이 저장소의 공개 릴리스 목록을 받아 새 버전이 있는지 확인합니다(개발 모드에서는 하지 않음). 사용자가 [업데이트]를 누르면 설치 파일과 `SHA256SUMS.txt`를 받습니다. 인터넷 접속에 필요한 정보(IP 주소 등) 외에는 아무것도 보내지 않습니다.
+
+각 서비스가 요청을 처리할 때는 해당 서비스의 개인정보 처리방침이 적용됩니다(예: [GitHub 개인정보 처리방침](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)).
+
 ## 라이선스
 
 이 프로젝트는 [MIT 라이선스](LICENSE)로 공개돼 있고, 포함된 서드파티 소프트웨어의 라이선스는 앱과 함께 배포되는 `THIRD_PARTY_NOTICES.txt`에 있습니다. 이 앱은 멜론에서 가사를 가져오는 도구일 뿐이며, 가사의 저작권은 각 저작권자에게 있습니다. 가져온 가사를 공연·예배 등에 사용하거나 배포할 때 필요한 이용 허락을 받는 것은 사용자의 책임입니다.
