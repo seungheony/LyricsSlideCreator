@@ -1,12 +1,14 @@
 import errno
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
 import threading
 import traceback
 from collections import OrderedDict
+from urllib.parse import urlencode
 from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, QUrl, Signal, Slot
@@ -102,6 +104,13 @@ def error_report(title, detail, version=None):
     return '\n'.join([head, title, '', text]).strip() + '\n'
 
 
+def feedback_url(version=None):
+    """'문의하기': GitHub 새 이슈 화면 주소. 이슈 양식(.github/ISSUE_TEMPLATE/feedback.yml)의
+    버전·운영체제 칸을 미리 채운다 (개인정보 없음)"""
+    query = {'template': 'feedback.yml', 'version': version or get_version(), 'os': platform.platform(terse=True)}
+    return f'https://github.com/{updater.REPO}/issues/new?' + urlencode(query)
+
+
 def detail_error(det):
     """가사를 못 얻은 원인별 안내 (해요체). det['reason']: adult, no_lyrics, not_found, network, http, parse"""
     reason = det.get('reason')
@@ -166,6 +175,10 @@ class Backend(QObject):
     def copyErrorReport(self, title, detail):
         """오류 대화상자의 '오류 정보 복사': 개발자에게 알릴 때 붙여 넣을 글을 클립보드에 둔다"""
         QGuiApplication.clipboard().setText(error_report(title, detail))
+
+    @Slot(result=str)
+    def feedbackUrl(self):
+        return feedback_url()
 
     @Slot(result=str)
     def templateName(self):
