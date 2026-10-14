@@ -38,6 +38,12 @@ class ReleaseNotes(unittest.TestCase):
         self.assertEqual(updater.release_notes(NOTES_GENERATED),
                          '* 줄바꿈 경고 표시\n* 다운로드 취소\n* 검색 속도 개선')
 
+    def test_signing_policy_link_removed(self):
+        link = '[Code signing policy](https://github.com/seungheony/lyricsSlide_Creator#code-signing-policy)'
+        self.assertEqual(updater.release_notes(link + '\n\n' + NOTES_GENERATED),
+                         '* 줄바꿈 경고 표시\n* 다운로드 취소\n* 검색 속도 개선')
+        self.assertEqual(updater.release_notes(link), '')
+
     def test_empty(self):
         for body in ('', None, '**Full Changelog**: https://github.com/a/b/compare/v1...v2'):
             self.assertEqual(updater.release_notes(body), '')

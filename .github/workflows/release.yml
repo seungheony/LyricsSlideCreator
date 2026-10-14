@@ -149,7 +149,9 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           tag="${GITHUB_REF_NAME}"
-          args=(--generate-notes)
+          # SignPath Foundation 조건: 릴리스 페이지에 'Code signing policy' 링크 (앱의 업데이트 안내에서는 updater.release_notes가 뺀다)
+          policy="[Code signing policy](https://github.com/${REPO}#code-signing-policy)"
+          args=(--generate-notes --notes "$policy")
           case "$tag" in
             *-*)
               args+=(--prerelease) ;;
