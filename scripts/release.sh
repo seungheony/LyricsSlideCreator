@@ -61,6 +61,26 @@ stable_release_ready() {
     [ "$count" = 3 ]
 }
 
+# 베타 릴리스(프리릴리스)가 파일 3개와 함께 올라가 있는지. 정식 배포 전에 대상 베타의 빌드가 성공했는지 확인하는 데 쓴다
+beta_release_ready() {
+    local count
+    count=$(gh release view "$1" --repo "$REPO" --json isPrerelease,isDraft,assets --jq '
+        if (.isPrerelease | not) or .isDraft then 0
+        else [.assets[].name | select(endswith("-Setup.exe") or endswith("-macOS.zip") or . == "SHA256SUMS.txt")] | length
+        end' 2>/dev/null) || return 1
+    [ "$count" = 3 ]
+}
+
+# 태그를 만들어 올린다. 올리지 못하면 로컬 태그를 지워, 다음 실행이 '이미 정식 배포됨'으로 막히지 않게 한다
+push_tag() {
+    local tag="$1" commit="$2"
+    git tag "$tag" "$commit"
+    if ! git push origin "$tag"; then
+        git tag -d "$tag" >/dev/null
+        die "태그 $tag 를 올리지 못했습니다. 로컬 태그는 지웠습니다. 네트워크·권한을 확인한 뒤 다시 실행하세요"
+    fi
+}
+
 # 정식 릴리스를 확인한 뒤 그 버전의 베타 릴리스를 지운다 (목록을 보여주고 확인을 받는다)
 clean_betas() {
     local stable="$1" betas tag
@@ -210,7 +230,9 @@ main() {
         stable)
             tag="${pending%-beta.*}"
             commit=$(git rev-list -n 1 "$pending")
-            echo "마지막 베타 $pending 를 정식 $tag 로 배포합니다."
+            beta_release_ready "$pending" \
+                || die "$pending 의 베타 릴리스가 없거나 파일 3개(-Setup.exe, -macOS.zip, SHA256SUMS.txt)가 다 올라가지 않았습니다(빌드 실패?). Actions를 확인하고 베타를 다시 배포하세요"
+            echo "마지막 베타 $pending 를 정식 $tag 로 배포합니다. (베타 릴리스와 파일 3개 확인함)"
             later=$(git rev-list --count "$commit..HEAD")
             if [ "$later" -gt 0 ]; then
                 echo "참고: master에 $pending 이후 커밋 ${later}개가 더 있습니다. 이 커밋들은 이번 정식 버전에 포함되지 않습니다."
@@ -224,8 +246,7 @@ main() {
     echo
     confirm "이 태그를 올릴까요? 올리면 릴리스가 만들어지고 사용자에게 업데이트 알림이 갑니다." || die "취소했습니다"
 
-    git tag "$tag" "$commit"
-    git push origin "$tag"
+    push_tag "$tag" "$commit"
     echo
     echo "올렸습니다. 진행 상황: https://github.com/$REPO/actions"
 
