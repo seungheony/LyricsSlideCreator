@@ -265,7 +265,7 @@ Item {
 
         Text {
             Layout.alignment: Qt.AlignHCenter
-            text: "가사 슬라이드 생성기"
+            text: "Lyrics Slide Creator"
             color: Theme.text
             font.family: Theme.font
             font.pixelSize: page.hasResults ? 20 : 28

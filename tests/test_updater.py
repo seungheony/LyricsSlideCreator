@@ -253,7 +253,7 @@ class CanInstallMac(UpdaterTmp):
         p.start()
         self.addCleanup(p.stop)
         self.apps = os.path.join(self.tmp, 'Applications')
-        self.app = os.path.join(self.apps, '가사 슬라이드 생성기.app')
+        self.app = os.path.join(self.apps, 'Lyrics Slide Creator.app')
         os.makedirs(self.app)
 
     def check(self, app):
@@ -269,7 +269,7 @@ class CanInstallMac(UpdaterTmp):
 
     def test_translocated(self):
         with self.assertRaises(updater.UpdateError) as cm:
-            self.check('/private/var/folders/x/AppTranslocation/ABC/d/가사 슬라이드 생성기.app')
+            self.check('/private/var/folders/x/AppTranslocation/ABC/d/Lyrics Slide Creator.app')
         self.assertIn('응용 프로그램', str(cm.exception))
 
     @unittest.skipIf(os.name == 'nt' or (hasattr(os, 'geteuid') and os.geteuid() == 0), '권한 시험은 일반 사용자 유닉스에서만')
@@ -323,7 +323,7 @@ class ApplyScript(unittest.TestCase):
         os.chmod(os.path.join(bin_dir, 'open'), 0o755)
         self.env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ['PATH'])
         self.result = os.path.join(self.work, 'result.txt')
-        self.new = os.path.join(self.work, 'extracted', '가사 슬라이드 생성기.app')
+        self.new = os.path.join(self.work, 'extracted', 'Lyrics Slide Creator.app')
 
     def apply(self, old, dest, pid=None, wait=5):
         if pid is None:
@@ -352,54 +352,54 @@ class ApplyScript(unittest.TestCase):
         return sorted(os.listdir(self.apps))
 
     def test_replace_in_place(self):
-        old = os.path.join(self.apps, '가사 슬라이드 생성기.app')
+        old = os.path.join(self.apps, 'Lyrics Slide Creator.app')
         make_app(old, 'old')
         make_app(self.new, 'new')
         r = self.apply(old, old)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.marker(old), 'new')
-        self.assertEqual(self.leftovers(), ['가사 슬라이드 생성기.app'])    # 백업도 지웠다
+        self.assertEqual(self.leftovers(), ['Lyrics Slide Creator.app'])    # 백업도 지웠다
         self.assertEqual(self.opened_paths(), [old])
         self.assertFalse(os.path.exists(self.result))
 
     def test_legacy_name_moved_to_new_name(self):
-        old = os.path.join(self.apps, 'Lyrics Slide Creator.app')
-        dest = os.path.join(self.apps, '가사 슬라이드 생성기.app')
+        old = os.path.join(self.apps, '가사 슬라이드 생성기.app')
+        dest = os.path.join(self.apps, 'Lyrics Slide Creator.app')
         make_app(old, 'old')
         make_app(self.new, 'new')
         r = self.apply(old, dest)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.leftovers(), ['가사 슬라이드 생성기.app'])
+        self.assertEqual(self.leftovers(), ['Lyrics Slide Creator.app'])
         self.assertEqual(self.marker(dest), 'new')
         self.assertEqual(self.opened_paths(), [dest])
 
     def test_missing_executable_rolls_back(self):
-        old = os.path.join(self.apps, '가사 슬라이드 생성기.app')
+        old = os.path.join(self.apps, 'Lyrics Slide Creator.app')
         make_app(old, 'old')
         make_app(self.new, 'new', exe='missing', sign=False)
         r = self.apply(old, old)
         self.assertEqual(r.returncode, 1)
         self.assertEqual(self.marker(old), 'old')
-        self.assertEqual(self.leftovers(), ['가사 슬라이드 생성기.app'])
+        self.assertEqual(self.leftovers(), ['Lyrics Slide Creator.app'])
         self.assertIn('실행 파일', self.read_result())
         self.assertEqual(self.opened_paths(), [old])    # 이전 앱을 다시 연다
 
     def test_bad_signature_rolls_back(self):
-        old = os.path.join(self.apps, 'Lyrics Slide Creator.app')
-        dest = os.path.join(self.apps, '가사 슬라이드 생성기.app')
+        old = os.path.join(self.apps, '가사 슬라이드 생성기.app')
+        dest = os.path.join(self.apps, 'Lyrics Slide Creator.app')
         make_app(old, 'old')
         make_app(self.new, 'new')
         with open(os.path.join(self.new, 'Contents', 'MacOS', 'run'), 'a') as f:
             f.write('# 서명 뒤에 바뀜\n')
         r = self.apply(old, dest)
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(self.leftovers(), ['Lyrics Slide Creator.app'])
+        self.assertEqual(self.leftovers(), ['가사 슬라이드 생성기.app'])
         self.assertEqual(self.marker(old), 'old')
         self.assertIn('서명', self.read_result())
         self.assertEqual(self.opened_paths(), [old])
 
     def test_wait_timeout_leaves_app_alone(self):
-        old = os.path.join(self.apps, '가사 슬라이드 생성기.app')
+        old = os.path.join(self.apps, 'Lyrics Slide Creator.app')
         make_app(old, 'old')
         make_app(self.new, 'new')
         still_running = subprocess.Popen(['sleep', '30'])

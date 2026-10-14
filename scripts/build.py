@@ -3,7 +3,7 @@
 사용법:
     python scripts/build.py 1.2.0
 
-- macOS:   dist/가사 슬라이드 생성기.app  +  dist/LyricsSlideCreator-<버전>-macOS.zip
+- macOS:   dist/Lyrics Slide Creator.app  +  dist/LyricsSlideCreator-<버전>-macOS.zip
 - Windows: dist/LyricsSlideCreator-<버전>-Setup.exe  (Inno Setup 필요: iscc가 PATH에 있거나 기본 설치 경로)
 
 Nuitka로 폴더 형태(standalone)/앱 번들로 빌드한다. 실행 파일 하나(onefile)와 달리
@@ -25,7 +25,7 @@ from src.utils.version import parse_version  # noqa: E402
 
 # 화면에 보이는 이름. 파일 이름·번들 ID 등 업데이트와 연결된 내부 이름(APP_FILE_NAME, BUNDLE_ID)은 바꾸지 않는다
 # (macOS 업데이트는 새 앱을 기존 .app 경로 그대로 덮어쓰므로 .app 이름이 바뀌어도 업데이트에는 영향 없음)
-APP_NAME = '가사 슬라이드 생성기'
+APP_NAME = 'Lyrics Slide Creator'
 APP_FILE_NAME = 'LyricsSlideCreator'
 BUNDLE_ID = 'io.github.seungheony.lyricsslidecreator'
 BUILD_INFO = os.path.join(ROOT, 'src', 'utils', '_build_info.py')
@@ -79,7 +79,8 @@ def nuitka(version, extra):
         '--include-data-files=LICENSE=LICENSE',
         f'--include-data-files={NOTICES}=THIRD_PARTY_NOTICES.txt',
         f'--output-dir={BUILD}',
-        f'--product-name={APP_NAME}', f'--product-version={numeric_version(version)}',
+        # 제품 이름은 SignPath에 등록한 프로젝트 이름과 같아야 한다 (서명 조건)
+        f'--product-name={APP_FILE_NAME}', f'--product-version={numeric_version(version)}',
         f'--file-version={numeric_version(version)}', '--company-name=seungheony',
         f'--file-description={APP_NAME}',
         *extra, *excludes, 'run.py',

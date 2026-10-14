@@ -1,4 +1,4 @@
-﻿; 가사 슬라이드 생성기 (Lyrics Slide Creator) — Windows 설치 파일 (Inno Setup 6)
+﻿; Lyrics Slide Creator — Windows 설치 파일 (Inno Setup 6)
 ; 한글 이름을 읽을 수 있도록 UTF-8(BOM)으로 저장한다
 ; scripts/build.py 가 /DAppVersion, /DAppNumericVersion, /DSourceDir, /DOutputDir 를 넘겨 컴파일한다.
 ;
@@ -14,7 +14,7 @@
 #endif
 
 ; 화면에 보이는 이름. AppId·설치 폴더·실행 파일 이름은 업데이트와 연결되므로 바꾸지 않는다
-#define AppName "가사 슬라이드 생성기"
+#define AppName "Lyrics Slide Creator"
 #define AppExe "LyricsSlideCreator.exe"
 
 [Setup]
@@ -57,9 +57,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [InstallDelete]
 ; 업데이트할 때 이전 버전 파일이 섞이지 않도록 앱 폴더를 비우고 새로 설치한다
 Type: filesandordirs; Name: "{app}\*"
-; 영문 이름(Lyrics Slide Creator) 시절의 바로가기 (이름이 바뀌어 새 바로가기와 따로 남으므로 지운다)
-Type: files; Name: "{autoprograms}\Lyrics Slide Creator.lnk"
-Type: files; Name: "{autodesktop}\Lyrics Slide Creator.lnk"
+; 한글 이름(가사 슬라이드 생성기, v1.2.0-beta.4~v1.3.0) 시절의 바로가기 (이름이 바뀌어 새 바로가기와 따로 남으므로 지운다)
+Type: files; Name: "{autoprograms}\가사 슬라이드 생성기.lnk"
+Type: files; Name: "{autodesktop}\가사 슬라이드 생성기.lnk"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

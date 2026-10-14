@@ -54,7 +54,7 @@ def create_app(argv):
     os.environ['QSG_RHI_DISABLE_DISK_CACHE'] = '1'
     app = QGuiApplication(argv)
     app.setApplicationName('Lyrics Slide Creator')   # 내부 이름 (바꾸지 않는다)
-    app.setApplicationDisplayName('가사 슬라이드 생성기')
+    app.setApplicationDisplayName('Lyrics Slide Creator')
     install_translations(app)
     # 창·작업 표시줄 아이콘 (개발 모드에서도 Python 기본 아이콘 대신 앱 아이콘이 보이도록)
     if sys.platform == 'darwin':

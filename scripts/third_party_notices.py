@@ -75,7 +75,7 @@ def generate(path):
         roots = [_name(line) for line in f if line.strip() and not line.lstrip().startswith(('#', '-'))]
     dists = _closure(roots)
     # 빌드 도구·설치 환경에만 있는 패키지는 앱에 들어가지 않으므로 의존 관계로 찾은 것만 적는다
-    out = ['가사 슬라이드 생성기에 포함된 서드파티 소프트웨어의 라이선스 고지', '=' * 60, '']
+    out = ['Lyrics Slide Creator에 포함된 서드파티 소프트웨어의 라이선스 고지', '=' * 60, '']
     out.append(EXTRA)
     font_license = os.path.join(ROOT, 'assets', 'fonts', 'LICENSE.txt')
     out += ['Pretendard (글꼴, SIL Open Font License 1.1)', '-' * 60]

@@ -9,7 +9,7 @@ ApplicationWindow {
     minimumWidth: 900
     minimumHeight: 560
     visible: false   // 크기를 정한 뒤(fitToScreen) 보인다
-    title: "가사 슬라이드 생성기"
+    title: "Lyrics Slide Creator"
     color: Theme.bg
     font.family: Theme.font
 

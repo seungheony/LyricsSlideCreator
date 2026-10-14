@@ -44,8 +44,8 @@ RESULT_NAME = 'result.txt'
 LOG_NAME = 'install.log'
 # Windows: 실행 중인 앱 표시. installer/windows.iss 의 AppMutex 와 같아야 한다
 APP_MUTEX = 'LyricsSlideCreator.AppMutex'
-# macOS: 영문 이름 시절의 앱. 업데이트할 때 새 이름(가사 슬라이드 생성기.app)으로 옮긴다
-LEGACY_APP_NAMES = ('Lyrics Slide Creator.app',)
+# macOS: 한글 이름 시절(v1.2.0-beta.4~v1.3.0)의 앱. 업데이트할 때 지금 이름(Lyrics Slide Creator.app)으로 옮긴다
+LEGACY_APP_NAMES = ('가사 슬라이드 생성기.app',)
 # macOS: 앱이 종료되기를 기다리는 최대 시간(초). 넘으면 교체하지 않는다
 APP_EXIT_WAIT = 60
 
@@ -442,7 +442,7 @@ def _install_macos(zip_path, from_version, to_version, cancel_event):
         raise UpdateError('받은 파일에 앱이 들어 있지 않아요.', zip_path)
     new_app = apps[0]
 
-    # 영문 이름 시절의 앱은 새 이름으로 옮긴다 (그 이름의 앱이 따로 있으면 그대로 둔다)
+    # 예전 이름의 앱은 새 이름으로 옮긴다 (그 이름의 앱이 따로 있으면 그대로 둔다)
     dest = app
     if os.path.basename(app) in LEGACY_APP_NAMES:
         renamed = os.path.join(os.path.dirname(app), os.path.basename(new_app))
