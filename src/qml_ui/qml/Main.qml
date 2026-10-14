@@ -16,24 +16,92 @@ ApplicationWindow {
     property bool editorActive: false
     property var pendingSong: null
     property int detailToken: 0
+    // 곡별 편집 상태 (song_id → { song, state }). 같은 곡을 다시 열면 이어서 편집한다.
+    // 세션 메모리에만 두고 파일로 남기지 않는다 (앱을 닫으면 사라짐 → 닫을 때 확인)
+    property var sessions: ({})
+    property var lastSession: null      // 검색 화면의 '이어서 편집' 칩
+    property bool closeConfirmed: false
+    // 편집 화면 밖에 보관된 곡 중 PPT로 만들지 않은 편집이 있는지
+    readonly property bool storedDirty: {
+        const cur = editorActive && editorPage.song ? editorPage.song.song_id : ""
+        return Object.keys(sessions).some(id => id !== cur && sessions[id].state.dirty)
+    }
 
+    // 곡 열기. 불러오는 중에 다른 곡을 누르면 마지막에 누른 곡을 연다 (늦게 온 응답은 detailToken으로 버림)
     function openSong(song) {
-        if (pendingSong) return
+        if (pendingSong && pendingSong.song_id === song.song_id) return
+        cancelOpen()
+        const saved = sessions[song.song_id]
+        if (saved) {
+            enterEditor(() => editorPage.resume(song, saved.state))
+            return
+        }
         pendingSong = song
         searchPage.loadingId = song.song_id
-        detailToken++
         backend.songDetail(detailToken, song.song_id)
     }
 
-    function showSearch() {
+    // 진행 중인 곡 열기를 취소 (새 검색, 검색 화면의 Esc)
+    function cancelOpen() {
+        detailToken++
+        pendingSong = null
+        searchPage.loadingId = ""
+    }
+
+    function enterEditor(fill) {
+        fill()
+        editorActive = true
+        if (!backend.tutorialSeen("editor")) editorTourTimer.start()
+    }
+
+    // 편집 화면을 떠나며 지금 상태를 보관한다
+    function leaveEditor() {
+        const song = editorPage.song
+        if (song) {
+            const next = Object.assign({}, sessions)
+            next[song.song_id] = { song: song, state: editorPage.saveState() }
+            sessions = next
+            lastSession = next[song.song_id]
+        }
         editorActive = false
         searchPage.focusSearch()
+    }
+
+    // 뒤로·Esc: PPT로 만들지 않은 편집이 있으면 한 번 확인한다 (편집 내용은 보관돼 다시 열면 이어서 편집)
+    function requestBack() {
+        editorPage.prepareEdit()
+        if (!editorPage.dirty) {
+            leaveEditor()
+            return
+        }
+        confirmDialog.ask({
+            title: "아직 PPT로 만들지 않았어요",
+            message: "편집한 내용은 앱을 닫기 전까지 남아 있어서, 이 곡을 다시 열면 이어서 편집할 수 있어요. 검색 화면으로 갈까요?",
+            confirmText: "검색으로",
+            cancelText: "계속 편집",
+            onConfirm: () => win.leaveEditor()
+        })
+    }
+
+    // 창 닫기: PPT로 만들지 않은 편집이 있으면 확인한다
+    onClosing: (close) => {
+        if (closeConfirmed) return
+        if (editorActive) editorPage.prepareEdit()
+        if (!(editorActive && editorPage.dirty) && !storedDirty) return
+        close.accepted = false
+        confirmDialog.ask({
+            title: "PPT로 만들지 않은 편집이 있어요",
+            message: "창을 닫으면 편집한 가사가 사라져요. 그래도 닫을까요?",
+            confirmText: "닫기",
+            cancelText: "취소",
+            onConfirm: () => { win.closeConfirmed = true; win.close() }
+        })
     }
 
     Connections {
         target: backend
         function onDetailFinished(token, json) {
-            if (token !== win.detailToken) return
+            if (token !== win.detailToken || !win.pendingSong) return
             const song = win.pendingSong
             win.pendingSong = null
             searchPage.loadingId = ""
@@ -42,10 +110,16 @@ ApplicationWindow {
                 dialog.showError(det.error, det.detail)
                 return
             }
-            editorPage.load(song, det.lyrics)
-            win.editorActive = true
-            if (!backend.tutorialSeen("editor")) editorTourTimer.start()
+            win.enterEditor(() => editorPage.load(song, det.lyrics))
         }
+        // 업데이트 설치가 시작되면 확인 없이 닫는다 (편집 경고는 업데이트 확인창에서 이미 보여 줌)
+        function onUpdateReady() { win.closeConfirmed = true }
+    }
+
+    // 새로 검색하면 진행 중인 곡 열기를 취소한다 (SearchPage.doSearch가 token을 올림)
+    Connections {
+        target: searchPage
+        function onTokenChanged() { win.cancelOpen() }
     }
 
     // ── 페이지 (좌우로 살짝 밀리며 전환) ──
@@ -72,7 +146,50 @@ ApplicationWindow {
         dialog: dialog
         tour: tour
         confirmDialog: confirmDialog
-        onBackRequested: win.showSearch()
+        onBackRequested: win.requestBack()
+    }
+
+    // 검색 화면: 편집하던 곡으로 돌아가기
+    Rectangle {
+        id: resumeChip
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 24
+        z: 50
+        width: Math.min(chipRow.implicitWidth + 36, parent.width - 32)
+        height: 40
+        radius: 20
+        color: chipArea.containsMouse ? Theme.primarySoft : Theme.surface
+        border.width: 1
+        border.color: chipArea.containsMouse ? Theme.primary : Theme.border
+        opacity: !win.editorActive && win.lastSession && !searchPage.loadingId ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.normal } }
+        Row {
+            id: chipRow
+            anchors.centerIn: parent
+            spacing: 8
+            Text { text: "편집 중"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+            Text {
+                text: win.lastSession ? win.lastSession.song.title + " — " + win.lastSession.song.artist : ""
+                textFormat: Text.PlainText
+                width: Math.min(implicitWidth, resumeChip.parent.width - 240)
+                elide: Text.ElideRight
+                color: Theme.text
+                font.family: Theme.font
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text { text: "· 이어서 편집"; color: Theme.primaryText; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
+        }
+        MouseArea {
+            id: chipArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: win.openSong(win.lastSession.song)
+        }
     }
 
     Text {
@@ -113,7 +230,7 @@ ApplicationWindow {
 
     UpdateDialog {
         id: updateDialog
-        editing: win.editorActive && editorPage.blocks.length > 0
+        editing: (win.editorActive && editorPage.dirty) || win.storedDirty
     }
 
     Connections {
@@ -143,27 +260,32 @@ ApplicationWindow {
     // ── 단축키 ──
     Shortcut {
         sequences: [StandardKey.Undo]
-        enabled: win.editorActive && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.undo()
     }
     Shortcut {
         sequences: [StandardKey.Redo]
-        enabled: win.editorActive && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.redo()
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
-        enabled: win.editorActive && editorPage.blocks.length > 0 && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
+        enabled: win.editorActive && editorPage.blocks.length > 0 && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.generate()
     }
     Shortcut {
         sequence: "Escape"
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
+        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: {
             // 드래그 중이면 취소, 가사 입력 중이면 입력칸에서만 빠져나오고, 아니면 검색 화면으로
             if (editorPage.dragging) editorPage.cancelDrag()
             else if (editorPage.lyricsFocused) editorPage.blurLyrics()
-            else win.showSearch()
+            else win.requestBack()
         }
+    }
+    Shortcut {
+        sequence: "Escape"
+        enabled: !win.editorActive && win.pendingSong !== null && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        onActivated: win.cancelOpen()    // 불러오는 중인 곡 열기 취소
     }
 }

@@ -5,6 +5,7 @@ import "."
 
 // 두 가지 중 하나를 고르는 확인창.
 // ask({ title, message, confirmText, cancelText, onConfirm, onCancel })
+// 이미 떠 있으면(열리거나 닫히는 중 포함) 덮어쓰지 않고 차례를 기다린다.
 Popup {
     id: dialog
     property string title: ""
@@ -13,8 +14,21 @@ Popup {
     property string cancelText: "취소"
     property var onConfirm: null
     property var onCancel: null
+    property var queue: []
 
     function ask(opts) {
+        if (visible) { queue = queue.concat([opts]); return }
+        show(opts)
+    }
+
+    onClosed: {
+        if (!queue.length) return
+        const next = queue[0]
+        queue = queue.slice(1)
+        show(next)
+    }
+
+    function show(opts) {
         title = opts.title || ""
         message = opts.message || ""
         confirmText = opts.confirmText || "확인"
