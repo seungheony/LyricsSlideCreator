@@ -1,6 +1,5 @@
 name: 문의하기
 description: 안 되는 기능, 불편한 점, 있었으면 하는 기능 무엇이든 알려 주세요
-labels: [from-app]
 body:
   - type: markdown
     attributes:
