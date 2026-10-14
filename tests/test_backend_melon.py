@@ -72,9 +72,46 @@ class BackendFlow(unittest.TestCase):
         self.assertEqual(payload['error']['kind'], 'network')
 
     def test_search_ok_payload(self):
-        with mock.patch.object(self.backend._scraper, 'search_song', return_value=[{'song_id': '1'}]):
+        found = {'results': [{'song_id': '1'}], 'total': 77}
+        with mock.patch.object(self.backend._scraper, 'search_song', return_value=found):
             self.backend.search(1, '사랑')
-        self.assertEqual(self.events[0][1], {'results': [{'song_id': '1'}], 'error': None})
+        self.assertEqual(self.events[0][1], {'results': [{'song_id': '1'}], 'total': 77, 'mode': 'song',
+                                             'start': 1, 'fallback': False, 'error': None})
+
+    def test_search_more_passes_start_and_keeps_thumbnails(self):
+        gen = self.backend._thumb_gen
+        with mock.patch.object(self.backend._scraper, 'search_song', return_value={'results': [], 'total': None}) as song, \
+                mock.patch.object(self.backend._scraper, 'search_lyric') as lyric:
+            self.backend.searchPage(2, '사랑', 'song', 51)
+        song.assert_called_once_with('사랑', 51)
+        lyric.assert_not_called()                   # 더 보기가 비었다고 가사 검색으로 바꾸지 않는다
+        self.assertEqual(self.backend._thumb_gen, gen)
+
+    def test_lyric_mode(self):
+        found = {'results': [{'song_id': '9', 'snippet': 'a'}], 'total': 3}
+        with mock.patch.object(self.backend._scraper, 'search_lyric', return_value=found) as lyric, \
+                mock.patch.object(self.backend._scraper, 'search_song') as song:
+            self.backend.searchPage(1, ' 구절 ', 'lyric', 1)
+        lyric.assert_called_once_with('구절', 1)
+        song.assert_not_called()
+        self.assertEqual((self.events[0][1]['mode'], self.events[0][1]['fallback']), ('lyric', False))
+
+    def test_song_search_empty_falls_back_to_lyric(self):
+        lyric_res = {'results': [{'song_id': '9', 'snippet': 'a'}], 'total': 3}
+        with mock.patch.object(self.backend._scraper, 'search_song', return_value={'results': [], 'total': 0}), \
+                mock.patch.object(self.backend._scraper, 'search_lyric', return_value=lyric_res):
+            self.backend.searchPage(1, '가사 구절', 'song', 1)
+        payload = self.events[0][1]
+        self.assertEqual((payload['mode'], payload['fallback'], payload['total']), ('lyric', True, 3))
+        self.assertEqual(payload['results'], lyric_res['results'])
+
+    def test_fallback_failure_keeps_empty_result(self):
+        with mock.patch.object(self.backend._scraper, 'search_song', return_value={'results': [], 'total': 0}), \
+                mock.patch.object(self.backend._scraper, 'search_lyric', side_effect=MelonError('network')):
+            self.backend.searchPage(1, '없는', 'song', 1)
+        payload = self.events[0][1]
+        self.assertEqual((payload['results'], payload['mode'], payload['fallback'], payload['error']),
+                         ([], 'song', False, None))
 
     def test_detail_sent_before_art_and_cached(self):
         det = {'song_id': '1', 'lyrics': '가사', 'image_url': 'http://x/a.jpg', 'reason': None}
@@ -102,7 +139,7 @@ class BackendFlow(unittest.TestCase):
         pending = []
         self.backend._thumb_pool = type('P', (), {'submit': lambda self, fn: pending.append(fn)})()
         with mock.patch.object(self.backend._scraper, 'get_song_detail', return_value=det), \
-                mock.patch.object(self.backend._scraper, 'search_song', return_value=[]), \
+                mock.patch.object(self.backend._scraper, 'search_song', return_value={'results': [], 'total': 1}), \
                 mock.patch.object(self.backend, '_download_art', side_effect=lambda *a: calls.append(a)):
             self.backend.loadArt('1')
             self.backend.search(5, '새 검색')      # 대기 중이던 썸네일은 버려진다

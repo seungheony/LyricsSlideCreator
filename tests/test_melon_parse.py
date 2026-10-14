@@ -5,7 +5,7 @@ from unittest import mock
 import requests
 
 from src.utils.melon_api import (MelonError, MelonScraper, parse_detail, parse_detail_status,
-                                parse_search, parse_search_total)
+                                parse_lyric_search, parse_search, parse_search_total)
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures')
 
@@ -33,12 +33,11 @@ class ParseSearch(unittest.TestCase):
         self.assertEqual(second['artist'], '아티스트 미상')
         self.assertEqual(second['album'], '앨범 미상')
 
-    def test_empty_and_limit(self):
+    def test_empty_and_no_limit(self):
         self.assertEqual(parse_search(''), [])
         self.assertEqual(parse_search('<p>없음</p>'), [])
-        rows = ''.join(f'<tr><td><input class="input_check" value="{i}"></td></tr>' for i in range(15))
-        self.assertEqual(len(parse_search(f'<table><tbody>{rows}</tbody></table>')), 10)
-
+        rows = ''.join(f'<tr><td><input class="input_check" value="{i}"></td></tr>' for i in range(1, 51))
+        self.assertEqual(len(parse_search(f'<table><tbody>{rows}</tbody></table>')), 50)   # 10개로 자르지 않는다
 
     def test_adult_badge_and_total(self):
         html = read('melon_search.html')
@@ -47,6 +46,44 @@ class ParseSearch(unittest.TestCase):
         self.assertFalse(second['adult'])
         self.assertEqual(parse_search_total(html), 1234)
         self.assertIsNone(parse_search_total('<p>없음</p>'))
+
+
+class ParseLyricSearch(unittest.TestCase):
+    def test_results(self):
+        html = read('melon_lyric.html')
+        results = parse_lyric_search(html)
+        self.assertEqual(len(results), 2)    # 곡 번호가 없는 항목은 건너뜀
+        first = results[0]
+        self.assertEqual((first['song_id'], first['title'], first['artist'], first['album']),
+                         ('600297752', '사랑해 너를', '유해준', '사랑해 너를'))
+        self.assertFalse(first['adult'])
+        # 일치한 구절만 굵게
+        self.assertEqual(first['snippet'], '내 맘이 말을 해 너라는 사람에게많이 좋아한다고 <b>사랑해 너를</b> 영원히 내가 모든 걸 다 주어도...')
+        self.assertEqual(parse_search_total(html), 1000)
+
+    def test_second_item(self):
+        second = parse_lyric_search(read('melon_lyric.html'))[1]
+        self.assertEqual(second['song_id'], '1137102')
+        self.assertEqual(second['title'], '사랑해 & 너를')
+        self.assertEqual(second['artist'], '야다 (Yada), 게스트')
+        self.assertEqual(second['album'], '앨범 미상')
+        self.assertTrue(second['adult'])
+        # 멜론이 잘라 남긴 `<br...`는 지운다
+        self.assertEqual(second['snippet'], '그댄 어디에도 없는데 <b>사랑해 너를</b> 너만을 사랑해 슬픈 사랑 하지 말자고 했던 ...')
+
+    def test_snippet_is_escaped(self):
+        html = ('<dl class="cntt_lyric"><dt><a class="btn_icon_detail" data-song-no="1" title="가 곡정보 - 페이지 이동"></a></dt>'
+                '<dd class="lyric"><a>a &lt;i&gt;x&amp;y <b>z</b></a></dd></dl>')
+        self.assertEqual(parse_lyric_search(html)[0]['snippet'], 'a &lt;i&gt;x&amp;y <b>z</b>')
+
+    def test_cut_tags(self):
+        html = ('<dl class="cntt_lyric"><dt><a class="btn_icon_detail" data-song-no="1"></a></dt>'
+                '<dd class="lyric"><a>...BR&gt;나를 사랑해 준 너에게 <b>사랑해</b> 나만의&lt;BR...</a></dd></dl>')
+        self.assertEqual(parse_lyric_search(html)[0]['snippet'], '... 나를 사랑해 준 너에게 <b>사랑해</b> 나만의...')
+
+    def test_empty(self):
+        self.assertEqual(parse_lyric_search(''), [])
+        self.assertEqual(parse_lyric_search('<div class="section_no_data"></div>'), [])
 
 
 class ParseDetail(unittest.TestCase):
@@ -105,7 +142,29 @@ class ScraperErrors(unittest.TestCase):
     def test_really_empty(self):
         html = '<strong class="serch_totcnt">총 <em>0</em>건</strong><div class="section_no_data"></div>'
         with self.patch_get(return_value=response(html)):
-            self.assertEqual(self.scraper.search_song('없는곡'), [])
+            self.assertEqual(self.scraper.search_song('없는곡'), {'results': [], 'total': 0})
+
+    def test_search_urls(self):
+        """첫 쪽은 검색 페이지, 다음 쪽은 멜론의 pageObj.sendPage와 같은 startIndex·pageSize 요청"""
+        html = read('melon_search.html')
+        with self.patch_get(return_value=response(html)) as get:
+            first = self.scraper.search_song('사랑')
+            self.scraper.search_song('사랑', 51)
+            self.scraper.search_lyric('사랑해 너를', 16)
+        self.assertEqual(first['total'], 1234)
+        urls = [c.args[0] for c in get.call_args_list]
+        self.assertTrue(urls[0].endswith('/search/song/index.htm?q=%EC%82%AC%EB%9E%91'))
+        self.assertIn('startIndex=51&pageSize=50&q=%EC%82%AC%EB%9E%91', urls[1])
+        self.assertIn('/search/lyric/index.htm?startIndex=16&pageSize=15&q=', urls[2])
+
+    def test_later_page_empty_is_not_error(self):
+        with self.patch_get(return_value=response('<table><tbody></tbody></table>')):
+            self.assertEqual(self.scraper.search_song('사랑', 51), {'results': [], 'total': None})
+
+    def test_lyric_search(self):
+        with self.patch_get(return_value=response(read('melon_lyric.html'))):
+            res = self.scraper.search_lyric('사랑해 너를')
+        self.assertEqual((len(res['results']), res['total']), (2, 1000))
 
     def test_detail_reasons(self):
         with self.patch_get(side_effect=requests.Timeout()):

@@ -14,11 +14,32 @@ Item {
     property string loadingId: ""     // 가사를 불러오는 중인 곡
     property int token: 0             // 오래된 검색 응답 무시용
     property var tour: null
+    property string mode: "song"      // 검색 방식: "song"(제목·가수) / "lyric"(가사 구절)
+    property string resultMode: "song" // 지금 보이는 결과의 검색 방식 (곡 검색이 비면 가사 검색 결과로 바뀐다)
+    property bool fallback: false     // 곡 검색 결과가 없어서 가사 검색 결과를 대신 보여 주는 중
+    property int total: 0             // 멜론이 알려 준 전체 건수
+    property bool loadingMore: false
+    property string moreError: ""
+    // 목록은 ListModel에 이어 붙인다 (배열을 통째로 바꾸면 '더 보기'를 눌렀을 때 스크롤이 맨 위로 돌아간다)
+    ListModel { id: resultModel }
+    function setResults(items) {
+        resultModel.clear()
+        appendResults(items)
+        results = items
+    }
+    function appendResults(items) {
+        for (const r of items) resultModel.append({
+            song_id: r.song_id, title: r.title, artist: r.artist, album: r.album,
+            adult: r.adult === true, snippet: r.snippet || "" })
+    }
+    readonly property bool hasMore: results.length > 0 && results.length < total
+    function countText(n) { return Number(n).toLocaleString(Qt.locale("ko_KR"), "f", 0) }
 
     function showHelp(opts) {
         tour.start([
             { target: searchBox, demo: searchDemo, title: "1. 노래 검색",
-              body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>(또는 <b>검색</b>)를 누르면 멜론에서 찾아와요." },
+              body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>(또는 <b>검색</b>)를 누르면 멜론에서 찾아와요.<br><br>"
+                  + "제목이 기억나지 않으면 <b>가사</b>를 눌러 가사 한 구절로 찾을 수 있어요." },
             { target: resultsArea, demo: resultsDemo, title: "2. 곡 고르기",
               body: "검색 결과에서 곡을 누르면 가사와 앨범아트를 불러와 <b>편집 화면</b>으로 넘어가요." },
             { target: null, title: "3. 다듬고 PPT 만들기",
@@ -136,26 +157,64 @@ Item {
         Qt.inputMethod.commit()    // 한글 조합 중인 글자를 확정한 뒤 읽는다
         const keyword = input.text.trim()
         if (!keyword) return
-        if (searching && keyword === searchedKeyword) return
-        searchedKeyword = keyword
+        const key = mode + ":" + keyword
+        if (searching && key === searchedKeyword) return
+        searchedKeyword = key
+        searchedText = keyword
         token++
         hasResults = true
         searching = true
-        results = []
+        setResults([])
+        total = 0
+        fallback = false
+        loadingMore = false
+        moreError = ""
         emptyText = ""
         errorText = ""
-        backend.search(token, keyword)
+        resultMode = mode
+        backend.searchPage(token, keyword, mode, 1)
+    }
+
+    property string searchedText: ""      // 마지막으로 검색한 검색어 (더 보기에 쓴다)
+
+    // 다음 쪽을 받아 목록 끝에 붙인다
+    function loadMore() {
+        if (loadingMore || searching || !hasMore) return
+        loadingMore = true
+        moreError = ""
+        token++
+        backend.searchPage(token, searchedText, resultMode, results.length + 1)
+    }
+
+    function setMode(m) {
+        if (mode === m) return
+        mode = m
+        if (hasResults && input.text.trim()) doSearch()
     }
 
     Connections {
         target: backend
         function onSearchFinished(t, json) {
             if (t !== page.token) return
-            page.searching = false
             const res = JSON.parse(json)
-            page.results = res.results
+            if (res.start > 1) {                       // 더 보기
+                page.loadingMore = false
+                if (res.error) { page.moreError = "더 불러오지 못했어요. 다시 시도해 주세요."; return }
+                const seen = {}
+                page.results.forEach(r => { seen[r.song_id] = true })
+                const fresh = res.results.filter(r => !seen[r.song_id])
+                if (!fresh.length) page.total = page.results.length   // 더 받을 게 없다
+                else { page.appendResults(fresh); page.results = page.results.concat(fresh) }
+                return
+            }
+            page.searching = false
+            page.setResults(res.results)
+            page.total = res.total === null || res.total === undefined ? res.results.length : res.total
+            page.resultMode = res.mode
+            page.fallback = res.fallback
             page.errorText = res.error ? res.error.message : ""
-            page.emptyText = res.results.length || res.error ? "" : "검색 결과가 없어요"
+            page.emptyText = res.results.length || res.error ? ""
+                : (page.mode === "lyric" ? "이 구절이 들어간 가사를 찾지 못했어요" : "검색 결과가 없어요")
         }
     }
 
@@ -259,7 +318,7 @@ Item {
                 TextField {
                     id: input
                     Layout.fillWidth: true
-                    placeholderText: "노래 제목 또는 가수 이름"
+                    placeholderText: page.mode === "lyric" ? "가사 한 구절" : "노래 제목 또는 가수 이름"
                     placeholderTextColor: Theme.text3
                     color: Theme.text
                     font.family: Theme.font
@@ -268,6 +327,49 @@ Item {
                     selectByMouse: true
                     focus: true
                     onAccepted: page.doSearch()
+                }
+                // 검색 방식 전환
+                Rectangle {
+                    id: modeSwitch
+                    implicitWidth: modeRow.implicitWidth + 6
+                    implicitHeight: 34
+                    radius: 10
+                    color: Theme.surface2
+                    Row {
+                        id: modeRow
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Repeater {
+                            model: [{ key: "song", label: "제목·가수" }, { key: "lyric", label: "가사" }]
+                            delegate: Rectangle {
+                                required property var modelData
+                                readonly property bool on: page.mode === modelData.key
+                                width: label.implicitWidth + 20
+                                height: 28
+                                radius: 8
+                                color: on ? Theme.surface : "transparent"
+                                border.width: on ? 1 : 0
+                                border.color: Theme.border
+                                Accessible.role: Accessible.RadioButton
+                                Accessible.name: modelData.label
+                                Accessible.checked: on
+                                Text {
+                                    id: label
+                                    anchors.centerIn: parent
+                                    text: parent.modelData.label
+                                    color: parent.on ? Theme.text : Theme.text3
+                                    font.family: Theme.font
+                                    font.pixelSize: 13
+                                    font.weight: parent.on ? Font.DemiBold : Font.Normal
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: { page.setMode(parent.modelData.key); input.forceActiveFocus() }
+                                }
+                            }
+                        }
+                    }
                 }
                 AppButton {
                     text: "검색"
@@ -354,21 +456,68 @@ Item {
                 id: list
                 anchors.fill: parent
                 visible: !page.searching
-                model: page.results
+                model: resultModel
                 spacing: 4
                 clip: true
                 bottomMargin: 40
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar {}
 
+                header: Text {
+                    width: list.width
+                    bottomPadding: 10
+                    wrapMode: Text.Wrap
+                    textFormat: Text.PlainText
+                    leftPadding: 12
+                    color: Theme.text3
+                    font.family: Theme.font
+                    font.pixelSize: 13
+                    text: !page.results.length ? "" : (page.resultMode === "lyric"
+                           ? (page.fallback ? "곡 제목에는 없어서 가사에서 찾았어요.\n" : "")
+                             + "가사에 이 구절이 있는 노래 · "
+                           : "")
+                          + "총 " + page.countText(page.total) + "곡 중 " + page.countText(page.results.length) + "곡"
+                }
+
+                footer: Item {
+                    width: list.width
+                    height: page.hasMore ? 64 : 0
+                    visible: page.hasMore
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Text {
+                            visible: page.moreError !== ""
+                            Layout.alignment: Qt.AlignHCenter
+                            text: page.moreError
+                            color: Theme.warning
+                            font.family: Theme.font
+                            font.pixelSize: 13
+                        }
+                        AppButton {
+                            Layout.alignment: Qt.AlignHCenter
+                            text: page.loadingMore ? "불러오는 중…" : "더 보기"
+                            enabled: !page.loadingMore
+                            onClicked: page.loadMore()
+                        }
+                    }
+                }
+
                 delegate: Rectangle {
                     id: row
-                    required property var modelData
                     required property int index
-                    readonly property bool loading: page.loadingId === modelData.song_id
+                    required property string song_id
+                    required property string title
+                    required property string artist
+                    required property string album
+                    required property bool adult
+                    required property string snippet
+                    readonly property var modelData: ({ song_id: song_id, title: title, artist: artist,
+                                                        album: album, adult: adult, snippet: snippet })
+                    readonly property bool loading: page.loadingId === song_id
 
                     width: ListView.view.width
-                    height: 72
+                    height: modelData.snippet ? 100 : 72
                     radius: Theme.radius
                     color: hover.containsMouse ? Theme.surface : Theme.surfaceClear
                     Behavior on color { ColorAnimation { duration: Theme.fast } }
@@ -383,7 +532,7 @@ Item {
                     ParallelAnimation {
                         id: appear
                         SequentialAnimation {
-                            PauseAnimation { duration: row.index * 35 }
+                            PauseAnimation { duration: Math.max(0, Math.min(row.index, 8)) * 35 }
                             ParallelAnimation {
                                 NumberAnimation { target: row; property: "opacity"; to: 1; duration: 350; easing.type: Easing.OutCubic }
                                 NumberAnimation { target: shift; property: "y"; to: 0; duration: 350; easing.type: Easing.OutCubic }
@@ -451,6 +600,19 @@ Item {
                                 color: Theme.text3
                                 font.family: Theme.font
                                 font.pixelSize: 13
+                                elide: Text.ElideRight
+                            }
+                            // 가사 검색: 일치한 가사 일부 (일치한 구절은 굵게)
+                            Text {
+                                visible: !!row.modelData.snippet
+                                Layout.fillWidth: true
+                                text: row.modelData.snippet || ""
+                                textFormat: Text.StyledText
+                                color: Theme.text2
+                                font.family: Theme.font
+                                font.pixelSize: 13
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
                                 elide: Text.ElideRight
                             }
                         }

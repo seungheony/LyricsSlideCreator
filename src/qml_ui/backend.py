@@ -113,7 +113,7 @@ class Backend(QObject):
     다른 스레드에서 emit한 시그널은 Qt가 메인 스레드로 넘겨주므로 QML에서 안전하게 받을 수 있다.
     """
 
-    searchFinished = Signal(int, str)    # token, JSON 객체 {results, error}  (error: null 또는 {kind, status, message})
+    searchFinished = Signal(int, str)    # token, JSON 객체 {results, total, mode, start, fallback, error}  (mode: 'song'|'lyric', error: null 또는 {kind, status, message})
     detailFinished = Signal(int, str)    # token, JSON 객체 (error 키가 있으면 실패). 앨범아트는 뒤따라 artReady로 온다
     artReady = Signal(str)               # song_id
     generateFinished = Signal(str)       # JSON 객체 (path 또는 error)
@@ -218,19 +218,44 @@ class Backend(QObject):
 
     @Slot(int, str)
     def search(self, token, keyword):
-        self._thumb_gen += 1             # 이전 검색 결과의 대기 중 썸네일은 더 받지 않는다
+        self.searchPage(token, keyword, 'song', 1)
+
+    @Slot(int, str, str, int)
+    def searchPage(self, token, keyword, mode, start):
+        """검색 한 쪽. mode: 'song'(제목·가수) 또는 'lyric'(가사 구절), start: 1부터 세는 시작 위치.
+        곡 검색의 첫 쪽이 비면 같은 검색어로 가사 검색을 해서 결과를 대신 보여 준다(fallback)"""
+        if start <= 1:
+            self._thumb_gen += 1         # 이전 검색 결과의 대기 중 썸네일은 더 받지 않는다 (더 보기는 그대로)
 
         def work():
             error = None
+            fallback = False
+            shown = mode                 # 실제로 보여 주는 검색 방식
+            res = {'results': [], 'total': 0}
+            key = keyword.strip()
             try:
-                results = self._scraper.search_song(keyword.strip())
+                res = self._run_search(mode, key, start)
+                if mode == 'song' and start <= 1 and not res['results']:
+                    try:
+                        lyric = self._run_search('lyric', key, 1)
+                    except MelonError:
+                        lyric = None     # 가사 검색이 안 돼도 '곡 결과 없음'은 그대로 알린다
+                    if lyric and lyric['results']:
+                        res, shown, fallback = lyric, 'lyric', True
             except MelonError as e:
-                results, error = [], search_error(e)
+                error = search_error(e)
             except Exception:
                 traceback.print_exc()
-                results, error = [], search_error(MelonError('parse'))
-            self.searchFinished.emit(token, json.dumps({'results': results, 'error': error}, ensure_ascii=False))
+                error = search_error(MelonError('parse'))
+            out = {'results': res['results'], 'total': res['total'], 'mode': shown, 'start': start,
+                   'fallback': fallback, 'error': error}
+            self.searchFinished.emit(token, json.dumps(out, ensure_ascii=False))
         self._pool.submit(work)
+
+    def _run_search(self, mode, keyword, start):
+        if mode == 'lyric':
+            return self._scraper.search_lyric(keyword, start)
+        return self._scraper.search_song(keyword, start)
 
     @Slot(int, str)
     def songDetail(self, token, song_id):
