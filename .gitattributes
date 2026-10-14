@@ -1,0 +1,11 @@
+# 줄 끝: 저장소와 체크아웃 모두 LF (Windows 러너에서도 스크립트가 CRLF로 바뀌지 않게)
+* text=auto eol=lf
+
+# 바이너리
+*.pptx binary
+*.png binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.otf binary
+*.woff2 binary

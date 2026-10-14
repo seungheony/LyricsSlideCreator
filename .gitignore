@@ -2,11 +2,11 @@
 __pycache__/
 *.pyc
 venv/
+.venv/
 
-# PyInstaller
+# 빌드 결과 (Nuitka: build/, dist/)
 build/
 dist/
-*.spec
 
 # macOS
 .DS_Store
@@ -14,10 +14,8 @@ dist/
 # Test/Output files
 test_output.pptx
 *.pptx
-!template.pptx # template.pptx는 예외적으로 포함
-
-# Bundled external dependencies (very large files)
-bundled/
+# template.pptx는 예외적으로 포함
+!/template.pptx
 
 # 빌드 시 생성되는 버전 파일
 src/utils/_build_info.py

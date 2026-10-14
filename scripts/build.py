@@ -11,6 +11,7 @@ Nuitka로 폴더 형태(standalone)/앱 번들로 빌드한다. 실행 파일 �
 """
 import os
 import platform
+import plistlib
 import shutil
 import struct
 import subprocess
@@ -26,6 +27,7 @@ from src.utils.version import parse_version  # noqa: E402
 APP_NAME = '가사 슬라이드 생성기'
 APP_FILE_NAME = 'LyricsSlideCreator'
 BUNDLE_ID = 'io.github.seungheony.lyricsslidecreator'
+BUILD_INFO = os.path.join(ROOT, 'src', 'utils', '_build_info.py')
 DIST = os.path.join(ROOT, 'dist')
 BUILD = os.path.join(ROOT, 'build')
 # 앱 아이콘 (scripts/make_icons.py로 생성)
@@ -77,6 +79,24 @@ def nuitka(version, extra):
     ])
 
 
+def patch_info_plist(app_path):
+    """Info.plist에 언어·분류를 넣고 다시 서명한다.
+
+    언어 정보가 없으면 한국어 Mac에서도 OS 대화상자(PPT 저장 창 등)가 영어로 나온다.
+    Info.plist를 고치면 Nuitka가 해 둔 서명이 깨지므로 ad-hoc으로 다시 서명한다(압축 전에).
+    """
+    plist_path = os.path.join(app_path, 'Contents', 'Info.plist')
+    with open(plist_path, 'rb') as f:
+        info = plistlib.load(f)
+    info['CFBundleDevelopmentRegion'] = 'ko'
+    info['CFBundleLocalizations'] = ['ko']
+    info['LSApplicationCategoryType'] = 'public.app-category.productivity'
+    with open(plist_path, 'wb') as f:
+        plistlib.dump(info, f)
+    run(['codesign', '--force', '--deep', '--sign', '-', app_path])
+    run(['codesign', '--verify', '--deep', '--strict', app_path])
+
+
 def build_macos(version):
     nuitka(version, [
         '--mode=app',
@@ -89,6 +109,7 @@ def build_macos(version):
     app_dst = os.path.join(DIST, f'{APP_NAME}.app')
     shutil.rmtree(app_dst, ignore_errors=True)
     shutil.move(app_src, app_dst)
+    patch_info_plist(app_dst)
     # ditto: 심볼릭 링크·권한·확장 속성을 보존하는 macOS 표준 압축 방식 (업데이트 시에도 ditto로 푼다)
     zip_path = os.path.join(DIST, f'{APP_FILE_NAME}-{version}-macOS.zip')
     run(['ditto', '-c', '-k', '--keepParent', app_dst, zip_path])
@@ -180,15 +201,17 @@ def main():
     if parse_version(version) is None:
         sys.exit(f'버전 형식이 올바르지 않습니다: {sys.argv[1]}')
 
-    run([sys.executable, os.path.join('scripts', 'set_version.py'), version])
-    os.makedirs(DIST, exist_ok=True)
     system = platform.system()
-    if system == 'Darwin':
-        outputs = build_macos(version)
-    elif system == 'Windows':
-        outputs = build_windows(version)
-    else:
+    if system not in ('Darwin', 'Windows'):
         sys.exit(f'지원하지 않는 OS: {system}')
+    os.makedirs(DIST, exist_ok=True)
+    # 빌드용 버전 파일은 작업 폴더에 남기지 않는다 (남으면 개발 모드가 "TEST" 대신 그 버전으로 보인다)
+    try:
+        run([sys.executable, os.path.join('scripts', 'set_version.py'), version])
+        outputs = build_macos(version) if system == 'Darwin' else build_windows(version)
+    finally:
+        if os.path.exists(BUILD_INFO):
+            os.remove(BUILD_INFO)
     for path in outputs:
         print(f'완료: {os.path.relpath(path, ROOT)} ({os.path.getsize(path) / 1e6:.1f}MB)')
 

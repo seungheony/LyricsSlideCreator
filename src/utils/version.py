@@ -4,10 +4,11 @@
 소스에서 바로 실행하면(개발 모드) 그 파일이 없으므로 "TEST"로 표시된다.
 
 버전 형식은 GitHub 릴리스 태그와 맞춘다: v1.2.0, v1.2.0-beta.1, (예전 형식) v1.1-beta
+('-beta.N'과 예전의 '-beta'만 받는다. 다른 접미사(-rc.1, -test.1 등)는 형식 오류)
 """
 import re
 
-_VERSION_RE = re.compile(r'^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-([A-Za-z]+)\.?(\d+)?)?$')
+_VERSION_RE = re.compile(r'^v?(\d+)\.(\d+)(?:\.(\d+))?(?:-(beta)(?:\.(\d+))?)?$')
 
 
 def get_version():
