@@ -112,8 +112,8 @@ function listDiff(old, next) {
 //   마지막 줄: 뒤 슬라이드 처음에 붙이기 / 뒤쪽 사이에 새 슬라이드
 // (한 줄짜리 슬라이드는 그 줄이 첫 줄이자 마지막 줄이라 네 가지 모두 가능)
 // keepTwo(2줄 유지)를 켜면 슬라이드마다 2줄을 유지한다:
-//   붙여서 2줄을 넘으면 넘친 줄을 같은 방향으로 연쇄해서 밀고(맨 앞/맨 뒤까지 넘치면 새 슬라이드),
-//   줄이 빠진 슬라이드는 반대쪽 이웃에서 연쇄로 당겨와 채운다.
+//   붙여서 2줄을 넘으면 넘친 줄을 같은 방향으로 연쇄해서 민다(맨 앞/맨 뒤까지 넘치면 새 슬라이드).
+//   줄이 빠진 슬라이드는 채우지 않고 1줄로 남긴다.
 // 끄면 옆 슬라이드로 옮기기만 한다 (3줄이 되면 3줄 그대로).
 
 const MAX_LINES = 2;
@@ -149,22 +149,16 @@ function planDrop(blocks, src, target, keepTwo) {
     const before = serialize(groups.map(g => g.map(l => l.text)));
     const source = groups[src.slide];
     const moved = source.splice(src.line, 1)[0];
-    // 앞으로 옮기면 소스는 첫 줄을 잃고 뒤에서 채우고, 뒤로 옮기면 마지막 줄을 잃고 앞에서 채운다
     const backward = target.type === 'line' ? target.slide < src.slide : target.at <= src.slide;
 
     if (target.type === 'new') groups.splice(target.at, 0, [moved]);
     else if (backward) groups[target.slide].push(moved);
     else groups[target.slide].unshift(moved);
 
-    // 2줄 유지: 넘친 슬라이드는 같은 방향으로 밀고, 줄이 빠진 슬라이드는 반대쪽에서 당겨 채운다
-    if (keepTwo) {
-        if (target.type === 'line') {
-            if (backward) pushBackward(groups, target.slide);
-            else pushForward(groups, target.slide);
-        }
-        const s = groups.indexOf(source);   // 앞에 새 슬라이드가 생겼을 수 있어 위치를 다시 찾는다
-        if (backward) pullFromNext(groups, s);
-        else pullFromPrevious(groups, s);
+    // 2줄 유지: 넘친 슬라이드는 같은 방향으로 민다 (줄이 빠진 슬라이드는 그대로)
+    if (keepTwo && target.type === 'line') {
+        if (backward) pushBackward(groups, target.slide);
+        else pushForward(groups, target.slide);
     }
 
     const result = groups.filter(g => g.length > 0);
@@ -193,23 +187,59 @@ function pushForward(groups, i) {
     }
 }
 
-// i번째 슬라이드가 모자라면 뒤 슬라이드의 앞쪽 줄을 연쇄해서 당겨온다
-function pullFromNext(groups, i) {
-    while (i < groups.length - 1 && groups[i].length < MAX_LINES) {
-        const next = groups[i + 1];
-        groups[i].push(...next.splice(0, MAX_LINES - groups[i].length));
-        if (next.length === 0) groups.splice(i + 1, 1);
-        else i++;
-    }
+// ── 3줄 이상 슬라이드 (2줄 유지 중 확인) ──
+// 슬라이드 내용(줄을 \n으로 이은 것)이 열쇠: kept[열쇠] === true면 '그대로 두기'한 슬라이드라 다시 묻지 않는다
+
+function slideKey(lines) { return lines.join('\n'); }
+
+// 3줄 이상인데 아직 묻지 않은 슬라이드 번호
+function longSlides(groups, kept) {
+    const out = [];
+    groups.forEach((lines, i) => { if (lines.length > MAX_LINES && kept[slideKey(lines)] !== true) out.push(i); });
+    return out;
 }
 
-// i번째 슬라이드가 모자라면 앞 슬라이드의 뒤쪽 줄을 연쇄해서 당겨온다
-function pullFromPrevious(groups, i) {
-    while (i > 0 && groups[i].length < MAX_LINES) {
-        const prev = groups[i - 1];
-        const need = MAX_LINES - groups[i].length;
-        groups[i].unshift(...prev.splice(Math.max(0, prev.length - need)));
-        if (prev.length === 0) groups.splice(i - 1, 1);
-        i--;
-    }
+// 물어본 슬라이드(keys)만 2줄씩 나눈다 (나머지는 그대로). 반환: { groups, count: 나눈 슬라이드 수 }
+function splitAsked(groups, keys) {
+    const asked = {};
+    keys.forEach(k => { asked[k] = true; });
+    let count = 0;
+    const out = [];
+    groups.forEach(lines => {
+        if (lines.length > MAX_LINES && asked[slideKey(lines)] === true) { count++; out.push(...regroup(lines, MAX_LINES)); }
+        else out.push(lines);
+    });
+    return { groups: out, count: count };
+}
+
+// ── 콘티 (여러 곡을 한 PPT로) ──
+
+// from번째 항목을 빼서 to번째 자리에 넣은 새 배열 (to는 뺀 뒤 기준)
+function moveItem(list, from, to) {
+    const out = list.slice();
+    if (from < 0 || from >= out.length) return out;
+    const item = out.splice(from, 1)[0];
+    out.splice(Math.max(0, Math.min(to, out.length)), 0, item);
+    return out;
+}
+
+// PPT 전체 장 수: 곡별 슬라이드 + 처음·곡 사이·끝의 빈 슬라이드 (ppt_engine.setlist_chunks와 같은 규칙,
+// 슬라이드가 없는 곡은 건너뜀). 만들 슬라이드가 없으면 0
+function deckSize(counts) {
+    const filled = counts.filter(n => n > 0);
+    if (!filled.length) return 0;
+    return filled.reduce((a, n) => a + n, 0) + filled.length + 1;
+}
+
+// PPT 이름(기본 파일 이름·문서 제목): 곡이 하나면 '제목 — 가수', 여럿이면 'YYYY-MM-DD 예배 가사'
+function deckTitle(songs, date) {
+    if (!songs.length) return '';
+    if (songs.length === 1) return [songs[0].title, songs[0].artist].filter(Boolean).join(' — ');
+    const pad = n => (n < 10 ? '0' : '') + n;
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' 예배 가사';
+}
+
+// 파일 이름에 쓸 수 없는 글자를 바꾼다
+function safeFileName(name) {
+    return (name || 'lyrics').replace(/[\/\\:*?"<>|]/g, '_');
 }

@@ -316,8 +316,10 @@ class Backend(QObject):
 
     # ── PPT 생성 ──
     @Slot(str, str, str)
-    def generatePpt(self, chunks_json, file_url, song_title=''):
-        chunks = json.loads(chunks_json)
+    def generatePpt(self, songs_json, file_url, title=''):
+        """콘티 전체를 한 PPT로 저장한다. songs_json: [{title, artist, chunks}] (곡 순서대로).
+        처음·곡 사이·끝의 빈 슬라이드는 ppt_engine이 넣는다. title: 문서 속성의 제목"""
+        songs = json.loads(songs_json)
         save_path = QUrl(file_url).toLocalFile() or file_url
         if not save_path.lower().endswith('.pptx'):
             save_path += '.pptx'
@@ -328,7 +330,7 @@ class Backend(QObject):
                 result = {'error': '템플릿 파일을 찾지 못했어요.', 'detail': f'경로: {template}'}
             else:
                 try:
-                    buffer = PPTBuilder(template).generate_slides_to_memory(chunks, song_title)
+                    buffer = PPTBuilder(template).generate_setlist_to_memory(songs, title)
                     if not buffer:
                         result = {'error': 'PPT를 만들지 못했어요', 'detail': '메모리에서 PPT 객체를 만들지 못했어요.'}
                     else:

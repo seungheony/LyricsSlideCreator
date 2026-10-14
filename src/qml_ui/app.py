@@ -108,8 +108,10 @@ def check_runtime():
     problems = []
     try:
         from pptx import Presentation
-        buffer = PPTBuilder(resource_path('template.pptx')).generate_slides_to_memory(['가사 첫 줄\n둘째 줄'], '점검')
-        if not buffer or len(Presentation(buffer).slides) != 1:
+        # 곡 하나 = 빈 슬라이드, 가사, 빈 슬라이드
+        buffer = PPTBuilder(resource_path('template.pptx')).generate_setlist_to_memory(
+            [{'title': '점검', 'artist': '', 'chunks': ['가사 첫 줄\n둘째 줄']}], '점검')
+        if not buffer or len(Presentation(buffer).slides) != 3:
             problems.append('메모리에서 PPT를 만들지 못했습니다')
     except Exception as e:
         problems.append(f'메모리에서 PPT를 만들지 못했습니다: {e}')

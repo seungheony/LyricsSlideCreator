@@ -6,7 +6,7 @@ ApplicationWindow {
     id: win
     width: 1100
     height: 800
-    minimumWidth: 760
+    minimumWidth: 900
     minimumHeight: 560
     visible: true
     title: "가사 슬라이드 생성기"
@@ -15,30 +15,68 @@ ApplicationWindow {
 
     property bool editorActive: false
     property var pendingSong: null
+    property bool pendingFresh: false   // 불러온 곡으로 새 콘티를 시작한다 (아니면 콘티에 더함)
     property int detailToken: 0
-    // 곡별 편집 상태 (song_id → { song, state }). 같은 곡을 다시 열면 이어서 편집한다.
-    // 세션 메모리에만 두고 파일로 남기지 않는다 (앱을 닫으면 사라짐 → 닫을 때 확인)
-    property var sessions: ({})
-    property var lastSession: null      // 검색 화면의 '이어서 편집' 칩
+    // 콘티와 곡별 편집 상태는 editorPage(sessions·setlist)가 세션 메모리에만 둔다 (앱을 닫으면 사라짐 → 닫을 때 확인)
     property bool closeConfirmed: false
-    // 편집 화면 밖에 보관된 곡 중 PPT로 만들지 않은 편집이 있는지
-    readonly property bool storedDirty: {
-        const cur = editorActive && editorPage.song ? editorPage.song.song_id : ""
-        return Object.keys(sessions).some(id => id !== cur && sessions[id].state.dirty)
-    }
+    // 편집 화면의 '곡 추가'로 검색 화면에 왔다: 고른 곡을 콘티에 더하고 편집 화면으로 돌아간다
+    property bool addMode: false
+    readonly property bool hasSetlist: editorPage.setlist.length > 0
 
-    // 곡 열기. 불러오는 중에 다른 곡을 누르면 마지막에 누른 곡을 연다 (늦게 온 응답은 detailToken으로 버림)
+    // 검색 결과에서 곡을 눌렀을 때. 콘티가 있으면 더할지 새로 시작할지 묻는다 ('곡 추가'로 왔거나 이미 콘티에 있는 곡이면 묻지 않음)
     function openSong(song) {
         if (pendingSong && pendingSong.song_id === song.song_id) return
         cancelOpen()
-        const saved = sessions[song.song_id]
-        if (saved) {
-            enterEditor(() => editorPage.resume(song, saved.state))
+        const list = editorPage.setlist
+        if (addMode || !list.length || list.indexOf(song.song_id) >= 0) {
+            loadSong(song, false)
+            return
+        }
+        confirmDialog.ask({
+            title: "콘티에 더할까요?",
+            message: "편집 중인 콘티(" + list.length + "곡)에 이 곡을 더할까요, 이 곡으로 새 콘티를 시작할까요?\n"
+                     + "새로 시작해도 곡마다 편집한 가사는 앱을 닫기 전까지 남아 있어요.",
+            confirmText: "콘티에 추가",
+            cancelText: "새 콘티 시작",
+            onConfirm: () => win.loadSong(song, false),
+            onCancel: () => win.loadSong(song, true),
+            onDismiss: null
+        })
+    }
+
+    // 곡을 콘티에 더하거나(fresh: 새 콘티로) 편집 화면을 연다. 전에 편집한 곡이면 이어서, 처음이면 가사를 받아 온다
+    // 불러오는 중에 다른 곡을 누르면 마지막에 누른 곡을 연다 (늦게 온 응답은 detailToken으로 버림)
+    function loadSong(song, fresh) {
+        if (editorPage.sessions[song.song_id]) {
+            placeSong(song, null, fresh)
             return
         }
         pendingSong = song
+        pendingFresh = fresh
         searchPage.loadingId = song.song_id
         backend.songDetail(detailToken, song.song_id)
+    }
+
+    function placeSong(song, lyricsText, fresh) {
+        const adding = addMode
+        addMode = false
+        enterEditor(() => {
+            if (fresh) editorPage.startSetlist(song, lyricsText)
+            else if (!editorPage.addSong(song, lyricsText) && adding) toast.show("이미 콘티에 있는 곡이라 그 곡을 열었어요")
+        })
+    }
+
+    // '곡 추가': 검색 화면으로 가서 고른 곡을 콘티에 더한다
+    function startAddSong() {
+        leaveEditor()
+        addMode = true
+    }
+
+    // 곡 추가를 그만두고 편집 화면으로 돌아간다
+    function cancelAddSong() {
+        cancelOpen()
+        addMode = false
+        enterEditor(() => {})
     }
 
     // 진행 중인 곡 열기를 취소 (새 검색, 검색 화면의 Esc)
@@ -54,15 +92,9 @@ ApplicationWindow {
         if (!backend.tutorialSeen("editor")) editorTourTimer.start()
     }
 
-    // 편집 화면을 떠나며 지금 상태를 보관한다
+    // 편집 화면을 떠나며 지금 곡의 상태를 보관한다 (콘티는 그대로 남아 '이어서 편집'으로 돌아온다)
     function leaveEditor() {
-        const song = editorPage.song
-        if (song) {
-            const next = Object.assign({}, sessions)
-            next[song.song_id] = { song: song, state: editorPage.saveState() }
-            sessions = next
-            lastSession = next[song.song_id]
-        }
+        editorPage.storeCurrent()
         editorPage.dismissUndoToast()    // 검색 화면에서 편집기의 되돌리기가 눌리지 않도록
         editorActive = false
         searchPage.focusSearch()
@@ -71,13 +103,13 @@ ApplicationWindow {
     // 뒤로·Esc: PPT로 만들지 않은 편집이 있으면 한 번 확인한다 (편집 내용은 보관돼 다시 열면 이어서 편집)
     function requestBack() {
         editorPage.prepareEdit()
-        if (!editorPage.dirty) {
+        if (!editorPage.setlistDirty) {
             leaveEditor()
             return
         }
         confirmDialog.ask({
             title: "아직 PPT로 만들지 않았어요",
-            message: "편집한 내용은 앱을 닫기 전까지 남아 있어서, 이 곡을 다시 열면 이어서 편집할 수 있어요. 검색 화면으로 갈까요?",
+            message: "편집한 콘티는 앱을 닫기 전까지 남아 있어서, 검색 화면 아래 '이어서 편집'으로 돌아올 수 있어요. 검색 화면으로 갈까요?",
             confirmText: "검색으로",
             cancelText: "계속 편집",
             onConfirm: () => win.leaveEditor()
@@ -88,7 +120,7 @@ ApplicationWindow {
     onClosing: (close) => {
         if (closeConfirmed) return
         if (editorActive) editorPage.prepareEdit()
-        if (!(editorActive && editorPage.dirty) && !storedDirty) return
+        if (!editorPage.anyDirty) return
         close.accepted = false
         confirmDialog.ask({
             title: "PPT로 만들지 않은 편집이 있어요",
@@ -111,7 +143,7 @@ ApplicationWindow {
                 dialog.showError(det.error, det.detail)
                 return
             }
-            win.enterEditor(() => editorPage.load(song, det.lyrics))
+            win.placeSong(song, det.lyrics, win.pendingFresh)
         }
         // 업데이트 설치가 시작되면 확인 없이 닫는다 (편집 경고는 업데이트 확인창에서 이미 보여 줌)
         function onUpdateReady() { win.closeConfirmed = true }
@@ -140,6 +172,7 @@ ApplicationWindow {
 
     EditorPage {
         id: editorPage
+        objectName: "editorPage"
         anchors.top: updateBanner.bottom
         anchors.left: parent.left
         anchors.right: parent.right
@@ -154,9 +187,10 @@ ApplicationWindow {
         tour: tour
         confirmDialog: confirmDialog
         onBackRequested: win.requestBack()
+        onAddSongRequested: win.startAddSong()
     }
 
-    // 검색 화면: 편집하던 곡으로 돌아가기
+    // 검색 화면: 편집하던 콘티로 돌아가기. '곡 추가' 중에는 고를 곡을 안내하고 누르면 편집 화면으로 돌아간다
     Rectangle {
         id: resumeChip
         anchors.horizontalCenter: parent.horizontalCenter
@@ -166,19 +200,19 @@ ApplicationWindow {
         width: Math.min(chipRow.implicitWidth + 36, parent.width - 32)
         height: 40
         radius: 20
-        color: chipArea.containsMouse ? Theme.primarySoft : Theme.surface
+        color: chipArea.containsMouse || win.addMode ? Theme.primarySoft : Theme.surface
         border.width: 1
-        border.color: chipArea.containsMouse ? Theme.primary : Theme.border
-        opacity: !win.editorActive && win.lastSession && !searchPage.loadingId ? 1 : 0
+        border.color: chipArea.containsMouse || win.addMode ? Theme.primary : Theme.border
+        opacity: !win.editorActive && win.hasSetlist && !searchPage.loadingId ? 1 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: Theme.normal } }
         Row {
             id: chipRow
             anchors.centerIn: parent
             spacing: 8
-            Text { text: "편집 중"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
+            Text { text: win.addMode ? "곡 추가" : "편집 중"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13; anchors.verticalCenter: parent.verticalCenter }
             Text {
-                text: win.lastSession ? win.lastSession.song.title + " — " + win.lastSession.song.artist : ""
+                text: win.addMode ? "콘티에 더할 곡을 골라 주세요" : win.setlistLabel()
                 textFormat: Text.PlainText
                 width: Math.min(implicitWidth, resumeChip.parent.width - 240)
                 elide: Text.ElideRight
@@ -188,15 +222,23 @@ ApplicationWindow {
                 font.weight: Font.DemiBold
                 anchors.verticalCenter: parent.verticalCenter
             }
-            Text { text: "· 이어서 편집"; color: Theme.primaryText; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
+            Text { text: win.addMode ? "· 편집으로 돌아가기" : "· 이어서 편집"; color: Theme.primaryText; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
         }
         MouseArea {
             id: chipArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: win.openSong(win.lastSession.song)
+            onClicked: win.addMode ? win.cancelAddSong() : win.enterEditor(() => {})
         }
+    }
+
+    // '이어서 편집' 칩: 곡이 하나면 '제목 — 가수', 여럿이면 '콘티 N곡 · 첫 곡 외 N-1곡'
+    function setlistLabel() {
+        const list = editorPage.setlistEntries
+        if (!list.length) return ""
+        if (list.length === 1) return [list[0].title, list[0].artist].filter(Boolean).join(" — ")
+        return "콘티 " + list.length + "곡 · " + list[0].title + " 외 " + (list.length - 1) + "곡"
     }
 
     // 버전 표시. 누르면 업데이트를 직접 확인한다 (알림을 닫았으면 다시 연다)
@@ -287,7 +329,7 @@ ApplicationWindow {
 
     UpdateDialog {
         id: updateDialog
-        editing: (win.editorActive && editorPage.dirty) || win.storedDirty
+        editing: editorPage.anyDirty
         onClosed: if (stage !== "installing") win.showUpdateBanner()
     }
 
@@ -366,7 +408,7 @@ ApplicationWindow {
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
-        enabled: win.editorActive && editorPage.blocks.length > 0 && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && editorPage.deckSize > 0 && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.generate()
     }
     Shortcut {
@@ -383,5 +425,10 @@ ApplicationWindow {
         sequence: "Escape"
         enabled: !win.editorActive && win.pendingSong !== null && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: win.cancelOpen()    // 불러오는 중인 곡 열기 취소
+    }
+    Shortcut {
+        sequence: "Escape"
+        enabled: !win.editorActive && win.addMode && win.pendingSong === null && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        onActivated: win.cancelAddSong()    // 곡 추가를 그만두고 편집 화면으로
     }
 }

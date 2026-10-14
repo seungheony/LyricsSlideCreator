@@ -31,6 +31,18 @@ def clean_lyrics_text(text):
     return unicodedata.normalize('NFC', _CONTROL.sub('', text))
 
 
+def setlist_chunks(songs):
+    """콘티(곡 목록)를 슬라이드 순서로 편다. None은 검은 빈 슬라이드(가사 상자를 비운 슬라이드)로,
+    처음·곡 사이·끝에 넣는다. 곡이 하나여도 같다. 슬라이드가 없는 곡은 건너뛴다.
+    songs: [{'title', 'artist', 'chunks': [슬라이드별 가사]}]"""
+    seq = [None]
+    for song in songs:
+        chunks = [c for c in song.get('chunks') or [] if c.strip()]
+        if chunks:
+            seq += chunks + [None]
+    return seq
+
+
 class PPTBuilder:
     def __init__(self, template_path):
         self.template_path = template_path
@@ -99,7 +111,12 @@ class PPTBuilder:
             if rel.reltype.endswith('/metadata/thumbnail'):
                 package.drop_rel(rId)
 
+    def generate_setlist_to_memory(self, songs, title=''):
+        """콘티 전체를 한 PPT로: 처음·곡 사이·끝에 빈 슬라이드 (setlist_chunks)"""
+        return self.generate_slides_to_memory(setlist_chunks(songs), title)
+
     def generate_slides_to_memory(self, lyrics_data, title=''):
+        """lyrics_data: 슬라이드별 가사. None이면 가사 상자를 비운 빈 슬라이드"""
         if not self.prs or not self.prs.slides: return None
         self.set_properties(title)
 
@@ -112,7 +129,7 @@ class PPTBuilder:
             del self.prs.slides._sldIdLst[i]
 
         for chunk in lyrics_data:
-            chunk = clean_lyrics_text(chunk)
+            chunk = clean_lyrics_text(chunk) if chunk is not None else ''
             new_slide = self.prs.slides.add_slide(slide_layout)
             for shape in new_slide.shapes:
                  if shape.is_placeholder:

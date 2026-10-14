@@ -28,31 +28,139 @@ Item {
     property url lastSaveFolder: ""
     // 곡을 연 때나 마지막으로 PPT를 만든 때의 슬라이드 내용. 지금과 다르면 PPT로 만들지 않은 편집이 있다
     property string savedKey: ""
-    property string generatingKey: ""
+    property var generatingKeys: ({})    // 만드는 중인 PPT에 들어간 곡별 내용 (song_id → contentKey)
     readonly property bool dirty: song !== null && contentKey(blocks) !== savedKey
 
+    // ── 콘티 ── 여러 곡을 순서대로 한 PPT로 만든다. 편집기는 고른 곡 하나만 다룬다.
+    // 곡마다 가사 텍스트가 유일한 원본이고, 편집 상태는 세션 메모리에만 둔다 (파일로 남기지 않음 → 닫을 때 확인).
+    // sessions: song_id → { song, text, hist, histIdx, cursor, contentY, slideY, kept, savedKey, dirty, slides, wraps }
+    //   지금 편집 중인 곡은 화면이 최신이고 sessions의 값은 곡을 바꾸거나 화면을 떠날 때 갱신한다(storeCurrent).
+    //   콘티에서 뺀 곡도 남겨 두어, 다시 넣으면 이어서 편집한다.
+    property var sessions: ({})
+    property var setlist: []            // 콘티 곡 순서 (song_id)
+    readonly property string currentId: song ? song.song_id : ""
+    // 곡 목록 패널에 보일 내용 (지금 곡은 편집 중인 내용으로)
+    readonly property var setlistEntries: setlist.map(id => id === currentId
+        ? { id: id, title: song.title, artist: song.artist, slides: blocks.length, wraps: wrapSlides.length }
+        : { id: id, title: sessions[id].song.title, artist: sessions[id].song.artist,
+            slides: sessions[id].slides, wraps: sessions[id].wraps })
+    readonly property int deckSize: E.deckSize(setlistEntries.map(e => e.slides))
+    // 콘티의 곡 중 PPT로 만들지 않은 편집이 있는지 / 콘티에서 뺀 곡까지 포함해서
+    readonly property bool setlistDirty: dirty || setlist.some(id => id !== currentId && sessions[id].dirty)
+    readonly property bool anyDirty: dirty || Object.keys(sessions).some(id => id !== currentId && sessions[id].dirty)
+
     signal backRequested()
+    signal addSongRequested()
 
     readonly property bool lyricsFocused: lyrics.activeFocus
     readonly property bool dragging: slideList.dragging
 
     function contentKey(bs) { return E.serialize(E.linesOf(bs)) }
+    function textKey(text) { return E.serialize(E.linesOf(E.parseBlocks(text))) }
 
-    // ── 곡 불러오기 / 편집 상태 ──
-    // 편집 상태는 Main이 곡별로 세션 메모리에 보관해, 같은 곡을 다시 열면 이어서 편집한다 (파일로 남기지 않음)
-    function load(newSong, lyricsText) {
-        // 멜론 가사는 절 사이에 빈 줄이 섞여 있으므로 처음에는 2줄씩 자동으로 나눈다
+    // ── 곡별 편집 상태 ──
+    // 처음 여는 곡: 멜론 가사는 절 사이에 빈 줄이 섞여 있으므로 처음에는 2줄씩 자동으로 나눈다
+    function newEntry(newSong, lyricsText) {
         const text = E.serialize(E.regroup(E.allLines(E.parseBlocks(lyricsText)), 2))
-        resume(newSong, { text: text, hist: [text], histIdx: 0, cursor: 0, contentY: 0, slideY: 0,
-                          kept: {}, savedKey: text })
+        const groups = E.linesOf(E.parseBlocks(text))
+        return { song: newSong, text: text, hist: [text], histIdx: 0, cursor: 0, contentY: 0, slideY: 0,
+                 kept: {}, savedKey: text, dirty: false, slides: groups.length, wraps: countWraps(groups) }
     }
 
     function saveState() {
         prepareEdit()
         flushTyping()
-        return { text: lyrics.text, hist: hist, histIdx: histIdx, cursor: lyrics.cursorPosition,
+        return { song: song, text: lyrics.text, hist: hist, histIdx: histIdx, cursor: lyrics.cursorPosition,
                  contentY: lyricsScroll.contentItem.contentY, slideY: slideList.scrollY(),
-                 kept: keptLongSlides, savedKey: savedKey, dirty: dirty }
+                 kept: keptLongSlides, savedKey: savedKey, dirty: dirty,
+                 slides: blocks.length, wraps: wrapSlides.length }
+    }
+
+    // 지금 곡의 편집 상태를 sessions에 보관한다 (곡을 바꾸거나 화면을 떠날 때)
+    function storeCurrent() {
+        if (!song) return
+        const next = Object.assign({}, sessions)
+        next[song.song_id] = saveState()
+        sessions = next
+    }
+
+    function setEntry(id, entry) {
+        const next = Object.assign({}, sessions)
+        next[id] = entry
+        sessions = next
+    }
+
+    function openEntry(id) { resume(sessions[id].song, sessions[id]) }
+
+    // ── 콘티 편집 ──
+    // 곡을 콘티 끝에 더하고 그 곡을 연다. lyricsText가 null이면 보관된 편집 상태로 이어서 편집한다.
+    // 반환: 새로 더했으면 true, 이미 콘티에 있던 곡이면 false (그 곡을 연다)
+    function addSong(newSong, lyricsText) {
+        storeCurrent()
+        const id = newSong.song_id
+        if (!sessions[id]) setEntry(id, newEntry(newSong, lyricsText))
+        const added = setlist.indexOf(id) < 0
+        if (added) setlist = setlist.concat([id])
+        if (id !== currentId) openEntry(id)
+        return added
+    }
+
+    // 이 곡 하나로 새 콘티를 시작한다 (전에 편집한 곡들의 내용은 sessions에 남는다)
+    function startSetlist(newSong, lyricsText) {
+        storeCurrent()
+        setlist = []
+        addSong(newSong, lyricsText)
+    }
+
+    function selectSong(id) {
+        if (id === currentId || !sessions[id]) return
+        storeCurrent()
+        openEntry(id)
+    }
+
+    function moveSong(from, to) {
+        setlist = E.moveItem(setlist, from, to)
+    }
+
+    // 콘티에서 뺀다 (편집 내용은 남아 되돌리거나 다시 넣으면 이어서 편집). 곡이 하나뿐이면 빼지 않는다
+    function removeSong(idx) {
+        if (setlist.length <= 1 || idx < 0 || idx >= setlist.length) return
+        storeCurrent()
+        const id = setlist[idx]
+        const next = setlist.slice()
+        next.splice(idx, 1)
+        setlist = next
+        if (id === currentId) openEntry(next[Math.min(idx, next.length - 1)])
+        if (toastHost)
+            toastHost.show("'" + sessions[id].song.title + "' 곡을 콘티에서 뺐어요",
+                           { actionLabel: "되돌리기", duration: 5000, onAction: () => page.restoreSong(id, idx) })
+    }
+
+    function restoreSong(id, idx) {
+        if (setlist.indexOf(id) >= 0 || !sessions[id]) return
+        const next = setlist.slice()
+        next.splice(Math.min(idx, next.length), 0, id)
+        setlist = next
+        selectSong(id)
+    }
+
+    // 콘티 곡별 슬라이드 (지금 곡은 편집 중인 내용으로). 부르기 전에 prepareEdit()
+    function setlistGroups() {
+        return setlist.map(id => id === currentId
+            ? { id: id, song: song, groups: E.linesOf(blocks), kept: keptLongSlides }
+            : { id: id, song: sessions[id].song, groups: E.linesOf(E.parseBlocks(sessions[id].text)), kept: sessions[id].kept })
+    }
+
+    // 지금 곡이 아닌 곡의 가사를 고친다 (그 곡의 히스토리에 남겨, 열어서 되돌릴 수 있다)
+    function rewriteStored(id, text) {
+        const st = sessions[id]
+        if (st.text === text) return
+        const hist = st.hist.slice(0, st.histIdx + 1).concat([text])
+        if (hist.length > 200) hist.shift()
+        const groups = E.linesOf(E.parseBlocks(text))
+        setEntry(id, Object.assign({}, st, { text: text, hist: hist, histIdx: hist.length - 1,
+                                             dirty: E.serialize(groups) !== st.savedKey,
+                                             slides: groups.length, wraps: countWraps(groups) }))
     }
 
     function resume(newSong, st) {
@@ -140,19 +248,30 @@ Item {
     property string fitBasis: ""     // 계산 기준 (안내 문구)
     property var ratioCache: new Map()   // 줄 → 비율. 입력할 때는 바뀐 줄만 계산한다
 
-    function measureLines(bs) {
+    // 캐시에 없는 줄만 계산한다. groups: 슬라이드별 줄 배열
+    function fillRatios(groups) {
         if (ratioCache.size > 5000) ratioCache = new Map()
         const missing = []
         const seen = new Set()
-        bs.forEach(b => b.lines.forEach(l => {
+        groups.forEach(lines => lines.forEach(l => {
             if (!ratioCache.has(l) && !seen.has(l)) { seen.add(l); missing.push(l) }
         }))
         if (missing.length) {
             const ratios = JSON.parse(backend.lineWidthRatios(JSON.stringify(missing)))
             missing.forEach((l, i) => ratioCache.set(l, ratios[i]))
         }
+    }
+
+    function measureLines(bs) {
+        fillRatios(E.linesOf(bs))
         lineRatios = bs.map(b => b.lines.map(l => ratioCache.get(l)))
         wrapSlides = lineRatios.reduce((acc, r, i) => r.some(x => x > 1) ? acc.concat(i) : acc, [])
+    }
+
+    // 줄바꿈되는 줄이 있는 슬라이드 수 (콘티의 다른 곡 표시용)
+    function countWraps(groups) {
+        fillRatios(groups)
+        return groups.filter(lines => lines.some(l => ratioCache.get(l) > 1)).length
     }
 
     function updateFitBasis() {
@@ -248,16 +367,29 @@ Item {
         keptLongSlides = kept
     }
 
-    // 아직 묻지 않은 3줄 이상 슬라이드 번호
+    // 아직 묻지 않은 3줄 이상 슬라이드 번호 (지금 곡)
     function freshLongSlides() {
-        const out = []
-        blocks.forEach((b, i) => { if (b.lines.length > 2 && keptLongSlides[b.lines.join("\n")] !== true) out.push(i) })
-        return out
+        return E.longSlides(E.linesOf(blocks), keptLongSlides)
+    }
+
+    // 콘티 전체에서 아직 묻지 않은 3줄 이상 슬라이드: [{ id, title, slides: 번호[], keys: 내용[] }]
+    function freshLongInSetlist() {
+        return setlistGroups().map(s => {
+            const slides = E.longSlides(s.groups, s.kept)
+            return { id: s.id, title: s.song.title, slides: slides, keys: slides.map(i => E.slideKey(s.groups[i])) }
+        }).filter(s => s.slides.length)
+    }
+
+    function keepLongIn(id, keys) {
+        if (id === currentId) { keepLong(keys); return }
+        const kept = Object.assign({}, sessions[id].kept)
+        keys.forEach(k => { kept[k] = true })
+        setEntry(id, Object.assign({}, sessions[id], { kept: kept }))
     }
 
     // 입력칸에서 벗어났을 때: 나눌지, 그대로 둘지
     function askLongSlides(fresh) {
-        const keys = fresh.map(i => blocks[i].lines.join("\n"))
+        const keys = fresh.map(i => E.slideKey(blocks[i].lines))
         confirmDialog.ask({
             title: "3줄 이상인 슬라이드가 있어요",
             message: longNames(fresh) + " 슬라이드가 3줄 이상이에요. '2줄 유지' 중인데 2줄씩 나눌까요?",
@@ -269,19 +401,47 @@ Item {
         slideList.flash(fresh[0])
     }
 
-    // PPT 생성 전: 그대로 만들지(주 버튼), 편집 화면으로 돌아가 2줄씩 나눌지. Esc·바깥 클릭은 아무것도 하지 않음
+    // PPT 생성 전: 콘티 전체에서 그대로 만들지(주 버튼), 편집 화면으로 돌아가 2줄씩 나눌지. Esc·바깥 클릭은 아무것도 하지 않음
+    // fresh: freshLongInSetlist() 결과. 곡이 여럿이면 곡 제목을 붙여 알린다
     function askLongBeforeGenerate(fresh) {
-        const keys = fresh.map(i => blocks[i].lines.join("\n"))
+        const multi = setlist.length > 1
         confirmDialog.ask({
             title: "3줄 이상인 슬라이드가 있어요",
-            message: longNames(fresh) + " 슬라이드가 3줄 이상이에요. 그대로 PPT를 만들까요, 2줄씩 나눌까요?",
+            message: fresh.map(s => (multi ? "'" + s.title + "' " : "") + longNames(s.slides)).join(", ")
+                     + " 슬라이드가 3줄 이상이에요. 그대로 PPT를 만들까요, 2줄씩 나눌까요?",
             confirmText: "그대로 PPT 생성",
             cancelText: "2줄씩 나누기",
-            onConfirm: () => { keepLong(keys); openSaveDialog() },
-            onCancel: () => splitLongSlides(keys),
+            onConfirm: () => { fresh.forEach(s => keepLongIn(s.id, s.keys)); openSaveDialog() },
+            onCancel: () => splitLongInSetlist(fresh),
             onDismiss: null
         })
-        slideList.flash(fresh[0])
+        const cur = fresh.find(s => s.id === currentId)
+        if (cur) slideList.flash(cur.slides[0])
+    }
+
+    // 물어본 슬라이드만 2줄씩 나눈다. 다른 곡은 그 곡의 히스토리에 남긴다
+    function splitLongInSetlist(fresh) {
+        prepareEdit()
+        let total = 0
+        let songs = 0
+        let current = null
+        fresh.forEach(s => {
+            if (s.id === currentId) { current = s; return }
+            const r = E.splitAsked(E.linesOf(E.parseBlocks(sessions[s.id].text)), s.keys)
+            if (!r.count) return
+            rewriteStored(s.id, E.serialize(r.groups))
+            total += r.count
+            songs++
+        })
+        if (!songs) {
+            if (current) splitLongSlides(current.keys)    // 지금 곡만: 되돌리기 토스트
+            return
+        }
+        if (current) {
+            const r = E.splitAsked(E.linesOf(blocks), current.keys)
+            if (r.count) { commit(r.groups); total += r.count; songs++ }
+        }
+        if (toastHost) toastHost.show(songs + "곡에서 " + total + "장을 2줄씩 나눴어요 · 곡마다 되돌릴 수 있어요")
     }
 
     function longNames(fresh) {
@@ -296,7 +456,7 @@ Item {
         if (Qt.application.state !== Qt.ApplicationActive || !page.Window.active) return   // 다른 앱·창으로 전환
         // 다른 창이 떠 있거나(튜토리얼은 닫힌 뒤에 묻는다, 아래 Connections), PPT 생성·뒤로를 누르는 중이면 묻지 않는다
         if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible) return
-        if (generating || generateButton.pressed || backButton.pressed) return
+        if (generating || generateButton.pressed || backButton.pressed || setlistPanel.busy) return
         prepareEdit()
         const fresh = freshLongSlides()
         if (fresh.length) askLongSlides(fresh)
@@ -310,15 +470,8 @@ Item {
     // 물어본 슬라이드(keys)만 2줄씩 나눈다 (나머지는 그대로)
     function splitLongSlides(keys) {
         prepareEdit()
-        const asked = {}
-        keys.forEach(k => { asked[k] = true })
-        let count = 0
-        const groups = []
-        E.linesOf(blocks).forEach(lines => {
-            if (lines.length > 2 && asked[lines.join("\n")] === true) { count++; groups.push(...E.regroup(lines, 2)) }
-            else groups.push(lines)
-        })
-        if (count) commit(groups, { message: count + "장을 2줄씩 나눴어요" })
+        const r = E.splitAsked(E.linesOf(blocks), keys)
+        if (r.count) commit(r.groups, { message: r.count + "장을 2줄씩 나눴어요" })
     }
 
     function removeSlide(idx) {
@@ -339,7 +492,7 @@ Item {
         slideList.scrollToTop()
     }
 
-    // 줄 드래그: 옆 슬라이드로만 옮긴다. 2줄 유지를 켜면 넘친 줄은 연쇄로 밀고 빈자리는 연쇄로 당겨 채운다
+    // 줄 드래그: 옆 슬라이드로만 옮긴다. 2줄 유지를 켜면 넘친 줄은 연쇄로 민다 (줄이 빠진 슬라이드는 1줄로 남는다)
     property bool keepTwo: true     // 기본으로 켜 둔다
 
     // 놓으려는 위치를 허용된 동작으로 바꾼다. 허용되지 않거나 바뀌는 게 없으면 null
@@ -457,22 +610,27 @@ Item {
         templateButton: templateButton
         customTemplate: page.customTemplate
         generateButton: generateButton
+        setlistPanel: setlistPanel
     }
 
     // ── 템플릿 / 생성 ──
+    // 콘티 전체를 한 PPT로 만든다 (처음·곡 사이·끝의 빈 슬라이드는 ppt_engine이 넣는다).
     // 2줄 유지 중 3줄 이상 슬라이드가 있으면 먼저 묻고, 답에 맞춰 고친 뒤 저장 대화상자를 연다
+    property string deckName: ""     // PPT 이름 (기본 파일 이름·문서 제목)
+
     function generate() {
         if (generating || saveDialog.visible) return
         prepareEdit()
-        if (!blocks.length) return    // 버튼과 단축키는 가사가 있을 때만 켜지지만 한 번 더 막는다
+        if (!deckSize) return    // 버튼과 단축키는 가사가 있을 때만 켜지지만 한 번 더 막는다
         longCheckTimer.stop()
-        const fresh = keepTwo && confirmDialog ? freshLongSlides() : []
+        const fresh = keepTwo && confirmDialog ? freshLongInSetlist() : []
         if (fresh.length) askLongBeforeGenerate(fresh)
         else openSaveDialog()
     }
 
     function openSaveDialog() {
-        const name = (song ? song.title + " — " + song.artist : "lyrics").replace(/[\/\\:*?"<>|]/g, "_")
+        deckName = E.deckTitle(setlist.map(id => id === currentId ? song : sessions[id].song), new Date())
+        const name = E.safeFileName(deckName)
         // FileDialog 기본 폴더는 프로세스 작업 폴더(설치 폴더일 수 있음)라 쓰지 않는다
         let folder = page.lastSaveFolder
         if (folder.toString() === "") {
@@ -484,6 +642,21 @@ Item {
         saveDialog.open()
     }
 
+    // 콘티 전체를 fileUrl에 PPT로 저장한다 (저장 대화상자에서 고른 뒤)
+    function writePpt(fileUrl) {
+        prepareEdit()
+        const songs = setlistGroups()
+        const keys = {}
+        songs.forEach(s => { keys[s.id] = E.serialize(s.groups) })
+        deckName = E.deckTitle(songs.map(s => s.song), new Date())
+        savedUrl = fileUrl
+        generating = true
+        generatingKeys = keys
+        backend.generatePpt(JSON.stringify(songs.map(s => ({ title: s.song.title, artist: s.song.artist,
+                                                             chunks: s.groups.map(lines => lines.join("\n")) }))),
+                            fileUrl.toString(), deckName)
+    }
+
     Connections {
         target: backend
         function onGenerateFinished(json) {
@@ -492,7 +665,14 @@ Item {
             if (res.error) {
                 page.dialog.showError(res.error, res.detail)
             } else {
-                page.savedKey = page.generatingKey    // 이 내용까지는 PPT로 만들었다
+                // 이 내용까지는 PPT로 만들었다 (그 사이 다른 곡으로 바꿨을 수 있어 곡마다 반영)
+                const keys = page.generatingKeys
+                const next = Object.assign({}, page.sessions)
+                Object.keys(keys).forEach(id => {
+                    if (id === page.currentId) page.savedKey = keys[id]
+                    else if (next[id]) next[id] = Object.assign({}, next[id], { savedKey: keys[id], dirty: page.textKey(next[id].text) !== keys[id] })
+                })
+                page.sessions = next
                 const name = res.path.split(/[\\/]/).pop()
                 const saved = page.savedUrl
                 page.toastHost.show("PPT를 만들었어요 · " + name, {
@@ -508,6 +688,11 @@ Item {
             page.updateFitBasis()
             page.ratioCache = new Map()
             page.measureLines(page.blocks)
+            const next = Object.assign({}, page.sessions)
+            Object.keys(next).forEach(id => {
+                next[id] = Object.assign({}, next[id], { wraps: page.countWraps(E.linesOf(E.parseBlocks(next[id].text))) })
+            })
+            page.sessions = next
         }
         function onArtReady(id) {
             if (page.song && id === page.song.song_id) {
@@ -525,10 +710,7 @@ Item {
         nameFilters: ["PowerPoint (*.pptx)"]
         onAccepted: {
             page.lastSaveFolder = saveDialog.currentFolder
-            page.savedUrl = selectedFile
-            page.generating = true
-            page.generatingKey = page.contentKey(page.blocks)
-            backend.generatePpt(JSON.stringify(page.blocks.map(b => b.lines.join("\n"))), selectedFile.toString(), page.song ? page.song.title + " — " + page.song.artist : "")
+            page.writePpt(selectedFile)
         }
     }
 
@@ -634,6 +816,22 @@ Item {
             Layout.topMargin: 20
             Layout.bottomMargin: 12
             spacing: 20
+
+            // 콘티 (곡 목록)
+            SetlistPanel {
+                id: setlistPanel
+                Layout.fillHeight: true
+                Layout.preferredWidth: 200
+                Layout.minimumWidth: 200
+                entries: page.setlistEntries
+                current: page.currentId
+                deckSize: page.deckSize
+                onSelected: (id) => page.selectSong(id)
+                onRemoveRequested: (idx) => page.removeSong(idx)
+                onMoveRequested: (from, to) => page.moveSong(from, to)
+                onAddRequested: page.addSongRequested()
+                onHelpRequested: help.setlistHelp()
+            }
 
             // 가사 편집
             ColumnLayout {
@@ -839,7 +1037,7 @@ Item {
                             padding: 4
                             ToolTip.visible: hovered
                             ToolTip.delay: 500
-                            ToolTip.text: "줄을 옮길 때 넘치는 줄은 연쇄로 밀고, 빈자리는 연쇄로 당겨와 슬라이드마다 2줄씩 유지해요"
+                            ToolTip.text: "줄을 옮길 때 넘치는 줄을 연쇄로 밀어서 슬라이드마다 2줄을 넘지 않게 해요. 줄을 준 슬라이드는 1줄로 남아요"
                             indicator: Rectangle {
                                 x: keepTwoBox.leftPadding
                                 anchors.verticalCenter: parent.verticalCenter
@@ -956,7 +1154,7 @@ Item {
                         variant: "primary"
                         size: "large"
                         busy: page.generating
-                        enabled: page.blocks.length > 0
+                        enabled: page.deckSize > 0
                         onClicked: page.generate()
                     }
                     MouseArea {

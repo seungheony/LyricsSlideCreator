@@ -209,24 +209,44 @@ class EditorJs(unittest.TestCase):
         plan = self.drop(g, {'slide': 0, 'line': 1}, {'type': 'new', 'at': 1}, False)
         self.assertEqual(plan, {'groups': [['a'], ['b'], ['c']], 'focus': 1})
 
-    def test_plan_drop_keep_two_cascades_and_preserves_lines(self):
+    def test_plan_drop_keep_two_pushes_backward(self):
         g = [['a', 'b'], ['c', 'd'], ['e', 'f']]
-        # c를 앞으로: [a,b,c] 넘침 → a가 맨 앞 새 슬라이드, 소스는 뒤에서 e를 당겨 채움 → f는 혼자
+        # c를 앞으로: [a,b,c] 넘침 → a가 맨 앞 새 슬라이드. 줄을 준 슬라이드는 d 혼자 남는다 (당겨 채우지 않음)
         plan = self.drop(g, {'slide': 1, 'line': 0}, {'type': 'line', 'slide': 0, 'at': 2}, True)
-        self.assertEqual(plan['groups'], [['a'], ['b', 'c'], ['d', 'e'], ['f']])
-        self.assertEqual(plan['focus'], 1)
-        flat = [x for grp in plan['groups'] for x in grp]
-        self.assertEqual(flat, ['a', 'b', 'c', 'd', 'e', 'f'])   # 줄 수·순서 보존
-        self.assertTrue(all(len(grp) <= 2 for grp in plan['groups']))
+        self.assertEqual(plan, {'groups': [['a'], ['b', 'c'], ['d'], ['e', 'f']], 'focus': 1})
 
-    def test_plan_drop_keep_two_forward(self):
+    def test_plan_drop_keep_two_pushes_forward(self):
         g = [['a', 'b'], ['c', 'd'], ['e', 'f']]
-        # b를 뒤로: [b,c,d] 넘침 → d가 다음으로 → ... 마지막은 새 슬라이드
+        # b를 뒤로: [b,c,d] 넘침 → d가 다음으로 → [d,e,f] 넘침 → f는 맨 뒤 새 슬라이드. a는 혼자 남는다
         plan = self.drop(g, {'slide': 0, 'line': 1}, {'type': 'line', 'slide': 1, 'at': 0}, True)
-        flat = [x for grp in plan['groups'] for x in grp]
-        self.assertEqual(flat, ['a', 'b', 'c', 'd', 'e', 'f'])
-        self.assertTrue(all(len(grp) <= 2 for grp in plan['groups']))
-        self.assertIn('b', plan['groups'][plan['focus']])
+        self.assertEqual(plan, {'groups': [['a'], ['b', 'c'], ['d', 'e'], ['f']], 'focus': 1})
+
+    def test_plan_drop_keep_two_does_not_pull_into_source(self):
+        # 가운데 슬라이드가 줄을 줘도 반대쪽 이웃에서 당겨오지 않는다
+        g = [['a', 'b'], ['c', 'd'], ['e']]
+        plan = self.drop(g, {'slide': 1, 'line': 1}, {'type': 'line', 'slide': 2, 'at': 0}, True)
+        self.assertEqual(plan, {'groups': [['a', 'b'], ['c'], ['d', 'e']], 'focus': 2})
+        g = [['a'], ['b', 'c'], ['d', 'e']]
+        plan = self.drop(g, {'slide': 1, 'line': 0}, {'type': 'line', 'slide': 0, 'at': 1}, True)
+        self.assertEqual(plan, {'groups': [['a', 'b'], ['c'], ['d', 'e']], 'focus': 0})
+
+    def test_plan_drop_keep_two_new_slide_does_not_pull(self):
+        # 새 슬라이드로 떼어내도 남은 슬라이드는 1줄 그대로
+        g = [['a', 'b'], ['c', 'd']]
+        plan = self.drop(g, {'slide': 0, 'line': 1}, {'type': 'new', 'at': 1}, True)
+        self.assertEqual(plan, {'groups': [['a'], ['b'], ['c', 'd']], 'focus': 1})
+
+    def test_plan_drop_keep_two_preserves_lines(self):
+        g = [['a', 'b'], ['c', 'd'], ['e', 'f'], ['g', 'h']]
+        moves = [({'slide': 1, 'line': 0}, {'type': 'line', 'slide': 0, 'at': 2}),
+                 ({'slide': 2, 'line': 1}, {'type': 'line', 'slide': 3, 'at': 0}),
+                 ({'slide': 0, 'line': 1}, {'type': 'line', 'slide': 1, 'at': 0})]
+        for src, target in moves:
+            with self.subTest(src=src, target=target):
+                plan = self.drop(g, src, target, True)
+                flat = [x for grp in plan['groups'] for x in grp]
+                self.assertEqual(flat, list('abcdefgh'))   # 줄 수·순서 보존
+                self.assertTrue(all(1 <= len(grp) <= 2 for grp in plan['groups']))
 
     def test_plan_drop_focus_with_repeated_lines(self):
         # 같은 가사 줄이 반복돼도 옮긴 줄이 들어간 슬라이드를 가리킨다
@@ -240,6 +260,47 @@ class EditorJs(unittest.TestCase):
         # 한 줄짜리 슬라이드 둘을 붙였다 뗄 때처럼 결과가 같으면 null
         g = [['a']]
         self.assertIsNone(self.drop(g, {'slide': 0, 'line': 0}, {'type': 'new', 'at': 0}, False))
+
+    # ── 3줄 이상 슬라이드 ──
+    def test_long_slides_skips_kept(self):
+        g = [['a', 'b', 'c'], ['d'], ['e', 'f', 'g', 'h']]
+        self.assertEqual(self.call(f'longSlides({json.dumps(g)}, {{}})'), [0, 2])
+        self.assertEqual(self.call(f'longSlides({json.dumps(g)}, {{"a\\nb\\nc": true}})'), [2])
+
+    def test_split_asked_only_splits_asked(self):
+        g = [['a', 'b', 'c'], ['d'], ['e', 'f', 'g', 'h']]
+        got = self.call(f'splitAsked({json.dumps(g)}, ["e\\nf\\ng\\nh"])')
+        self.assertEqual(got, {'groups': [['a', 'b', 'c'], ['d'], ['e', 'f'], ['g', 'h']], 'count': 1})
+        got = self.call(f'splitAsked({json.dumps(g)}, [])')
+        self.assertEqual(got, {'groups': g, 'count': 0})
+
+    # ── 콘티 ──
+    def test_move_item(self):
+        self.assertEqual(self.call('moveItem(["a","b","c"], 0, 2)'), ['b', 'c', 'a'])
+        self.assertEqual(self.call('moveItem(["a","b","c"], 2, 0)'), ['c', 'a', 'b'])
+        self.assertEqual(self.call('moveItem(["a","b","c"], 1, 1)'), ['a', 'b', 'c'])
+        self.assertEqual(self.call('moveItem(["a","b","c"], 0, 9)'), ['b', 'c', 'a'])   # 넘치면 끝으로
+        self.assertEqual(self.call('moveItem(["a","b"], 5, 0)'), ['a', 'b'])            # 없는 항목은 그대로
+
+    def test_deck_size_counts_blank_slides(self):
+        # 처음·곡 사이·끝에 빈 슬라이드 (ppt_engine.setlist_chunks와 같은 규칙)
+        self.assertEqual(self.call('deckSize([2, 1, 3])'), 6 + 4)
+        self.assertEqual(self.call('deckSize([5])'), 5 + 2)
+        self.assertEqual(self.call('deckSize([2, 0, 3])'), 5 + 3)   # 빈 곡은 건너뜀
+        self.assertEqual(self.call('deckSize([0, 0])'), 0)
+        self.assertEqual(self.call('deckSize([])'), 0)
+
+    def test_deck_title(self):
+        one = json.dumps([{'title': '은혜', 'artist': '손경민'}], ensure_ascii=False)
+        self.assertEqual(self.call(f'deckTitle({one}, new Date(2026, 9, 4))'), '은혜 — 손경민')
+        two = json.dumps([{'title': 'A', 'artist': 'x'}, {'title': 'B', 'artist': 'y'}])
+        self.assertEqual(self.call(f'deckTitle({two}, new Date(2026, 9, 4))'), '2026-10-04 예배 가사')
+        self.assertEqual(self.call('deckTitle([{"title": "A", "artist": ""}], new Date())'), 'A')
+        self.assertEqual(self.call('deckTitle([], new Date())'), '')
+
+    def test_safe_file_name(self):
+        self.assertEqual(self.call('safeFileName("a/b:c?")'), 'a_b_c_')
+        self.assertEqual(self.call('safeFileName("")'), 'lyrics')
 
 
 if __name__ == '__main__':

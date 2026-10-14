@@ -20,6 +20,7 @@ QtObject {
     property Item templateButton
     property bool customTemplate: false
     property Item generateButton
+    property Item setlistPanel
 
     // 예시용 가사 줄: 지금 가사의 앞부분, 모자라면 "가사 N"
     function sampleLines(n) {
@@ -40,8 +41,9 @@ QtObject {
     function slides() { tour.start(slidesSteps()) }
     function keepTwoHelp() { tour.start(keepTwoSteps()) }
     function generate() { tour.start(generateSteps()) }
+    function setlistHelp() { tour.start(setlistSteps()) }
     function firstRun(onFinished, onSkipped) {
-        tour.start(lyricsSteps().concat(slidesSteps(), keepTwoSteps(), generateSteps()),
+        tour.start(setlistSteps().concat(lyricsSteps(), slidesSteps(), keepTwoSteps(), generateSteps()),
                    { required: true, onFinished: onFinished, onSkipped: onSkipped })
     }
 
@@ -75,13 +77,21 @@ QtObject {
     function keepTwoSteps() {
         return [
             { target: keepTwoRow, demo: keepTwoToggleDemo, title: "2줄 유지란?",
-              body: "줄을 옆 슬라이드로 옮길 때, <b>나머지 슬라이드도 2줄씩 다시 맞춰주는</b> 옵션이에요. "
+              body: "줄을 옆 슬라이드로 옮길 때, <b>넘치는 줄을 밀어서 2줄씩 다시 맞춰주는</b> 옵션이에요. "
                   + "가사 짝이 한 줄씩 어긋나 있을 때, 한 줄만 옮겨서 뒤쪽을 한 번에 바로잡을 수 있어요. 기본으로 켜져 있어요." },
             { target: slideList, demo: dragDemo, title: "꺼져 있으면",
               body: "옮긴 줄만 움직여요. 받은 슬라이드는 3줄, 준 슬라이드는 1줄이 된 채로 남아요." },
             { target: slideList, demo: keepTwoDragDemo, title: "켜져 있으면",
-              body: "예: 첫 슬라이드의 마지막 줄을 뒤 슬라이드로 옮기면, 3줄이 된 슬라이드는 넘친 줄을 <b>같은 방향</b>으로 밀어내고, 줄이 빠진 슬라이드는 <b>반대쪽</b> 이웃에서 당겨와 채워요. "
-                  + "그래서 뒤쪽 슬라이드가 모두 <b>2줄씩 다시 맞춰져요</b>." }
+              body: "예: 첫 슬라이드의 마지막 줄을 뒤 슬라이드로 옮기면, 3줄이 된 슬라이드는 넘친 줄을 <b>같은 방향</b>으로 밀어내서 뒤쪽 슬라이드가 모두 <b>2줄씩 다시 맞춰져요</b>. "
+                  + "줄을 준 슬라이드는 채우지 않고 <b>1줄</b>로 남아요." }
+        ]
+    }
+
+    function setlistSteps() {
+        return [
+            { target: setlistPanel, title: "콘티",
+              body: "예배 순서대로 여러 곡을 <b>한 PPT</b>로 만들 수 있어요. <b>곡 추가</b>를 누르면 검색 화면에서 곡을 골라 목록에 더해요.<br>"
+                  + "곡을 누르면 그 곡의 가사를 편집하고, 끌어서 <b>순서</b>를 바꾸고, 마우스를 올리면 나오는 <b>휴지통</b>으로 뺄 수 있어요." }
         ]
     }
 
@@ -96,7 +106,8 @@ QtObject {
                     body: "PPT의 배경·글꼴·글자 위치를 정하는 파일이에요. 지금은 <b>기본 템플릿</b>으로 만들어지고, "
                         + "내 템플릿은 나중에 지원할 예정이에요." },
             { target: generateButton, demo: generateDemo, title: "PPT 생성",
-              body: "저장할 위치를 고르면 미리보기의 슬라이드 수만큼 PPT가 만들어져요.<br>단축키: <b>"
+              body: "저장할 위치를 고르면 콘티의 곡을 순서대로 <b>한 PPT</b>로 만들어요. "
+                  + "처음·곡 사이·끝에는 <b>검은 빈 슬라이드</b>가 들어가요.<br>단축키: <b>"
                   + Theme.mod + "Enter</b>" }
         ]
     }
