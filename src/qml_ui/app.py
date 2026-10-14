@@ -1,13 +1,15 @@
 import os
 import sys
 
-from PySide6.QtCore import QSize, QTimer, QUrl
-from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QSize, QTimer, QUrl
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 
 from src.qml_ui.backend import AlbumArtProvider, Backend
+from src.utils import updater
 from src.utils.helpers import resource_path
 from src.utils.line_fit import LineFit
+from src.utils.ppt_engine import PPTBuilder
 
 
 def load_fonts():
@@ -53,6 +55,8 @@ def create_app(argv):
 
     art_provider = AlbumArtProvider()
     backend = Backend(art_provider)
+    # 창을 닫으면 진행 중인 업데이트 다운로드를 멈춘다 (설치를 시작하지 않고 받던 파일을 지운다)
+    app.aboutToQuit.connect(backend.cancelUpdate)
 
     engine = QQmlApplicationEngine()
     # QML 로드 중 경고를 모아둔다 (--self-test 에서 확인)
@@ -90,6 +94,7 @@ def self_test(app, engine):
                     problems.append(f'템플릿 글꼴({fit.box.latin})이 없어 줄바꿈을 정확히 계산할 수 없습니다')
             except Exception as e:
                 problems.append(f'줄바꿈 계산 정보를 읽지 못했습니다: {e}')
+        problems.extend(check_runtime())
         for p in problems:
             print(f'SELF-TEST FAIL: {p}', flush=True)
         if not problems:
@@ -98,7 +103,46 @@ def self_test(app, engine):
     QTimer.singleShot(1500, finish)
 
 
+def check_runtime():
+    """실행에 필요한 것들이 빌드에 들어갔는지 확인한다: 메모리 PPT 생성, JPEG(앨범아트) 해석, HTTPS 인증서"""
+    problems = []
+    try:
+        from pptx import Presentation
+        buffer = PPTBuilder(resource_path('template.pptx')).generate_slides_to_memory(['가사 첫 줄\n둘째 줄'], '점검')
+        if not buffer or len(Presentation(buffer).slides) != 1:
+            problems.append('메모리에서 PPT를 만들지 못했습니다')
+    except Exception as e:
+        problems.append(f'메모리에서 PPT를 만들지 못했습니다: {e}')
+
+    # 멜론 앨범아트는 JPEG: imageformats 플러그인(qjpeg)이 빠지면 그림이 보이지 않는다
+    image = QImage(4, 4, QImage.Format.Format_RGB32)
+    image.fill(0x00CD3C)
+    data = QByteArray()
+    buf = QBuffer(data)
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
+    decoded = QImage()
+    if not image.save(buf, 'JPG') or not decoded.loadFromData(bytes(data), 'JPG') or decoded.width() != 4:
+        problems.append('JPEG 이미지를 읽지 못합니다 (앨범아트가 보이지 않음)')
+
+    # HTTPS: requests는 certifi 인증서 파일이 없으면 연결 자체를 하지 않는다. 운영체제 인증서는 truststore로 쓴다 (run.py)
+    try:
+        import certifi
+        if not os.path.exists(certifi.where()):
+            problems.append(f'HTTPS 인증서 파일이 없습니다: {certifi.where()}')
+    except Exception as e:
+        problems.append(f'certifi를 불러오지 못했습니다: {e}')
+    try:
+        import ssl
+        import truststore
+        if ssl.SSLContext is not truststore.SSLContext:
+            problems.append('운영체제 인증서 저장소(truststore)를 쓰지 않고 있습니다')
+    except Exception as e:
+        problems.append(f'truststore를 불러오지 못했습니다: {e}')
+    return problems
+
+
 def main():
+    updater.hold_app_mutex()
     app, engine, backend = create_app(sys.argv)
     if '--self-test' in sys.argv:
         self_test(app, engine)
@@ -107,4 +151,8 @@ def main():
 
     code = app.exec()
     backend.shutdown()
-    sys.exit(code)
+    # 남은 네트워크 작업(검색·앨범아트·업데이트 확인)이 끝나기를 기다리지 않고 바로 끝낸다.
+    # sys.exit는 스레드 풀의 작업이 끝날 때까지(연결 시간 제한만큼) 프로세스를 붙잡는다. PPT 저장은 shutdown()에서 기다렸다
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
