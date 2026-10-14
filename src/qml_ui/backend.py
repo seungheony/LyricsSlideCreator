@@ -98,7 +98,7 @@ def error_report(title, detail, version=None):
     if home and home not in ('~', os.sep):
         for variant in {home, home.replace('\\', '/')}:
             text = text.replace(variant, '~')
-    head = f'가사 슬라이드 생성기 v{version or get_version()} · {sys.platform}'
+    head = f'Lyrics Slide Creator v{version or get_version()} · {sys.platform}'
     return '\n'.join([head, title, '', text]).strip() + '\n'
 
 
