@@ -4,6 +4,10 @@ from pptx.util import Pt
 from pptx.enum.text import PP_ALIGN
 from lxml import etree
 import io
+import os
+import re
+import datetime
+import unicodedata
 
 
 def find_lyrics_shape(slide):
@@ -13,6 +17,21 @@ def find_lyrics_shape(slide):
         if shape.has_text_frame and '가사' in shape.text and shape.text_frame.paragraphs[0].runs:
             return shape
     return None
+
+
+_NEWLINES = re.compile('[\x0b\x0c\u2028\u2029\x85]')
+_ZERO_WIDTH = re.compile('[\u200b-\u200d\u2060\ufeff\u00ad]')
+# 줄바꿈(\n)을 뺀 나머지 제어 문자, 서러게이트, 문자가 아닌 코드(U+FFFE·U+FFFF)
+_CONTROL = re.compile('[\x00-\x09\x0e-\x1f\x7f-\x9f\ud800-\udfff\ufffe\uffff]')
+
+
+def clean_lyrics_text(text):
+    """PPT에 넣기 전 가사 정리: \\v·\\f·U+2028/2029는 줄바꿈으로, 제로폭 문자는 제거, 탭은 공백으로,
+    그 밖의 제어 문자는 제거(python-pptx는 제어 문자를 '_x000B_' 같은 글자로 바꿔 찍는다)."""
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    text = _NEWLINES.sub('\n', text).replace('\t', ' ')
+    text = _ZERO_WIDTH.sub('', text)
+    return unicodedata.normalize('NFC', _CONTROL.sub('', text))
 
 
 class PPTBuilder:
@@ -67,8 +86,25 @@ class PPTBuilder:
                 run._r.remove(run._r.get_or_add_rPr())
                 run._r.insert(0, copy.deepcopy(original_rPr))
 
-    def generate_slides_to_memory(self, lyrics_data):
+    def set_properties(self, title=''):
+        """문서 속성: 템플릿에서 물려받은 값 대신 곡 제목과 현재 시각만 남긴다 (작성자 등은 비움)."""
+        cp = self.prs.core_properties
+        now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0, tzinfo=None)
+        cp.title = title
+        cp.author = ''
+        cp.last_modified_by = ''
+        cp.revision = 1
+        cp.created = now
+        cp.modified = now
+        # 템플릿의 미리보기 그림은 다른 곡의 것이므로 관계를 끊는다
+        package = self.prs.part.package
+        for rId, rel in list(package._rels.items()):
+            if rel.reltype.endswith('/metadata/thumbnail'):
+                package.drop_rel(rId)
+
+    def generate_slides_to_memory(self, lyrics_data, title=''):
         if not self.prs or not self.prs.slides: return None
+        self.set_properties(title)
 
         template_slide = self.prs.slides[0]
         slide_layout = template_slide.slide_layout
@@ -79,6 +115,7 @@ class PPTBuilder:
             del self.prs.slides._sldIdLst[i]
 
         for chunk in lyrics_data:
+            chunk = clean_lyrics_text(chunk)
             new_slide = self.prs.slides.add_slide(slide_layout)
             for shape in new_slide.shapes:
                  if shape.is_placeholder:
@@ -103,12 +140,23 @@ class PPTBuilder:
 
     @staticmethod
     def save_to_file(buffer, output_path):
+        """같은 폴더의 임시 파일에 쓴 뒤 바꿔치기해서, 쓰다 실패해도 기존 파일이 깨지지 않게 한다.
+        실패하면 임시 파일을 지우고 OSError를 그대로 올린다."""
+        folder, name = os.path.split(os.path.abspath(output_path))
+        tmp_path = os.path.join(folder, f'.{name}.{os.getpid()}.tmp')
         try:
-            with open(output_path, 'wb') as f:
-                f.write(buffer.read())
-            return True
-        except Exception:
-            return False
+            with open(tmp_path, 'wb') as f:
+                f.write(buffer.getbuffer())
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, output_path)
+        except BaseException:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
+        return True
 
     @staticmethod
     def split_lyrics(full_lyrics, lines_per_slide=2):
