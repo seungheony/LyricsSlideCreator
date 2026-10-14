@@ -40,7 +40,8 @@ Item {
         tour.start([
             { target: searchBox, demo: searchDemo, title: "1. 노래 검색",
               body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>(또는 <b>검색</b>)를 누르면 멜론에서 찾아와요.<br><br>"
-                  + "제목이 기억나지 않으면 <b>가사</b>를 눌러 가사 한 구절로 찾을 수 있어요." },
+                  + "제목이 기억나지 않으면 <b>가사</b>를 눌러 가사 한 구절로 찾을 수 있어요. "
+                  + "멜론에 없는 곡은 아래 <b>가사 직접 입력</b>으로 가사를 붙여 넣어 만들 수 있어요." },
             { target: resultsArea, demo: resultsDemo, title: "2. 곡 고르기",
               body: "검색 결과에서 곡을 누르면 가사와 앨범아트를 불러와 <b>편집 화면</b>으로 넘어가요." },
             { target: null, title: "3. 다듬고 PPT 만들기",
@@ -150,6 +151,8 @@ Item {
     }
 
     signal songClicked(var song)
+    // 멜론 없이 가사를 직접 입력해서 연다. info: { title, artist }
+    signal manualRequested(var info)
 
     function focusSearch() { input.forceActiveFocus(); input.selectAll() }
 
@@ -383,6 +386,21 @@ Item {
             }
         }
 
+        // 멜론에 없는 곡(CCM·찬송가·자작곡)이나 연결이 안 될 때: 빈 편집 화면으로
+        AppButton {
+            id: manualButton
+            Layout.alignment: Qt.AlignRight
+            Layout.topMargin: 6
+            text: "가사 직접 입력"
+            glyph: "plus"
+            variant: "ghost"
+            size: "small"
+            onClicked: page.manualRequested({ title: "", artist: "" })
+            ToolTip.visible: hovered
+            ToolTip.delay: 500
+            ToolTip.text: "멜론에 없는 곡은 가사를 직접 붙여 넣어 만들 수 있어요"
+        }
+
         // ── 결과 ──
         Item {
             id: resultsArea
@@ -426,7 +444,12 @@ Item {
                 spacing: 10
                 visible: !page.searching && page.emptyText !== ""
                 Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "music"; size: 36; color: Theme.text3; opacity: 0.6 }
-                Text { text: page.emptyText; color: Theme.text3; font.family: Theme.font; font.pixelSize: 14 }
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: page.emptyText; color: Theme.text3; font.family: Theme.font; font.pixelSize: 14 }
+                AppButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "직접 입력으로 열기"
+                    onClicked: page.manualRequested({ title: page.mode === "song" ? page.searchedText : "", artist: "" })
+                }
             }
 
             // 검색 실패 (연결·응답·화면 변경)
@@ -446,11 +469,11 @@ Item {
                     font.pixelSize: 14
                     lineHeight: 1.4
                 }
-                AppButton {
+                Row {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "다시 시도"
-                    variant: "primary"
-                    onClicked: page.doSearch()
+                    spacing: 8
+                    AppButton { text: "직접 입력으로 열기"; onClicked: page.manualRequested({ title: page.resultMode === "song" ? page.searchedText : "", artist: "" }) }
+                    AppButton { text: "다시 시도"; variant: "primary"; onClicked: page.doSearch() }
                 }
             }
 

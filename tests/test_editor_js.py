@@ -297,10 +297,65 @@ class EditorJs(unittest.TestCase):
         self.assertEqual(self.call(f'deckTitle({two}, new Date(2026, 9, 4))'), '2026-10-04 예배 가사')
         self.assertEqual(self.call('deckTitle([{"title": "A", "artist": ""}], new Date())'), 'A')
         self.assertEqual(self.call('deckTitle([], new Date())'), '')
+        # 제목이 비면 '가사' (직접 입력)
+        self.assertEqual(self.call('deckTitle([{"title": "", "artist": ""}], new Date())'), '가사')
+        self.assertEqual(self.call('deckTitle([{"title": "", "artist": "가수"}], new Date())'), '가사 — 가수')
 
     def test_safe_file_name(self):
         self.assertEqual(self.call('safeFileName("a/b:c?")'), 'a_b_c_')
-        self.assertEqual(self.call('safeFileName("")'), 'lyrics')
+        self.assertEqual(self.call('safeFileName("")'), '가사')
+
+    # ── 문단 안에서 묶기 ──
+    def test_regroup_within_keeps_paragraph_boundaries(self):
+        text = '가\n나\n다\n\n라\n마'
+        self.assertEqual(self.call(f'regroupWithin({json.dumps(text)}, 2)'), [['가', '나'], ['다'], ['라', '마']])
+        self.assertEqual(self.call('regroupWithin("", 2)'), [])
+
+    # ── 가사 정리 ──
+    def test_clean_text(self):
+        text = '가\x0b나\u200b\n\u200b\n다\t라\x01\r\n마\u2028바\ufffe'
+        self.assertEqual(self.call(f'cleanText({json.dumps(text)})'), '가\n나\n\n다 라\n마\n바')
+        self.assertEqual(self.call('cleanText("😀 \\ud800 x")'), '😀  x')      # 짝 없는 서로게이트만 지운다
+        self.assertEqual(self.call('cleanText("\u1100\u1161")'), '가')          # NFC
+
+    def tidy(self, text, title=''):
+        return self.call(f'tidyMelonLyrics({json.dumps(text, ensure_ascii=False)}, {json.dumps(title, ensure_ascii=False)})')
+
+    def test_tidy_removes_title_line_only_when_first_single_line_paragraph(self):
+        r = self.tidy('팔레트 (Feat. G-DRAGON)\n\n이상하게도 요즘엔\n난 꿈처럼', '팔레트 (Feat. G-DRAGON)')
+        self.assertEqual(r, {'text': '이상하게도 요즘엔\n난 꿈처럼', 'marks': 0, 'title': True})
+        # 공백·대소문자는 무시
+        self.assertTrue(self.tidy('Palette\n\n가', 'p a l e t t e')['title'])
+        # 첫 문단이 여러 줄이면 제목이 아니다 / 제목이 다르면 그대로
+        self.assertFalse(self.tidy('팔레트\n가\n\n나', '팔레트')['title'])
+        self.assertFalse(self.tidy('다른 줄\n\n가', '팔레트')['title'])
+        # 두 번째 문단의 같은 줄은 가사이므로 남긴다
+        self.assertEqual(self.tidy('가\n\n팔레트', '팔레트')['text'], '가\n\n팔레트')
+        self.assertFalse(self.tidy('팔레트\n\n가', '')['title'])
+
+    def test_tidy_removes_verse_numbers_and_chorus_marks(self):
+        text = '1.내가 누려왔던\n2. 모든 것이\n\n(후렴) 모든 것이 은혜\n은혜 (후렴 2회)\n(후렴)'
+        r = self.tidy(text)
+        self.assertEqual(r['text'], '내가 누려왔던\n모든 것이\n\n모든 것이 은혜\n은혜')    # '(후렴)'만 있던 줄은 빠진다
+        self.assertEqual(r['marks'], 5)
+        self.assertFalse(r['title'])
+
+    def test_tidy_leaves_other_text_alone(self):
+        text = '2.0 버전의 사랑\n10명이 함께\n(Hey) 사랑해\n3. 은혜 (후렴구는 아니야)'
+        r = self.tidy(text)
+        self.assertEqual(r['text'].split('\n')[:3], ['2.0 버전의 사랑', '10명이 함께', '(Hey) 사랑해'])
+        self.assertEqual(r['marks'], 2)   # '3.' 와 '(후렴구…)'
+        self.assertEqual(self.tidy('가\n나')['marks'], 0)
+        self.assertEqual(self.tidy('', '제목'), {'text': '', 'marks': 0, 'title': False})
+
+    def test_tidy_drops_paragraphs_that_become_empty(self):
+        self.assertEqual(self.tidy('가\n\n(후렴)\n\n나')['text'], '가\n\n나')
+
+    def test_tidy_message(self):
+        self.assertEqual(self.call('tidyMessage({marks: 3, title: false})'), '절 번호·후렴 표시 3개를 정리했어요')
+        self.assertEqual(self.call('tidyMessage({marks: 0, title: true})'), '맨 앞의 제목 줄을 정리했어요')
+        self.assertEqual(self.call('tidyMessage({marks: 2, title: true})'), '맨 앞의 제목 줄과 절 번호·후렴 표시 2개를 정리했어요')
+        self.assertEqual(self.call('tidyMessage({marks: 0, title: false})'), '')
 
 
 if __name__ == '__main__':

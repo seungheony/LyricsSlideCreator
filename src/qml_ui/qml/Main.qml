@@ -45,9 +45,27 @@ ApplicationWindow {
     function openSong(song) {
         if (pendingSong && pendingSong.song_id === song.song_id) return
         cancelOpen()
+        chooseDestination(song, (fresh) => win.loadSong(song, fresh))
+    }
+
+    // 멜론 없이 가사를 직접 입력해서 연다 (가사 직접 입력, 가사를 불러오지 못했을 때, 검색 실패).
+    // info: { title, artist, album, song_id } — 멜론 곡에서 왔으면 song_id·앨범을 이어받는다 (앨범아트·같은 곡 이어서 편집)
+    property int manualSeq: 0
+    function openManual(info) {
+        cancelOpen()
+        const song = {
+            song_id: info.song_id || "manual-" + (++manualSeq),
+            title: info.title || "", artist: info.artist || "", album: info.album || "",
+            manual: !info.song_id
+        }
+        chooseDestination(song, (fresh) => win.placeSong(song, "", fresh))
+    }
+
+    // 고른 곡을 콘티에 더할지 새 콘티로 시작할지 정해 open(fresh)를 부른다
+    function chooseDestination(song, open) {
         const list = editorPage.setlist
         if (addMode || !list.length || list.indexOf(song.song_id) >= 0) {
-            loadSong(song, false)
+            open(false)
             return
         }
         confirmDialog.ask({
@@ -56,8 +74,8 @@ ApplicationWindow {
                      + "새로 시작해도 곡마다 편집한 가사는 앱을 닫기 전까지 남아 있어요.",
             confirmText: "콘티에 추가",
             cancelText: "새 콘티 시작",
-            onConfirm: () => win.loadSong(song, false),
-            onCancel: () => win.loadSong(song, true),
+            onConfirm: () => open(false),
+            onCancel: () => open(true),
             onDismiss: null
         })
     }
@@ -158,7 +176,7 @@ ApplicationWindow {
             searchPage.loadingId = ""
             const det = JSON.parse(json)
             if (det.error) {
-                dialog.showError(det.error, det.detail)
+                dialog.showError(det.error, det.detail, { text: "직접 입력으로 열기", handler: () => win.openManual(song) })
                 return
             }
             win.placeSong(song, det.lyrics, win.pendingFresh)
@@ -186,6 +204,7 @@ ApplicationWindow {
         transform: Translate { x: win.editorActive ? -24 : 0; Behavior on x { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } } }
         Behavior on opacity { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
         onSongClicked: (song) => win.openSong(song)
+        onManualRequested: (info) => win.openManual(info)
         tour: tour
     }
 
@@ -418,12 +437,12 @@ ApplicationWindow {
     // ── 단축키 ──
     Shortcut {
         sequences: [StandardKey.Undo]
-        enabled: win.editorActive && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.undo()
     }
     Shortcut {
         sequences: [StandardKey.Redo]
-        enabled: win.editorActive && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.redo()
     }
     Shortcut {
