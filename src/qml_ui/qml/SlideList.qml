@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Shapes
 import "."
+import "editor.js" as E
 
 // 슬라이드 미리보기 목록.
 // 직접 상태를 바꾸지 않고, 사용자의 편집 의도를 시그널로 알린다 (EditorPage가 텍스트를 고쳐 씀).
@@ -19,13 +20,61 @@ Item {
     signal joinRequested(int slide)              // slide와 slide+1 합치기
     signal removeRequested(int slide)
     signal moveRequested(var src, var target)
-    signal revealRequested(int slide)
+    signal revealRequested(int slide, int line)   // line: 누른 줄 (-1이면 카드 바탕)
+    signal editStarting()                         // 미리보기에서 편집을 시작하려고 누름 (EditorPage가 입력 중인 내용을 먼저 반영)
 
     readonly property bool dragging: drag.active
 
     function scrollToTop() { flick.contentY = 0 }
+    function scrollY() { return flick.contentY }
+    function setScrollY(y) {
+        flushModel()
+        col.forceLayout()
+        flick.contentY = Math.max(0, Math.min(y, Math.max(0, flick.contentHeight - flick.height)))
+    }
+
+    // ── blocks/ratios → 카드 모델 ──
+    // 바뀐 슬라이드만 고친다. 배열을 통째로 모델로 주면 키 입력마다 카드를 전부 다시 만들어 긴 가사에서 입력이 끊긴다.
+    // 둘 다 바뀌는 경우가 많아 한 번에 모아서 반영하고, 카드 위치가 필요한 곳은 먼저 flushModel()을 부른다.
+    ListModel { id: slideModel }
+    property var shownBodies: []
+    property var shownFits: []
+    property bool modelStale: false
+
+    onRatiosChanged: scheduleModel()
+    function scheduleModel() {
+        modelStale = true
+        Qt.callLater(flushModel)
+    }
+
+    function flushModel() {
+        if (!modelStale) return
+        modelStale = false
+        const bodies = blocks.map(b => b.lines.join("\n"))
+        const fits = blocks.map((b, i) => (ratios[i] || []).join(","))
+        const cur = shownFits.slice()
+        const d = E.listDiff(shownBodies, bodies)
+        if (d) {
+            const removed = d.oldEnd - d.from
+            const added = d.newEnd - d.from
+            const same = Math.min(removed, added)
+            for (let i = d.from; i < d.from + same; i++) slideModel.set(i, { body: bodies[i], fits: fits[i] })
+            if (added > same) {
+                for (let i = d.from + same; i < d.newEnd; i++) slideModel.insert(i, { body: bodies[i], fits: fits[i] })
+            } else if (removed > same) {
+                slideModel.remove(d.from + same, removed - same)
+            }
+            cur.splice(d.from, removed, ...fits.slice(d.from, d.newEnd))
+        }
+        for (let i = 0; i < fits.length; i++) {
+            if (cur[i] !== fits[i]) slideModel.setProperty(i, "fits", fits[i])
+        }
+        shownBodies = bodies
+        shownFits = fits
+    }
 
     function ensureVisible(idx) {
+        flushModel()
         col.forceLayout()
         const it = rep.itemAt(idx)
         if (!it) return
@@ -88,13 +137,17 @@ Item {
         indicator.visible = false
     }
 
-    onBlocksChanged: if (drag.active) cancelDrag()    // 끄는 중 목록이 다시 만들어지면 고스트·삽입선을 치운다
+    onBlocksChanged: {
+        if (drag.active) cancelDrag()    // 끄는 중 목록이 바뀌면 고스트·삽입선을 치운다
+        scheduleModel()
+    }
 
-    function cardTop(i) { col.forceLayout(); const it = rep.itemAt(i); return it.y + it.cardY }
-    function cardBottom(i) { col.forceLayout(); const it = rep.itemAt(i); return it.y + it.cardY + it.cardHeight }
+    function cardTop(i) { flushModel(); col.forceLayout(); const it = rep.itemAt(i); return it.y + it.cardY }
+    function cardBottom(i) { flushModel(); col.forceLayout(); const it = rep.itemAt(i); return it.y + it.cardY + it.cardHeight }
 
     // 포인터 위치 → 놓을 위치 계산 및 삽입선 표시
     function updateTarget() {
+        flushModel()
         const local = list.mapFromItem(null, drag.pointer.x, drag.pointer.y)
         const p = col.mapFromItem(null, drag.pointer.x, drag.pointer.y)
         let raw = null
@@ -188,12 +241,15 @@ Item {
 
             Repeater {
                 id: rep
-                model: list.blocks
+                model: slideModel
 
                 delegate: Column {
                     id: slot
-                    required property var modelData
+                    required property string body      // 줄을 \n으로 이은 것
+                    required property string fits      // 줄별 PPT 줄바꿈 비율을 ,로 이은 것
                     required property int index
+                    readonly property var lines: body.split("\n")
+                    readonly property var lineRatios: fits ? fits.split(",").map(Number) : []
 
                     width: col.width
                     property bool dropTarget: false
@@ -225,6 +281,7 @@ Item {
                             hoverEnabled: true
                             enabled: !drag.active
                             cursorShape: Qt.PointingHandCursor
+                            onPressed: list.editStarting()
                             onClicked: list.joinRequested(slot.index - 1)
                         }
                         Shape {
@@ -280,7 +337,8 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: list.revealRequested(slot.index)
+                            onPressed: list.editStarting()
+                            onClicked: list.revealRequested(slot.index, -1)
                         }
 
                         // 테두리: 현재 슬라이드 / 놓을 위치 / 마우스 오버
@@ -337,6 +395,7 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
+                                onPressed: list.editStarting()
                                 onClicked: list.removeRequested(slot.index)
                             }
                         }
@@ -349,7 +408,7 @@ Item {
 
                             Repeater {
                                 id: lineRep
-                                model: slot.modelData.lines
+                                model: slot.lines
 
                                 delegate: Item {
                                     id: lineItem
@@ -357,7 +416,7 @@ Item {
                                     required property int index
                                     readonly property bool isDragged: drag.active && drag.src
                                                                       && drag.src.slide === slot.index && drag.src.line === index
-                                    readonly property real ratio: (list.ratios[slot.index] || [])[index] || 0
+                                    readonly property real ratio: slot.lineRatios[index] || 0
                                     readonly property bool wraps: ratio > 1
 
                                     width: lines.width
@@ -376,15 +435,6 @@ Item {
                                         color: lineItem.wraps ? Qt.rgba(1, 0.71, 0.28, lineMouse.containsMouse && !drag.active ? 0.22 : 0.14)
                                              : Qt.rgba(1, 1, 1, lineMouse.containsMouse && lineMouse.draggable && !drag.active ? 0.08 : 0)
                                         Behavior on color { ColorAnimation { duration: Theme.fast } }
-                                    }
-
-                                    // PPT 줄바꿈 경고 (왼쪽 여백, 나누기 가위 버튼과 겹치지 않는 자리)
-                                    Icon {
-                                        visible: lineItem.wraps
-                                        x: -22
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        glyph: "alert"; size: 14
-                                        color: Theme.slideWarning
                                     }
 
                                     Text {
@@ -417,6 +467,7 @@ Item {
                                         property bool moved: false
 
                                         onPressed: (mouse) => {
+                                            list.editStarting()
                                             start = mapToItem(null, mouse.x, mouse.y)
                                             moved = false
                                         }
@@ -433,7 +484,7 @@ Item {
                                         }
                                         onReleased: if (moved) list.endDrag()
                                         onCanceled: if (moved) list.cancelDrag()
-                                        onClicked: if (!moved) list.revealRequested(slot.index)
+                                        onClicked: if (!moved) list.revealRequested(slot.index, lineItem.index)
                                     }
 
                                     // 줄 사이: 클릭하면 여기서 나누기
@@ -451,6 +502,7 @@ Item {
                                             hoverEnabled: true
                                             enabled: !drag.active
                                             cursorShape: Qt.PointingHandCursor
+                                            onPressed: list.editStarting()
                                             onClicked: list.cutRequested(slot.index, lineItem.index)
                                         }
                                         Shape {

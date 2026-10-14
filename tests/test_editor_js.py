@@ -80,8 +80,75 @@ class EditorJs(unittest.TestCase):
         b = f'parseBlocks({json.dumps(text)})'
         self.assertEqual(self.call(f'blockIndexAt({b}, 0)'), 0)
         self.assertEqual(self.call(f'blockIndexAt({b}, 3)'), 0)
-        self.assertEqual(self.call(f'blockIndexAt({b}, 4)'), 1)   # 빈 줄 → 다음 슬라이드
+        self.assertEqual(self.call(f'blockIndexAt({b}, 4)'), 0)   # 바로 다음 빈 줄(Enter 직후) → 아직 그 슬라이드
+        self.assertEqual(self.call(f'blockIndexAt({b}, 5)'), 1)
         self.assertEqual(self.call(f'blockIndexAt({b}, 99)'), 1)  # 끝 너머 → 마지막
+
+    def test_block_index_at_blank_lines_between(self):
+        text = '가\n\n\n다'   # 블록 0: 0~1, 빈 줄 2·3, 블록 1: 4~5
+        b = f'parseBlocks({json.dumps(text)})'
+        self.assertEqual(self.call(f'blockIndexAt({b}, 2)'), 0)
+        self.assertEqual(self.call(f'blockIndexAt({b}, 3)'), 1)
+
+    # ── sameLines ──
+    def test_same_lines_ignores_positions(self):
+        self.assertTrue(self.call('sameLines(parseBlocks("가\\n나"), parseBlocks("\\n 가\\n나 "))'))
+        self.assertFalse(self.call('sameLines(parseBlocks("가\\n나"), parseBlocks("가\\n\\n나"))'))
+        self.assertFalse(self.call('sameLines(parseBlocks("가\\n나"), parseBlocks("가\\n다"))'))
+        self.assertTrue(self.call('sameLines([], [])'))
+
+    # ── lineEnd ──
+    def line_end(self, text, slide, line):
+        return self.call(f'lineEnd({json.dumps(text)}, parseBlocks({json.dumps(text)})[{slide}], {line})')
+
+    def test_line_end(self):
+        text = '가나\n다라  \n\n마바'
+        self.assertEqual(self.line_end(text, 0, 0), 2)
+        self.assertEqual(self.line_end(text, 0, 1), 5)    # 뒤 공백 앞
+        self.assertEqual(self.line_end(text, 1, 0), 11)
+        self.assertEqual(self.line_end(text, 1, 5), 11)   # 없는 줄 → 슬라이드 끝
+
+    # ── textDiff ──
+    def apply_diff(self, before, after):
+        d = self.call(f'textDiff({json.dumps(before)}, {json.dumps(after)})')
+        if d is None:
+            return before, None
+        # JS 위치는 UTF-16 단위다
+        u = before.encode('utf-16-le')
+        got = u[:2 * d['start']] + d['insert'].encode('utf-16-le') + u[2 * d['end']:]
+        return got.decode('utf-16-le'), d
+
+    def test_text_diff_minimal_range(self):
+        before = 'a\nb\n\nc\nd'
+        after = 'a\n\nb\n\nc\nd'          # 1번 슬라이드 나누기
+        got, d = self.apply_diff(before, after)
+        self.assertEqual(got, after)
+        self.assertEqual(d['end'] - d['start'], 0)   # 지우는 것 없이 \n 하나만 넣는다
+        self.assertEqual(d['insert'], '\n')
+        self.assertIsNone(self.call('textDiff("같다", "같다")'))
+
+    def test_text_diff_roundtrips(self):
+        cases = [('', 'abc'), ('abc', ''), ('aaa', 'aa'), ('abcabc', 'abc'), ('x\ny', 'x\n\ny'),
+                 ('가나다', '가다'), ('a😀b', 'a😁b'), ('😀', '😀😀'), ('a\n\nb\n\nc', 'a\n\nc')]
+        for before, after in cases:
+            with self.subTest(before=before, after=after):
+                self.assertEqual(self.apply_diff(before, after)[0], after)
+
+    def test_text_diff_keeps_surrogate_pairs(self):
+        # 이모지(서로게이트 쌍) 가운데서 자르지 않는다 (UTF-16 단위 위치)
+        _, d = self.apply_diff('a😀b', 'a😁b')
+        self.assertEqual(d['start'], 1)
+        self.assertEqual(d['end'], 3)
+
+    # ── listDiff ──
+    def test_list_diff(self):
+        self.assertIsNone(self.call('listDiff(["a","b"], ["a","b"])'))
+        self.assertEqual(self.call('listDiff(["a","b","c"], ["a","x","c"])'), {'from': 1, 'oldEnd': 2, 'newEnd': 2})
+        self.assertEqual(self.call('listDiff(["a","c"], ["a","b","c"])'), {'from': 1, 'oldEnd': 1, 'newEnd': 2})
+        self.assertEqual(self.call('listDiff(["a","b","c"], ["a","c"])'), {'from': 1, 'oldEnd': 2, 'newEnd': 1})
+        self.assertEqual(self.call('listDiff([], ["a"])'), {'from': 0, 'oldEnd': 0, 'newEnd': 1})
+        # 반복되는 항목: 앞뒤가 겹치지 않게
+        self.assertEqual(self.call('listDiff(["a","a"], ["a","a","a"])'), {'from': 2, 'oldEnd': 2, 'newEnd': 3})
 
     # ── resolveDrop ──
     def resolve(self, groups, src, target):

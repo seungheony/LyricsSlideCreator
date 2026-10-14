@@ -42,12 +42,68 @@ function regroup(lines, n) {
     return groups;
 }
 
+// 같은 줄 배열인지 (위치 start/end는 보지 않는다)
+function sameLines(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        const x = a[i].lines, y = b[i].lines;
+        if (x.length !== y.length) return false;
+        for (let k = 0; k < x.length; k++) if (x[k] !== y[k]) return false;
+    }
+    return true;
+}
+
 // 커서 위치가 속한 슬라이드 번호
+// 슬라이드 바로 다음 줄(마지막 줄 끝에서 Enter를 친 자리)은 아직 그 슬라이드로 본다
 function blockIndexAt(blocks, caret) {
     for (let i = 0; i < blocks.length; i++) {
-        if (caret <= blocks[i].end) return i;
+        if (caret <= blocks[i].end + 1) return i;
     }
     return blocks.length - 1;
+}
+
+// 슬라이드 line번째 줄의 내용 끝(뒤 공백 제외) 위치
+function lineEnd(text, block, line) {
+    let pos = block.start;
+    for (let k = 0; k < line; k++) {
+        const nl = text.indexOf('\n', pos);
+        if (nl < 0 || nl >= block.end) return block.end;
+        pos = nl + 1;
+    }
+    let end = text.indexOf('\n', pos);
+    if (end < 0 || end > block.end) end = block.end;
+    while (end > pos && /\s/.test(text[end - 1])) end--;
+    return end;
+}
+
+// ── 바뀐 부분만 고쳐 쓰기 ──
+// 앞뒤 공통 부분을 뺀 바뀐 구간: before[start, end)를 insert로 바꾸면 after가 된다.
+// 통째로 바꾸지 않아야 입력칸의 커서·선택이 제자리에 남는다. 같으면 null.
+function textDiff(before, after) {
+    if (before === after) return null;
+    const max = Math.min(before.length, after.length);
+    let a = 0;
+    while (a < max && before.charCodeAt(a) === after.charCodeAt(a)) a++;
+    let b = 0;
+    while (b < max - a && before.charCodeAt(before.length - 1 - b) === after.charCodeAt(after.length - 1 - b)) b++;
+    // 서로게이트 쌍(이모지 등)을 가르지 않는다
+    if (a > 0 && isHighSurrogate(before.charCodeAt(a - 1))) a--;
+    if (b > 0 && isLowSurrogate(before.charCodeAt(before.length - b))) b--;
+    return { start: a, end: before.length - b, insert: after.slice(a, after.length - b) };
+}
+
+function isHighSurrogate(c) { return c >= 0xD800 && c <= 0xDBFF; }
+function isLowSurrogate(c) { return c >= 0xDC00 && c <= 0xDFFF; }
+
+// 목록 차분: old[from, oldEnd)를 next[from, newEnd)로 바꾸면 된다 (앞뒤 같은 항목은 그대로 둠). 같으면 null.
+function listDiff(old, next) {
+    const max = Math.min(old.length, next.length);
+    let a = 0;
+    while (a < max && old[a] === next[a]) a++;
+    if (a === old.length && a === next.length) return null;
+    let b = 0;
+    while (b < max - a && old[old.length - 1 - b] === next[next.length - 1 - b]) b++;
+    return { from: a, oldEnd: old.length - b, newEnd: next.length - b };
 }
 
 // ── 줄 드래그 ──

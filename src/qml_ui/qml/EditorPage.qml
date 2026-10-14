@@ -18,51 +18,119 @@ Item {
     readonly property bool customTemplate: false
 
     property var song: null
-    property var blocks: []          // 가사 텍스트에서 파생된 슬라이드 목록
+    property var blocks: []          // 가사 텍스트에서 파생된 슬라이드 목록 (입력 중에는 잠깐 늦게 따라온다, sync)
+    property var spans: []           // 지금 가사 텍스트의 슬라이드 위치(start/end). 커서 → 슬라이드 계산용으로 늘 최신
     property int active: -1          // 가사 커서가 위치한 슬라이드
     property bool applying: false    // 코드에서 텍스트를 바꾸는 중 (입력 이벤트 무시)
     property bool generating: false
     property url savedUrl: ""         // 마지막으로 저장한 PPT (완료 토스트의 [열기])
     // 세션 동안 마지막으로 PPT를 저장한 폴더(메모리에만 둠). 비어 있으면 문서 폴더
     property url lastSaveFolder: ""
+    // 곡을 연 때나 마지막으로 PPT를 만든 때의 슬라이드 내용. 지금과 다르면 PPT로 만들지 않은 편집이 있다
+    property string savedKey: ""
+    property string generatingKey: ""
+    readonly property bool dirty: song !== null && contentKey(blocks) !== savedKey
 
     signal backRequested()
 
     readonly property bool lyricsFocused: lyrics.activeFocus
     readonly property bool dragging: slideList.dragging
 
-    // ── 곡 불러오기 ──
+    function contentKey(bs) { return E.serialize(E.linesOf(bs)) }
+
+    // ── 곡 불러오기 / 편집 상태 ──
+    // 편집 상태는 Main이 곡별로 세션 메모리에 보관해, 같은 곡을 다시 열면 이어서 편집한다 (파일로 남기지 않음)
     function load(newSong, lyricsText) {
+        // 멜론 가사는 절 사이에 빈 줄이 섞여 있으므로 처음에는 2줄씩 자동으로 나눈다
+        const text = E.serialize(E.regroup(E.allLines(E.parseBlocks(lyricsText)), 2))
+        resume(newSong, { text: text, hist: [text], histIdx: 0, cursor: 0, contentY: 0, slideY: 0,
+                          kept: {}, savedKey: text })
+    }
+
+    function saveState() {
+        prepareEdit()
+        flushTyping()
+        return { text: lyrics.text, hist: hist, histIdx: histIdx, cursor: lyrics.cursorPosition,
+                 contentY: lyricsScroll.contentItem.contentY, slideY: slideList.scrollY(),
+                 kept: keptLongSlides, savedKey: savedKey, dirty: dirty }
+    }
+
+    function resume(newSong, st) {
         song = newSong
         art.source = "image://art/" + newSong.song_id
         backdrop.source = "image://art/" + newSong.song_id
-        // 멜론 가사는 절 사이에 빈 줄이 섞여 있으므로 처음에는 2줄씩 자동으로 나눈다
-        const text = E.serialize(E.regroup(E.allLines(E.parseBlocks(lyricsText)), 2))
+        longCheckTimer.stop()
+        typingTimer.stop()
+        dismissUndoToast()
         active = -1
         wrapCursor = -1
-        toastHist = -1
-        setText(text)
-        resetHistory(text)
-        lyrics.cursorPosition = 0
-        lyricsScroll.contentItem.contentY = 0
-        slideList.scrollToTop()
+        keptLongSlides = st.kept
+        savedKey = st.savedKey
+        applying = true
+        lyrics.text = st.text          // 다른 곡이라 통째로 바꾼다
+        applying = false
+        sync()
+        hist = st.hist
+        histIdx = st.histIdx
+        lyrics.cursorPosition = Math.min(st.cursor, lyrics.length)
+        syncActiveFromCaret()
+        // 레이아웃이 끝난 뒤 스크롤 위치를 되살린다
+        Qt.callLater(() => {
+            setLyricsY(st.contentY)
+            slideList.setScrollY(st.slideY)
+        })
     }
 
     // ── 텍스트 반영 ──
+    // 바뀐 구간만 지우고 넣는다. 통째로 바꾸면 커서가 맨 앞으로 가고 선택·스크롤도 풀린다.
+    // 반환: 새 텍스트에서 바뀐 구간 { start, end } (바뀐 게 없으면 null)
     function setText(text) {
-        const flick = lyricsScroll.contentItem
-        const y = flick.contentY
+        const d = E.textDiff(lyrics.text, text)
+        if (!d) return null
+        const y = lyricsScroll.contentItem.contentY
         applying = true
-        lyrics.text = text
+        if (d.end > d.start) lyrics.remove(d.start, d.end)
+        if (d.insert) lyrics.insert(d.start, d.insert)
+        if (lyrics.text !== text) lyrics.text = text    // 만일 어긋나면 통째로
         applying = false
-        flick.contentY = y
+        setLyricsY(y)
         sync()
+        return { start: d.start, end: d.start + d.insert.length }
     }
 
+    // 가사 칸 스크롤 (내용이 짧아졌으면 끝에 맞춘다)
+    function setLyricsY(y) {
+        const flick = lyricsScroll.contentItem
+        flick.contentY = Math.max(0, Math.min(y, Math.max(0, flick.contentHeight - flick.height)))
+    }
+
+    // 커서가 화면 밖이면 위에서 1/3 지점에 오도록
+    function revealCaret() {
+        const flick = lyricsScroll.contentItem
+        const rect = lyrics.positionToRectangle(lyrics.cursorPosition)
+        if (rect.y < flick.contentY || rect.y + rect.height > flick.contentY + flick.height)
+            setLyricsY(rect.y - flick.height / 3)
+    }
+
+    // 슬라이드 목록 갱신. 줄 배열이 바뀌었을 때만 blocks를 바꾼다 (SlideList는 바뀐 카드만 고침)
     function sync() {
-        blocks = E.parseBlocks(lyrics.text)
+        syncTimer.stop()
+        spans = E.parseBlocks(lyrics.text)
+        if (!E.sameLines(spans, blocks)) {
+            measureLines(spans)
+            blocks = spans
+        }
         if (active >= blocks.length) active = blocks.length - 1
-        measureLines()
+    }
+
+    // 입력 중에는 슬라이드 목록을 잠깐 모아서 갱신한다. 그 전에 목록을 쓰는 곳은 먼저 부른다
+    function flushSync() { if (syncTimer.running) sync() }
+    Timer { id: syncTimer; interval: 80; onTriggered: page.sync() }
+
+    // 미리보기·단축키로 편집하기 전에: 조합 중인 한글을 확정하고, 미뤄 둔 목록 갱신을 반영한다
+    function prepareEdit() {
+        if (lyrics.preeditText !== "") Qt.inputMethod.commit()
+        flushSync()
     }
 
     // ── PPT 줄바꿈 미리 계산 ── 템플릿의 가사 글상자(글꼴·크기·폭) 기준 (src/utils/line_fit.py)
@@ -70,11 +138,20 @@ Item {
     property var wrapSlides: []      // 줄바꿈되는 줄이 있는 슬라이드 번호
     property int wrapCursor: -1      // 줄바꿈 표시를 누를 때마다 다음 슬라이드로
     property string fitBasis: ""     // 계산 기준 (안내 문구)
+    property var ratioCache: new Map()   // 줄 → 비율. 입력할 때는 바뀐 줄만 계산한다
 
-    function measureLines() {
-        const ratios = JSON.parse(backend.lineWidthRatios(JSON.stringify(E.allLines(blocks))))
-        let k = 0
-        lineRatios = blocks.map(b => b.lines.map(() => ratios[k++]))
+    function measureLines(bs) {
+        if (ratioCache.size > 5000) ratioCache = new Map()
+        const missing = []
+        const seen = new Set()
+        bs.forEach(b => b.lines.forEach(l => {
+            if (!ratioCache.has(l) && !seen.has(l)) { seen.add(l); missing.push(l) }
+        }))
+        if (missing.length) {
+            const ratios = JSON.parse(backend.lineWidthRatios(JSON.stringify(missing)))
+            missing.forEach((l, i) => ratioCache.set(l, ratios[i]))
+        }
+        lineRatios = bs.map(b => b.lines.map(l => ratioCache.get(l)))
         wrapSlides = lineRatios.reduce((acc, r, i) => r.some(x => x > 1) ? acc.concat(i) : acc, [])
     }
 
@@ -86,16 +163,19 @@ Item {
     }
 
     function showNextWrap() {
+        prepareEdit()
         if (!wrapSlides.length) return
         const next = wrapSlides.find(i => i > wrapCursor)
         wrapCursor = next !== undefined ? next : wrapSlides[0]
-        revealInText(wrapCursor)
+        // 그 슬라이드에서 처음으로 넘치는 줄 끝에 커서를 둔다
+        revealInText(wrapCursor, (lineRatios[wrapCursor] || []).findIndex(r => r > 1))
         slideList.flash(wrapCursor)
     }
 
     Component.onCompleted: updateFitBasis()
 
     // 구조 편집: 텍스트를 새로 쓰고 히스토리에 남긴 뒤 바뀐 슬라이드를 강조한다
+    // (호출하는 쪽은 blocks로 groups를 만들기 전에 prepareEdit()을 부른다)
     function commit(groups, opts) {
         opts = opts || {}
         flushTyping()
@@ -123,17 +203,23 @@ Item {
     }
 
     function cutSlide(idx, at) {
+        prepareEdit()
         const groups = E.linesOf(blocks)
         const lines = groups[idx]
+        if (!lines || at <= 0 || at >= lines.length) return
         groups.splice(idx, 1, lines.slice(0, at), lines.slice(at))
         commit(groups, { focus: idx + 1 })
     }
 
     function joinSlides(idx) {
+        prepareEdit()
         const groups = E.linesOf(blocks)
+        if (idx < 0 || idx + 1 >= groups.length) return
         const joined = groups[idx].concat(groups[idx + 1])
-        const apply = () => {
+        const apply = (asked) => {
             groups.splice(idx, 2, joined)
+            // 확인하고 합친 슬라이드는 입력칸에서 벗어날 때·PPT를 만들 때 다시 묻지 않는다
+            if (asked) keepLong([joined.join("\n")])
             commit(groups, { focus: idx })
         }
         // 2줄 유지 중에 3줄 이상 슬라이드가 생기면 한 번 확인한다
@@ -143,67 +229,109 @@ Item {
                 message: (idx + 1) + "번과 " + (idx + 2) + "번 슬라이드를 합치면 " + joined.length
                          + "줄이 돼요. '2줄 유지' 중인데 합칠까요?",
                 confirmText: "합치기",
-                onConfirm: apply
+                onConfirm: () => apply(true)
             })
         } else {
-            apply()
+            apply(false)
         }
     }
 
-    // ── 2줄 유지 중 가사 입력 확인 ──
-    // 타이핑 중에는 방해하지 않고, 입력칸에서 벗어날 때 3줄 이상 슬라이드가 있으면 한 번 묻는다.
-    // '그대로 두기'를 고른 슬라이드는 내용이 바뀌기 전까지 다시 묻지 않는다.
+    // ── 2줄 유지 중 3줄 이상 슬라이드 확인 ──
+    // 타이핑 중에는 방해하지 않고, 입력칸에서 벗어날 때와 PPT를 만들기 전에 한 번 묻는다.
+    // 창 전환·페이지 전환으로 포커스가 빠질 때는 묻지 않는다.
+    // '그대로 두기'를 고르거나 확인하고 합친 슬라이드는 내용이 바뀌기 전까지 다시 묻지 않는다.
     property var keptLongSlides: ({})
 
-    function checkLongSlides() {
-        // 튜토리얼이 열려 있으면 그 위에 띄우지 않고, 닫힌 뒤에 묻는다 (아래 Connections).
-        // opened는 열리는 애니메이션이 끝나야 참이라, 포커스가 빠지는 순간에도 참인 visible로 본다
-        if (!keepTwo || !confirmDialog || confirmDialog.opened || (tour && tour.visible)) return
-        const longOnes = []
-        blocks.forEach((b, i) => { if (b.lines.length > 2) longOnes.push(i) })
-        const fresh = longOnes.filter(i => !keptLongSlides[blocks[i].lines.join("\n")])
-        if (!fresh.length) return
+    function keepLong(keys) {
+        const kept = Object.assign({}, keptLongSlides)
+        keys.forEach(k => { kept[k] = true })
+        keptLongSlides = kept
+    }
 
-        const names = fresh.slice(0, 5).map(i => (i + 1) + "번").join(", ") + (fresh.length > 5 ? " 등" : "")
+    // 아직 묻지 않은 3줄 이상 슬라이드 번호
+    function freshLongSlides() {
+        const out = []
+        blocks.forEach((b, i) => { if (b.lines.length > 2 && keptLongSlides[b.lines.join("\n")] !== true) out.push(i) })
+        return out
+    }
+
+    // 입력칸에서 벗어났을 때: 나눌지, 그대로 둘지
+    function askLongSlides(fresh) {
+        const keys = fresh.map(i => blocks[i].lines.join("\n"))
         confirmDialog.ask({
             title: "3줄 이상인 슬라이드가 있어요",
-            message: names + " 슬라이드가 3줄 이상이에요. '2줄 유지' 중인데 2줄씩 나눌까요?",
+            message: longNames(fresh) + " 슬라이드가 3줄 이상이에요. '2줄 유지' 중인데 2줄씩 나눌까요?",
             confirmText: "2줄씩 나누기",
             cancelText: "그대로 두기",
-            onConfirm: () => splitLongSlides(),
-            onCancel: () => {
-                const kept = Object.assign({}, keptLongSlides)
-                fresh.forEach(i => { kept[blocks[i].lines.join("\n")] = true })
-                keptLongSlides = kept
-            }
+            onConfirm: () => splitLongSlides(keys),
+            onCancel: () => keepLong(keys)
         })
         slideList.flash(fresh[0])
     }
 
-    Connections {
-        target: page.tour
-        function onClosed() { if (page.visible && !page.lyricsFocused) page.checkLongSlides() }
+    // PPT 생성 전: 그대로 만들지(주 버튼), 편집 화면으로 돌아가 2줄씩 나눌지. Esc·바깥 클릭은 아무것도 하지 않음
+    function askLongBeforeGenerate(fresh) {
+        const keys = fresh.map(i => blocks[i].lines.join("\n"))
+        confirmDialog.ask({
+            title: "3줄 이상인 슬라이드가 있어요",
+            message: longNames(fresh) + " 슬라이드가 3줄 이상이에요. 그대로 PPT를 만들까요, 2줄씩 나눌까요?",
+            confirmText: "그대로 PPT 생성",
+            cancelText: "2줄씩 나누기",
+            onConfirm: () => { keepLong(keys); openSaveDialog() },
+            onCancel: () => splitLongSlides(keys),
+            onDismiss: null
+        })
+        slideList.flash(fresh[0])
     }
 
-    // 3줄 이상인 슬라이드만 2줄씩 나눈다 (나머지는 그대로)
-    function splitLongSlides() {
+    function longNames(fresh) {
+        return fresh.slice(0, 5).map(i => (i + 1) + "번").join(", ") + (fresh.length > 5 ? " 등" : "")
+    }
+
+    // 입력칸에서 벗어난 뒤 잠깐 기다렸다가 묻는다. 그 사이 PPT 생성·뒤로·창 전환이 있었으면 묻지 않는다
+    Timer { id: longCheckTimer; interval: 250; onTriggered: page.checkLongSlides() }
+
+    function checkLongSlides() {
+        if (!keepTwo || !confirmDialog || !page.enabled || lyrics.activeFocus) return
+        if (Qt.application.state !== Qt.ApplicationActive || !page.Window.active) return   // 다른 앱·창으로 전환
+        // 다른 창이 떠 있거나(튜토리얼은 닫힌 뒤에 묻는다, 아래 Connections), PPT 생성·뒤로를 누르는 중이면 묻지 않는다
+        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible) return
+        if (generating || generateButton.pressed || backButton.pressed) return
+        prepareEdit()
+        const fresh = freshLongSlides()
+        if (fresh.length) askLongSlides(fresh)
+    }
+
+    Connections {
+        target: page.tour
+        function onClosed() { if (page.enabled && !page.lyricsFocused) longCheckTimer.restart() }
+    }
+
+    // 물어본 슬라이드(keys)만 2줄씩 나눈다 (나머지는 그대로)
+    function splitLongSlides(keys) {
+        prepareEdit()
+        const asked = {}
+        keys.forEach(k => { asked[k] = true })
         let count = 0
         const groups = []
         E.linesOf(blocks).forEach(lines => {
-            if (lines.length > 2) { count++; groups.push(...E.regroup(lines, 2)) }
+            if (lines.length > 2 && asked[lines.join("\n")] === true) { count++; groups.push(...E.regroup(lines, 2)) }
             else groups.push(lines)
         })
         if (count) commit(groups, { message: count + "장을 2줄씩 나눴어요" })
     }
 
     function removeSlide(idx) {
+        prepareEdit()
         const groups = E.linesOf(blocks)
+        if (idx < 0 || idx >= groups.length) return
         groups.splice(idx, 1)
         active = -1
         commit(groups, { message: (idx + 1) + "번 슬라이드를 삭제했어요" })
     }
 
     function autoSplit(n) {
+        prepareEdit()
         const groups = E.regroup(E.allLines(blocks), n)
         if (E.serialize(groups) === lyrics.text) return    // 나눠도 달라지지 않으면 알리지 않는다
         active = -1
@@ -221,14 +349,18 @@ Item {
     }
 
     function moveLine(src, target) {
+        prepareEdit()
+        if (!E.resolveDrop(blocks, src, target)) return    // 끄는 사이 목록이 바뀌었으면 하지 않는다
         const plan = E.planDrop(blocks, src, target, keepTwo)
         if (plan) commit(plan.groups, { focus: plan.focus })
     }
 
     // ── 히스토리 (⌘Z) ──
     // 타이핑과 구조 편집을 하나의 스냅샷 스택으로 관리한다.
+    // 타이핑은 0.6초 쉼, 줄바꿈(Enter), 붙여넣기에서 한 단계로 끊는다.
     property var hist: []
     property int histIdx: -1
+    property bool recordNextInput: false   // 붙여넣기: 들어온 내용을 바로 한 단계로 남긴다
 
     function record(text) {
         typingTimer.stop()
@@ -241,54 +373,64 @@ Item {
         dismissUndoToast()
     }
 
-    function resetHistory(text) {
-        typingTimer.stop()
-        hist = [text]
-        histIdx = 0
-    }
-
     function flushTyping() {
         if (typingTimer.running) record(lyrics.text)
     }
 
     function undo() {
+        prepareEdit()
         flushTyping()
         if (histIdx <= 0) return
         histIdx--
         dismissUndoToast()
-        setText(hist[histIdx])
+        showHistory()
     }
 
     function redo() {
+        prepareEdit()
         flushTyping()
         if (histIdx >= hist.length - 1) return
         histIdx++
         dismissUndoToast()
-        setText(hist[histIdx])
+        showHistory()
+    }
+
+    // 되돌린 곳으로 커서를 옮기고, 화면 밖이면 보이게 한다 (커서 → 활성 슬라이드도 따라감)
+    function showHistory() {
+        const changed = setText(hist[histIdx])
+        if (!changed) return
+        lyrics.cursorPosition = changed.end
+        revealCaret()
     }
 
     Timer { id: typingTimer; interval: 600; onTriggered: page.record(lyrics.text) }
 
     // ── 가사 ↔ 슬라이드 연결 ──
     function syncActiveFromCaret() {
-        const idx = E.blockIndexAt(blocks, lyrics.cursorPosition)
+        const idx = E.blockIndexAt(spans, lyrics.cursorPosition)
         if (idx !== active) {
             active = idx
             slideList.ensureVisible(idx)
         }
     }
 
-    function revealInText(idx) {
-        const block = blocks[idx]
+    // 슬라이드(line을 주면 그 줄 끝)로 가사 커서를 옮긴다.
+    // 선택하지 않아서, 위치만 보려다 바로 입력해도 가사가 지워지지 않는다. 위치는 잠깐 강조해 보여 준다
+    function revealInText(idx, line) {
+        prepareEdit()
+        const block = spans[idx]
         if (!block) return
         lyrics.forceActiveFocus()
-        lyrics.select(block.start, block.end)
-        // 선택한 가사가 위에서 1/3 지점에 오도록 스크롤
+        lyrics.cursorPosition = line >= 0 ? E.lineEnd(lyrics.text, block, line) : block.start
+        // 슬라이드가 위에서 1/3 지점에 오도록 스크롤
         const flick = lyricsScroll.contentItem
-        const rect = lyrics.positionToRectangle(block.start)
-        const max = Math.max(0, flick.contentHeight - flick.height)
-        flick.contentY = Math.max(0, Math.min(max, rect.y - flick.height / 3))
+        const top = lyrics.positionToRectangle(block.start)
+        const bottom = lyrics.positionToRectangle(block.end)
+        setLyricsY(top.y - flick.height / 3)
         active = idx
+        revealMark.y = top.y - 3
+        revealMark.height = bottom.y + bottom.height - top.y + 6
+        revealAnim.restart()
     }
 
     function blurLyrics() { page.forceActiveFocus() }
@@ -318,9 +460,18 @@ Item {
     }
 
     // ── 템플릿 / 생성 ──
+    // 2줄 유지 중 3줄 이상 슬라이드가 있으면 먼저 묻고, 답에 맞춰 고친 뒤 저장 대화상자를 연다
     function generate() {
-        if (generating) return
+        if (generating || saveDialog.visible) return
+        prepareEdit()
         if (!blocks.length) return    // 버튼과 단축키는 가사가 있을 때만 켜지지만 한 번 더 막는다
+        longCheckTimer.stop()
+        const fresh = keepTwo && confirmDialog ? freshLongSlides() : []
+        if (fresh.length) askLongBeforeGenerate(fresh)
+        else openSaveDialog()
+    }
+
+    function openSaveDialog() {
         const name = (song ? song.title + " — " + song.artist : "lyrics").replace(/[\/\\:*?"<>|]/g, "_")
         // FileDialog 기본 폴더는 프로세스 작업 폴더(설치 폴더일 수 있음)라 쓰지 않는다
         let folder = page.lastSaveFolder
@@ -341,6 +492,7 @@ Item {
             if (res.error) {
                 page.dialog.showError(res.error, res.detail)
             } else {
+                page.savedKey = page.generatingKey    // 이 내용까지는 PPT로 만들었다
                 const name = res.path.split(/[\\/]/).pop()
                 const saved = page.savedUrl
                 page.toastHost.show("PPT를 만들었어요 · " + name, {
@@ -354,7 +506,8 @@ Item {
         }
         function onTemplateChanged() {
             page.updateFitBasis()
-            page.measureLines()
+            page.ratioCache = new Map()
+            page.measureLines(page.blocks)
         }
         function onArtReady(id) {
             if (page.song && id === page.song.song_id) {
@@ -374,6 +527,7 @@ Item {
             page.lastSaveFolder = saveDialog.currentFolder
             page.savedUrl = selectedFile
             page.generating = true
+            page.generatingKey = page.contentKey(page.blocks)
             backend.generatePpt(JSON.stringify(page.blocks.map(b => b.lines.join("\n"))), selectedFile.toString(), page.song ? page.song.title + " — " + page.song.artist : "")
         }
     }
@@ -429,6 +583,7 @@ Item {
                 anchors.rightMargin: 24
                 spacing: 16
                 AppButton {
+                    id: backButton
                     text: "뒤로"
                     glyph: "chevron-left"
                     variant: "ghost"
@@ -482,9 +637,11 @@ Item {
 
             // 가사 편집
             ColumnLayout {
+                // 두 열은 내용(줄바꿈 배지 등)과 무관하게 비율로만 나눈다. 배지가 켜지고 꺼질 때 가사 칸 폭이 바뀌면 입력 중인 줄이 다시 흐른다
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.preferredWidth: 1000
+                Layout.preferredWidth: 0
+                Layout.horizontalStretchFactor: 1000
                 spacing: 10
 
                 RowLayout {
@@ -557,18 +714,49 @@ Item {
 
                             onTextChanged: {
                                 if (page.applying) return
-                                page.sync()
+                                page.spans = E.parseBlocks(text)
+                                // 슬라이드가 생기거나 없어지면 바로, 줄 내용만 바뀌면 모아서 목록을 갱신한다
+                                if (page.spans.length !== page.blocks.length) page.sync()
+                                else if (!syncTimer.running) syncTimer.start()
                                 page.syncActiveFromCaret()
-                                typingTimer.restart()
+                                if (page.recordNextInput) {
+                                    page.recordNextInput = false
+                                    page.record(text)
+                                } else {
+                                    typingTimer.restart()
+                                }
                             }
                             onCursorPositionChanged: if (!page.applying) page.syncActiveFromCaret()
-                            onActiveFocusChanged: if (!activeFocus) page.checkLongSlides()
+                            onActiveFocusChanged: if (!activeFocus) longCheckTimer.restart()
 
                             // ⌘Z / ⇧⌘Z 는 앱 전체 히스토리로 처리
                             Keys.onPressed: (event) => {
                                 if (page.dragging) return
                                 if (event.matches(StandardKey.Undo)) { page.undo(); event.accepted = true }
                                 else if (event.matches(StandardKey.Redo)) { page.redo(); event.accepted = true }
+                                else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) page.flushTyping()
+                                else if (event.matches(StandardKey.Paste)) {
+                                    page.flushTyping()
+                                    page.recordNextInput = true
+                                    Qt.callLater(() => { page.recordNextInput = false })   // 붙여 넣을 게 없었으면 풀어 둔다
+                                }
+                            }
+
+                            // 미리보기에서 누른 슬라이드 위치를 잠깐 강조 (revealInText)
+                            Rectangle {
+                                id: revealMark
+                                z: -1
+                                x: lyrics.leftPadding - 6
+                                width: lyrics.width - lyrics.leftPadding - lyrics.rightPadding + 12
+                                radius: 6
+                                color: Theme.primarySoft
+                                opacity: 0
+                                SequentialAnimation {
+                                    id: revealAnim
+                                    NumberAnimation { target: revealMark; property: "opacity"; to: 1; duration: 120 }
+                                    PauseAnimation { duration: 700 }
+                                    NumberAnimation { target: revealMark; property: "opacity"; to: 0; duration: 500 }
+                                }
                             }
                         }
                     }
@@ -597,7 +785,8 @@ Item {
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.preferredWidth: 1150
+                Layout.preferredWidth: 0
+                Layout.horizontalStretchFactor: 1150
                 spacing: 10
 
                 RowLayout {
@@ -702,7 +891,8 @@ Item {
                     onJoinRequested: (slide) => page.joinSlides(slide)
                     onRemoveRequested: (slide) => page.removeSlide(slide)
                     onMoveRequested: (src, target) => page.moveLine(src, target)
-                    onRevealRequested: (slide) => page.revealInText(slide)
+                    onRevealRequested: (slide, line) => page.revealInText(slide, line)
+                    onEditStarting: page.prepareEdit()
                 }
 
                 Text {
