@@ -8,10 +8,28 @@ ApplicationWindow {
     height: 800
     minimumWidth: 900
     minimumHeight: 560
-    visible: true
+    visible: false   // 크기를 정한 뒤(fitToScreen) 보인다
     title: "가사 슬라이드 생성기"
     color: Theme.bg
     font.family: Theme.font
+
+    // 기본 1100×800, 작은 화면에서는 작업 영역의 92%×90%까지 줄여 가운데에 둔다 (제목 표시줄·작업 표시줄 몫을 남김).
+    // 최소 크기(900×560)도 같은 한도로 낮춰, 작은 화면에서 창이 작업 영역 밖으로 나가지 않게 한다.
+    // 작업 영역(workArea)은 app.py가 창이 열릴 화면에서 읽어 넣는다 (QML의 Screen.desktopAvailable*은 모니터가 여럿이면 전체 합이라 쓰지 않음)
+    property rect workArea: Qt.rect(0, 0, 0, 0)
+    function fitToScreen() {
+        const a = workArea
+        if (a.width > 0 && a.height > 0) {
+            const maxW = Math.floor(a.width * 0.92), maxH = Math.floor(a.height * 0.90)
+            minimumWidth = Math.min(900, maxW)
+            minimumHeight = Math.min(560, maxH)
+            width = Math.min(1100, maxW)
+            height = Math.min(800, maxH)
+            x = a.x + Math.floor((a.width - width) / 2)
+            y = a.y + Math.floor((a.height - height) / 2)
+        }
+        visible = true
+    }
 
     property bool editorActive: false
     property var pendingSong: null
