@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-// 새 버전 알림 카드 (창 오른쪽 위)
+// 새 버전 알림 막대 (창 맨 위). 화면을 아래로 밀어서 검색창·편집 머리글을 가리지 않는다
 Rectangle {
     id: banner
     property string version: ""
@@ -11,40 +11,44 @@ Rectangle {
 
     signal updateClicked()
     signal notesClicked()
+    signal dismissed()
 
-    width: row.implicitWidth + 28
-    height: 52
-    radius: Theme.radius
+    readonly property int barHeight: 48
+    height: shown ? barHeight : 0
+    visible: height > 0
+    clip: true
     color: Theme.surface
-    border.width: 1
-    border.color: Theme.border
-    opacity: shown ? 1 : 0
-    visible: opacity > 0
-    transform: Translate { y: banner.shown ? 0 : -12; Behavior on y { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } } }
-    Behavior on opacity { NumberAnimation { duration: 250 } }
+    Behavior on height { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
 
-    // 그림자 대신 살짝 겹친 테두리
-    Rectangle { anchors.fill: parent; anchors.margins: -3; radius: parent.radius + 3; color: "transparent"; border.width: 3; border.color: Theme.primarySoft; z: -1 }
+    Rectangle { anchors.fill: parent; color: Theme.primarySoft }
+    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
 
+    // 접히는 동안 내용이 위로 밀려 올라가도록 아래쪽에 붙인다
     RowLayout {
-        id: row
-        anchors.centerIn: parent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 20
+        anchors.rightMargin: 12
+        height: banner.barHeight
         spacing: 8
         Rectangle {
             width: 26; height: 26; radius: 13
             color: Theme.primarySoft
-            Icon { anchors.centerIn: parent; glyph: "download"; size: 14; color: Theme.primary }
+            Icon { anchors.centerIn: parent; glyph: "download"; size: 14; color: Theme.primaryText }
         }
         Text {
-            text: "새 버전 <b>v" + banner.version + "</b>이 나왔어요"
+            Layout.fillWidth: true
+            // 버전 뒤에 조사를 바로 붙이지 않는다 (숫자 읽기에 따라 이/가가 달라짐)
+            text: "<b>v" + banner.version + "</b> 버전이 나왔어요"
             textFormat: Text.StyledText
+            elide: Text.ElideRight
             color: Theme.text
             font.family: Theme.font
             font.pixelSize: 13
-            Layout.rightMargin: 4
         }
         AppButton { text: "변경 내용"; variant: "ghost"; size: "small"; onClicked: banner.notesClicked() }
         AppButton { text: "업데이트"; variant: "primary"; size: "small"; onClicked: banner.updateClicked() }
-        AppButton { glyph: "x"; variant: "ghost"; size: "small"; onClicked: banner.shown = false }
+        AppButton { glyph: "x"; variant: "ghost"; size: "small"; onClicked: banner.dismissed() }
     }
 }

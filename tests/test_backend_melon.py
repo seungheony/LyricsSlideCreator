@@ -55,7 +55,7 @@ class BackendFlow(unittest.TestCase):
         cls.app = QCoreApplication.instance() or QCoreApplication([])
 
     def setUp(self):
-        with mock.patch('src.qml_ui.backend.updater.cleanup'):
+        with mock.patch('src.qml_ui.backend.updater.take_last_result', return_value=None):
             self.backend = Backend(AlbumArtProvider())
         self.backend._pool.shutdown(wait=False)
         self.backend._pool = SyncPool()

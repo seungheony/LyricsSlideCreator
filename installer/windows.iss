@@ -4,7 +4,7 @@
 ;
 ; - 사용자 계정에만 설치 (관리자 권한 불필요): %LOCALAPPDATA%\Programs\LyricsSlideCreator
 ; - 제어판에서 제거하면 앱 관련 파일을 모두 지운다
-; - 앱의 [업데이트] 버튼은 새 설치 파일을 /VERYSILENT 로 실행한다
+; - 앱의 [업데이트] 버튼은 새 설치 파일을 /SILENT /SUPPRESSMSGBOXES 로 실행한다 (src/utils/updater.py, 진행 창만 보임)
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -44,6 +44,9 @@ UninstallDisplayIcon={app}\{#AppExe}
 SetupIconFile=..\assets\app-icon\AppIcon.ico
 CloseApplications=yes
 RestartApplications=no
+; 앱이 실행 중이면 설치·제거를 시작하기 전에 알린다. 앱이 만드는 뮤텍스 이름(src/utils/updater.py APP_MUTEX)과 같아야 한다.
+; 자동 업데이트는 설치 파일을 실행하기 직전에 앱이 뮤텍스를 놓으므로 막히지 않는다
+AppMutex=LyricsSlideCreator.AppMutex
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
@@ -66,7 +69,7 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-; 설치 마지막 화면의 "실행" 체크박스. 자동 업데이트(/VERYSILENT)에서는 화면 없이 바로 다시 실행된다
+; 설치 마지막 화면의 "실행" 체크박스. 자동 업데이트(/SILENT)에서는 묻지 않고 바로 다시 실행된다
 ; (CI 검증용 /NOLAUNCH 를 주면 실행하지 않음)
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall; Check: ShouldLaunch
 

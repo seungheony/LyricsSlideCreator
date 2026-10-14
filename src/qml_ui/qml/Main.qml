@@ -126,7 +126,10 @@ ApplicationWindow {
     // ── 페이지 (좌우로 살짝 밀리며 전환) ──
     SearchPage {
         id: searchPage
-        anchors.fill: parent
+        anchors.top: updateBanner.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
         enabled: !win.editorActive
         opacity: win.editorActive ? 0 : 1
         transform: Translate { x: win.editorActive ? -24 : 0; Behavior on x { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } } }
@@ -137,7 +140,10 @@ ApplicationWindow {
 
     EditorPage {
         id: editorPage
-        anchors.fill: parent
+        anchors.top: updateBanner.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
         enabled: win.editorActive
         visible: opacity > 0
         opacity: win.editorActive ? 1 : 0
@@ -193,15 +199,30 @@ ApplicationWindow {
         }
     }
 
+    // 버전 표시. 누르면 업데이트를 직접 확인한다 (알림을 닫았으면 다시 연다)
     Text {
-        anchors.top: parent.top
+        id: versionLabel
+        anchors.top: updateBanner.bottom
         anchors.right: parent.right
-        anchors.margins: 10
+        anchors.topMargin: 10
         anchors.rightMargin: 14
-        Component.onCompleted: text = "v" + backend.version()
-        color: Theme.text3
+        z: 60
+        property string version: ""
+        Component.onCompleted: version = backend.version()
+        text: win.updateChecking ? "업데이트 확인 중…"
+            : "v" + version + (win.updateInfo && !updateBanner.shown ? " · 새 버전 있음" : "")
+        color: versionArea.containsMouse || (win.updateInfo && !updateBanner.shown) ? Theme.primaryText : Theme.text3
         font.family: Theme.font
         font.pixelSize: 11
+        font.underline: versionArea.containsMouse
+        MouseArea {
+            id: versionArea
+            anchors.fill: parent
+            anchors.margins: -6
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: win.checkUpdateManually()
+        }
     }
 
     ToastHost {
@@ -218,31 +239,94 @@ ApplicationWindow {
     Tour { id: tour }
 
     // ── 업데이트 ──
+    property var updateInfo: null        // 새 버전 정보 (없으면 null)
+    property bool updateChecking: false  // 버전 표시를 눌러 확인하는 중
+    property var afterTour: []           // 튜토리얼이 끝난 뒤 보여 줄 것 (막대가 화면을 밀면 강조 위치가 어긋나므로)
+
+    function whenTourClosed(fn) {
+        if (tour.opened) afterTour = afterTour.concat([fn])
+        else fn()
+    }
+    Connections {
+        target: tour
+        function onOpenedChanged() {
+            if (tour.opened) return
+            const queued = win.afterTour
+            win.afterTour = []
+            queued.forEach(fn => fn())
+        }
+    }
+
+    // 미루거나(나중에·닫기) 실패해도 알림 막대를 다시 보여 준다. 막대의 ✕로 닫으면 버전 표시에 '새 버전 있음'이 남는다
+    function showUpdateBanner() {
+        if (!updateInfo) return
+        whenTourClosed(() => { if (!updateDialog.opened) updateBanner.shown = true })
+    }
+
+    function checkUpdateManually() {
+        if (updateInfo) {
+            updateBanner.shown = false
+            updateDialog.openConfirm()
+            return
+        }
+        if (updateChecking) return
+        updateChecking = true
+        backend.checkForUpdate(true)
+    }
+
     UpdateBanner {
         id: updateBanner
         anchors.top: parent.top
+        anchors.left: parent.left
         anchors.right: parent.right
-        anchors.topMargin: 30
-        anchors.rightMargin: 16
         z: 90
         onUpdateClicked: { shown = false; updateDialog.openConfirm() }
-        onNotesClicked: updateDialog.openNotes()
+        onNotesClicked: { shown = false; updateDialog.openNotes() }
+        onDismissed: shown = false
     }
 
     UpdateDialog {
         id: updateDialog
         editing: (win.editorActive && editorPage.dirty) || win.storedDirty
+        onClosed: if (stage !== "installing") win.showUpdateBanner()
     }
 
     Connections {
         target: backend
         function onUpdateAvailable(json) {
             const info = JSON.parse(json)
+            win.updateChecking = false
+            win.updateInfo = info
             updateBanner.version = info.version
             updateDialog.version = info.version
             updateDialog.notes = info.notes
             updateDialog.page = info.page
-            updateBanner.shown = true
+            if (info.manual) {
+                updateBanner.shown = false
+                updateDialog.openConfirm()
+            } else {
+                win.showUpdateBanner()
+            }
+        }
+        function onUpdateChecked(json) {
+            win.updateChecking = false
+            const r = JSON.parse(json)
+            toast.show(r.message, { error: r.status === "error" })
+        }
+    }
+
+    // 지난 업데이트 결과 (업데이트하고 다시 켜졌을 때 한 번)
+    Timer {
+        interval: 800
+        running: true
+        onTriggered: {
+            const json = backend.lastUpdateResult()
+            if (!json) return
+            const r = JSON.parse(json)
+            win.whenTourClosed(() => {
+                if (r.ok) toast.show("v" + r.version + " 버전으로 업데이트했어요")
+                else dialog.showError("업데이트를 마치지 못했어요\n이전 버전을 그대로 쓰고 있어요. 다시 시도하거나 릴리스 페이지에서 새 버전을 받아 직접 설치해 주세요.", r.detail)
+            })
         }
     }
 
@@ -256,7 +340,7 @@ ApplicationWindow {
     Timer { id: editorTourTimer; interval: Theme.normal + 200; onTriggered: editorPage.showFirstRunTour() }
 
     // 시작 직후가 아니라 화면이 뜬 뒤에 조용히 확인
-    Timer { interval: 1500; running: true; onTriggered: backend.checkForUpdate() }
+    Timer { interval: 1500; running: true; onTriggered: backend.checkForUpdate(false) }
 
     // ── 단축키 ──
     Shortcut {

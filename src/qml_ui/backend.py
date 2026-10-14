@@ -1,6 +1,7 @@
 import errno
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -18,7 +19,7 @@ from src.utils.ppt_engine import PPTBuilder
 from src.utils.line_fit import LineFit
 from src.utils.helpers import resource_path
 from src.utils import app_state, updater
-from src.utils.version import get_version
+from src.utils.version import get_version, parse_version
 
 
 class AlbumArtProvider(QQuickImageProvider):
@@ -118,16 +119,19 @@ class Backend(QObject):
     artReady = Signal(str)               # song_id
     generateFinished = Signal(str)       # JSON 객체 (path 또는 error)
     templateChanged = Signal()
-    updateAvailable = Signal(str)        # JSON 객체 (version, notes, page)
+    updateAvailable = Signal(str)        # JSON 객체 (version, notes(StyledText HTML), page, manual)
+    updateChecked = Signal(str)          # 직접 확인했는데 새 버전이 없을 때. JSON 객체 (status: latest|dev|error, message)
     updateProgress = Signal(float)       # 0.0 ~ 1.0
-    updateFailed = Signal(str)           # 사용자에게 보여줄 사유
+    updateFailed = Signal(str)           # JSON 객체 (message, detail)
+    updateCancelled = Signal()           # 다운로드를 취소함 (받던 파일은 지웠다)
     updateReady = Signal()               # 설치 시작됨 → 앱을 종료해야 함
 
     def __init__(self, art_provider):
         super().__init__()
         self._art = art_provider
         self._scraper = MelonScraper()
-        self._pool = ThreadPoolExecutor(max_workers=4)
+        self._pool = ThreadPoolExecutor(max_workers=4)        # 네트워크 작업: 앱 종료 때 기다리지 않는다
+        self._ppt_pool = ThreadPoolExecutor(max_workers=1)    # PPT 저장: 앱 종료 때 끝까지 기다린다 (파일이 깨지지 않게)
         self._thumb_pool = ThreadPoolExecutor(max_workers=3)   # 검색 결과 썸네일 전용: 곡 열기·검색을 막지 않게 따로 둔다
         self._thumb_gen = 0              # 검색할 때마다 올린다: 이전 검색의 대기 중 썸네일 작업은 버린다
         self._art_inflight = set()
@@ -136,8 +140,10 @@ class Backend(QObject):
         self._template_path = resource_path("template.pptx")
         self._line_fit = None            # 템플릿 글상자 기준 줄바꿈 계산기 (처음 쓸 때 만든다, 실패하면 False)
         self._update = None
-        # 지난 업데이트에서 남은 다운로드 파일 정리 (앱 폴더 밖에 아무것도 남기지 않는다)
-        updater.cleanup()
+        self._update_cancel = threading.Event()
+        self._update_thread = None
+        # 지난 업데이트 결과를 확인하고 남은 다운로드 파일을 지운다 (앱 폴더 밖에 아무것도 남기지 않는다)
+        self._last_update = updater.take_last_result(get_version())
 
     # ── 정보 ──
     @Slot(result=str)
@@ -308,7 +314,7 @@ class Backend(QObject):
                 except Exception:
                     result = {'error': 'PPT를 만들다 문제가 생겼어요', 'detail': traceback.format_exc()}
             self.generateFinished.emit(json.dumps(result, ensure_ascii=False))
-        self._pool.submit(work)
+        self._ppt_pool.submit(work)
 
     @Slot(str)
     def revealInFolder(self, path):
@@ -327,38 +333,86 @@ class Backend(QObject):
             pass
 
     # ── 업데이트 ──
-    @Slot()
-    def checkForUpdate(self):
+    @Slot(bool)
+    def checkForUpdate(self, manual=False):
+        """새 버전 확인. 자동 확인(manual=False)은 실패해도 조용히 넘어가고, 직접 확인은 결과를 알린다"""
         def work():
+            if parse_version(get_version()) is None:
+                if manual:
+                    self.updateChecked.emit(json.dumps(
+                        {'status': 'dev', 'message': '개발 모드에서는 업데이트를 확인하지 않아요'}, ensure_ascii=False))
+                return
             try:
                 info = updater.find_update(get_version())
             except Exception:
-                return  # 오프라인 등: 조용히 넘어간다
-            if info:
-                self._update = info
-                self.updateAvailable.emit(json.dumps(
-                    {k: info[k] for k in ('version', 'notes', 'page')}, ensure_ascii=False))
+                if manual:
+                    self.updateChecked.emit(json.dumps(
+                        {'status': 'error', 'message': '업데이트를 확인하지 못했어요. 인터넷 연결을 확인해 주세요'},
+                        ensure_ascii=False))
+                return
+            if not info:
+                if manual:
+                    self.updateChecked.emit(json.dumps(
+                        {'status': 'latest', 'message': '최신 버전을 쓰고 있어요'}, ensure_ascii=False))
+                return
+            self._update = info
+            self.updateAvailable.emit(json.dumps({
+                'version': info['version'],
+                'notes': updater.notes_html(updater.release_notes(info['notes'])),
+                'page': info['page'],
+                'manual': manual,
+            }, ensure_ascii=False))
         self._pool.submit(work)
+
+    @Slot(result=str)
+    def lastUpdateResult(self):
+        """지난 업데이트 결과 (JSON 객체 ok, version, detail). 업데이트한 적이 없으면 빈 문자열"""
+        return json.dumps(self._last_update, ensure_ascii=False) if self._last_update else ''
 
     @Slot()
     def startUpdate(self):
         info = self._update
-        if not info:
+        if not info or (self._update_thread and self._update_thread.is_alive()):
             return
+        cancel = self._update_cancel = threading.Event()
+
+        def fail(message, detail=''):
+            self.updateFailed.emit(json.dumps({'message': message, 'detail': detail}, ensure_ascii=False))
 
         def work():
             try:
-                path = updater.download(info, lambda done, total: self.updateProgress.emit(done / total if total else 0.0))
-                updater.install(path)
+                updater.can_install()    # 받기 전에 설치할 수 있는 위치인지 확인
+                path = updater.download(
+                    info, lambda done, total: self.updateProgress.emit(done / total if total else 0.0), cancel)
+                updater.install(path, get_version(), info['version'], cancel)
+            except updater.UpdateCancelled:
+                self.updateCancelled.emit()
+                return
             except updater.UpdateError as e:
-                self.updateFailed.emit(str(e))
+                fail(str(e), e.detail)
                 return
             except Exception as e:
-                self.updateFailed.emit(f'업데이트하다 문제가 생겼어요.\n{e}')
+                fail('업데이트하다 문제가 생겼어요.\n다시 시도하거나 릴리스 페이지에서 직접 받아 설치해 주세요.',
+                     f'{type(e).__name__}: {e}\n{traceback.format_exc()}')
                 return
             self.updateReady.emit()
-        self._pool.submit(work)
+        # 스레드 풀과 따로 둔다: 검색 등이 밀려 있어도 바로 시작하고, 종료할 때 이 작업만 따로 정리한다
+        self._update_thread = threading.Thread(target=work, name='update', daemon=True)
+        self._update_thread.start()
+
+    @Slot()
+    def cancelUpdate(self):
+        """다운로드 취소 ([취소] 버튼, 창 닫기). 받던 파일은 다운로드 스레드가 지운다"""
+        updater.cancel(self._update_cancel)
 
     def shutdown(self):
+        """앱 종료 직전. 네트워크 작업은 기다리지 않고, 저장 중인 PPT만 끝까지 기다린다"""
+        if updater.cancel(self._update_cancel) and self._update_thread and self._update_thread.is_alive():
+            # 받던 파일은 다운로드 스레드가 지운다. 연결이 멈춰 있으면 기다리지 않고 직접 지운다
+            # (지우지 못한 것은 다음 실행 때 지운다)
+            self._update_thread.join(timeout=2)
+            if self._update_thread.is_alive():
+                shutil.rmtree(updater.UPDATE_DIR, ignore_errors=True)
         self._pool.shutdown(wait=False, cancel_futures=True)
         self._thumb_pool.shutdown(wait=False, cancel_futures=True)
+        self._ppt_pool.shutdown(wait=True)
