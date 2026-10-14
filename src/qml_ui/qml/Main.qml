@@ -246,14 +246,25 @@ ApplicationWindow {
         }
     }
 
-    // ── 첫 실행 튜토리얼 ── 화면마다 처음 들어갈 때 한 번씩, 끝까지 봐야 넘어간다 (기록: src/utils/app_state.py)
+    // ── 첫 실행 튜토리얼 ── 화면마다 처음 들어갈 때 한 번씩, 끝까지 보거나 건너뛰면 다시 나오지 않는다 (기록: src/utils/app_state.py)
+    // 건너뛰면 모든 화면의 튜토리얼을 본 것으로 기록한다
+    readonly property string tutorialHint: "사용 방법은 화면 곳곳의 ? 버튼을 누르면 언제든 다시 볼 수 있어요"
+    function finishTutorial(name) {
+        backend.markTutorialSeen(name)
+        toast.show(tutorialHint, { duration: 4500 })
+    }
+    function skipTutorial() {
+        backend.markTutorialSeen("search")
+        backend.markTutorialSeen("editor")
+        toast.show(tutorialHint, { duration: 4500 })
+    }
     // 페이지 전환 애니메이션이 끝난 뒤에 시작해야 강조할 위치가 맞는다
     Timer {
         interval: 600
         Component.onCompleted: if (!backend.tutorialSeen("search")) start()
-        onTriggered: searchPage.showHelp({ required: true, onFinished: () => backend.markTutorialSeen("search") })
+        onTriggered: searchPage.showHelp({ required: true, onFinished: () => finishTutorial("search"), onSkipped: skipTutorial })
     }
-    Timer { id: editorTourTimer; interval: Theme.normal + 200; onTriggered: editorPage.showFirstRunTour() }
+    Timer { id: editorTourTimer; interval: Theme.normal + 200; onTriggered: editorPage.showFirstRunTour(() => finishTutorial("editor"), skipTutorial) }
 
     // 시작 직후가 아니라 화면이 뜬 뒤에 조용히 확인
     Timer { interval: 1500; running: true; onTriggered: backend.checkForUpdate() }

@@ -6,7 +6,8 @@ import "."
 // 튜토리얼: 설명할 부분만 밝게 남기고 나머지를 어둡게 덮은 뒤, 옆에 단계별 설명 카드를 띄운다.
 // start([{ target: Item(없으면 가운데 카드만), title, body(StyledText), demo: Component(선택) }, ...])
 // demo는 강조 영역 위에 그대로 겹쳐 만들어져, 실제 화면 위에서 예시 동작을 재생한다 (Demo.qml)
-// opts.required: 첫 실행용. 닫기·Esc 없이 마지막 단계의 "완료"까지 봐야 끝나고, 끝나면 opts.onFinished()
+// opts.required: 첫 실행용. 닫기·Esc 없이 마지막 단계의 "완료"까지 보거나 "건너뛰기"로 끝낸다.
+//   끝까지 보면 opts.onFinished(), 건너뛰면 opts.onSkipped() (없으면 onFinished)
 Popup {
     id: tour
 
@@ -17,6 +18,7 @@ Popup {
 
     property bool required: false
     property var onFinished: null
+    property var onSkipped: null
 
     function start(newSteps, opts) {
         opts = opts || {}
@@ -24,12 +26,21 @@ Popup {
         index = 0
         required = !!opts.required
         onFinished = opts.onFinished || null
+        onSkipped = opts.onSkipped || opts.onFinished || null
         open()
     }
     function next() {
         if (index < steps.length - 1) { index++; return }
         const done = onFinished
         onFinished = null
+        onSkipped = null
+        close()
+        if (done) done()
+    }
+    function skip() {
+        const done = onSkipped
+        onFinished = null
+        onSkipped = null
         close()
         if (done) done()
     }
@@ -217,6 +228,11 @@ Popup {
                         }
                     }
                     Item { Layout.fillWidth: true }
+                    AppButton {
+                        text: "건너뛰기"; variant: "ghost"; size: "small"
+                        visible: tour.required && tour.index < tour.steps.length - 1
+                        onClicked: tour.skip()
+                    }
                     AppButton {
                         text: "이전"; variant: "ghost"; size: "small"
                         visible: tour.index > 0
