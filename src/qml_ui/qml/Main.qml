@@ -143,17 +143,17 @@ ApplicationWindow {
     // ── 단축키 ──
     Shortcut {
         sequences: [StandardKey.Undo]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
         onActivated: editorPage.undo()
     }
     Shortcut {
         sequences: [StandardKey.Redo]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
         onActivated: editorPage.redo()
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
+        enabled: win.editorActive && editorPage.blocks.length > 0 && !dialog.opened && !updateDialog.opened && !confirmDialog.opened && !tour.opened
         onActivated: editorPage.generate()
     }
     Shortcut {

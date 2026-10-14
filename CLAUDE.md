@@ -60,6 +60,7 @@ python scripts/build.py 1.2.0   # 버전 기록(scripts/set_version.py) + Nuitka
 - 앱 폴더 밖에 파일을 남기지 않는다: QML 디스크 캐시·GPU 파이프라인 캐시를 끈다(`app.py`). 설정 저장 등 새 기능을 넣을 때도 이 원칙을 지킨다
   - 앱 상태 기록(첫 실행 튜토리얼을 봤는지)은 앱 폴더 안 `app_state.json`(`src/utils/app_state.py`). 업데이트하면 앱 폴더가 새로 깔려 기록도 초기화되고(튜토리얼 다시 표시), 쓸 수 없으면 무시한다
   - 허용된 예외(OS가 남기는 기록): OS 기본 파일 대화상자의 마지막 폴더 기록(macOS `~/Library/Preferences/<앱>.plist`, Windows 레지스트리), macOS Metal 셰이더 캐시(`/var/folders/.../C/<앱>/com.apple.metal`)
+- 사용자에게 보이는 문구(QML·backend.py·updater.py)는 해요체로 쓰고 제목에는 마침표를 붙이지 않는다. 용어는 '내 템플릿'·'PPT'로 통일
 - 테스트: `tests/`(unittest). 프로젝트 루트에서 `python -m unittest discover -s tests -t .` (화면 없이 돌도록 `tests/__init__.py`가 `QT_QPA_PLATFORM=offscreen`을 설정하고 `QGuiApplication`을 만든다). 정적 검사는 `ruff check --select F401,E722 .`. 둘 다 PR·push 때 `.github/workflows/check.yml`이 돌린다(빌드는 하지 않음)
   - `test_editor_js.py`: `editor.js`에서 `.pragma library` 줄만 빼고 `QJSEngine`에 불러 시험(parseBlocks·serialize·regroup·resolveDrop·planDrop). 편집 규칙을 바꾸면 여기도 고칠 것
   - `test_melon_parse.py`: `melon_api.parse_search`/`parse_detail`을 `tests/fixtures/`의 HTML 조각으로 시험. 멜론 구조가 바뀌면 조각을 새로 떠서 갱신(개인정보 없는 최소 조각만)

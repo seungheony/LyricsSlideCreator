@@ -14,7 +14,7 @@ Item {
     property var dialog: null
     property var confirmDialog: null
     property var tour: null
-    // 커스텀 템플릿(변경 버튼)은 아직 지원하지 않는다. 다시 쓸 때 true로 바꾸면 기존 기능이 그대로 살아난다
+    // 내 템플릿(변경 버튼)은 아직 지원하지 않는다. 다시 쓸 때 true로 바꾸면 기존 기능이 그대로 살아난다
     readonly property bool customTemplate: false
 
     property var song: null
@@ -22,6 +22,7 @@ Item {
     property int active: -1          // 가사 커서가 위치한 슬라이드
     property bool applying: false    // 코드에서 텍스트를 바꾸는 중 (입력 이벤트 무시)
     property bool generating: false
+    property url savedUrl: ""         // 마지막으로 저장한 PPT (완료 토스트의 [열기])
     // 세션 동안 마지막으로 PPT를 저장한 폴더(메모리에만 둠). 비어 있으면 문서 폴더
     property url lastSaveFolder: ""
 
@@ -38,6 +39,8 @@ Item {
         // 멜론 가사는 절 사이에 빈 줄이 섞여 있으므로 처음에는 2줄씩 자동으로 나눈다
         const text = E.serialize(E.regroup(E.allLines(E.parseBlocks(lyricsText)), 2))
         active = -1
+        wrapCursor = -1
+        toastHist = -1
         setText(text)
         resetHistory(text)
         lyrics.cursorPosition = 0
@@ -102,8 +105,21 @@ Item {
             active = opts.focus
             Qt.callLater(slideList.flash, opts.focus)
         }
-        if (opts.message && toastHost)
-            toastHost.show(opts.message, { actionLabel: "되돌리기", onAction: page.undo })
+        if (opts.message && toastHost) {
+            // 이 토스트가 알린 편집이 마지막일 때만 되돌린다 (다른 편집이 이어지면 record()에서 토스트를 숨김)
+            const mine = histIdx
+            toastHist = mine
+            toastHost.show(opts.message, { actionLabel: "되돌리기", duration: 5000,
+                                          onAction: () => { if (page.histIdx === mine) page.undo() } })
+        }
+    }
+
+    // 되돌리기 토스트가 알린 편집의 히스토리 위치. 히스토리가 그 위치를 벗어나면 토스트를 숨긴다
+    property int toastHist: -1
+    function dismissUndoToast() {
+        if (toastHist < 0) return
+        toastHist = -1
+        if (toastHost) toastHost.hide()
     }
 
     function cutSlide(idx, at) {
@@ -123,9 +139,9 @@ Item {
         // 2줄 유지 중에 3줄 이상 슬라이드가 생기면 한 번 확인한다
         if (keepTwo && joined.length > 2 && confirmDialog) {
             confirmDialog.ask({
-                title: "3줄 이상 슬라이드가 됩니다",
+                title: "3줄 이상 슬라이드가 돼요",
                 message: (idx + 1) + "번과 " + (idx + 2) + "번 슬라이드를 합치면 " + joined.length
-                         + "줄이 됩니다. '2줄 유지' 중인데 합칠까요?",
+                         + "줄이 돼요. '2줄 유지' 중인데 합칠까요?",
                 confirmText: "합치기",
                 onConfirm: apply
             })
@@ -151,7 +167,7 @@ Item {
         const names = fresh.slice(0, 5).map(i => (i + 1) + "번").join(", ") + (fresh.length > 5 ? " 등" : "")
         confirmDialog.ask({
             title: "3줄 이상인 슬라이드가 있어요",
-            message: names + " 슬라이드가 3줄 이상입니다. '2줄 유지' 중인데 2줄씩 나눌까요?",
+            message: names + " 슬라이드가 3줄 이상이에요. '2줄 유지' 중인데 2줄씩 나눌까요?",
             confirmText: "2줄씩 나누기",
             cancelText: "그대로 두기",
             onConfirm: () => splitLongSlides(),
@@ -188,8 +204,10 @@ Item {
     }
 
     function autoSplit(n) {
+        const groups = E.regroup(E.allLines(blocks), n)
+        if (E.serialize(groups) === lyrics.text) return    // 나눠도 달라지지 않으면 알리지 않는다
         active = -1
-        commit(E.regroup(E.allLines(blocks), n), { message: n + "줄씩 다시 나눴어요" })
+        commit(groups, { message: n + "줄씩 다시 나눴어요" })
         slideList.scrollToTop()
     }
 
@@ -220,6 +238,7 @@ Item {
         if (next.length > 200) next.shift()
         hist = next
         histIdx = next.length - 1
+        dismissUndoToast()
     }
 
     function resetHistory(text) {
@@ -236,6 +255,7 @@ Item {
         flushTyping()
         if (histIdx <= 0) return
         histIdx--
+        dismissUndoToast()
         setText(hist[histIdx])
     }
 
@@ -243,6 +263,7 @@ Item {
         flushTyping()
         if (histIdx >= hist.length - 1) return
         histIdx++
+        dismissUndoToast()
         setText(hist[histIdx])
     }
 
@@ -299,10 +320,7 @@ Item {
     // ── 템플릿 / 생성 ──
     function generate() {
         if (generating) return
-        if (!blocks.length) {
-            dialog.showError("가사가 없습니다.")
-            return
-        }
+        if (!blocks.length) return    // 버튼과 단축키는 가사가 있을 때만 켜지지만 한 번 더 막는다
         const name = (song ? song.title + " — " + song.artist : "lyrics").replace(/[\/\\:*?"<>|]/g, "_")
         // FileDialog 기본 폴더는 프로세스 작업 폴더(설치 폴더일 수 있음)라 쓰지 않는다
         let folder = page.lastSaveFolder
@@ -320,8 +338,19 @@ Item {
         function onGenerateFinished(json) {
             page.generating = false
             const res = JSON.parse(json)
-            if (res.error) page.dialog.showError(res.error, res.detail)
-            else page.toastHost.show("PPT 생성이 완료되었습니다!")
+            if (res.error) {
+                page.dialog.showError(res.error, res.detail)
+            } else {
+                const name = res.path.split(/[\\/]/).pop()
+                const saved = page.savedUrl
+                page.toastHost.show("PPT를 만들었어요 · " + name, {
+                    duration: 8000,
+                    actions: [
+                        { label: "열기", handler: () => Qt.openUrlExternally(saved) },
+                        { label: "폴더에서 보기", handler: () => backend.revealInFolder(res.path) }
+                    ]
+                })
+            }
         }
         function onTemplateChanged() {
             page.updateFitBasis()
@@ -343,6 +372,7 @@ Item {
         nameFilters: ["PowerPoint (*.pptx)"]
         onAccepted: {
             page.lastSaveFolder = saveDialog.currentFolder
+            page.savedUrl = selectedFile
             page.generating = true
             backend.generatePpt(JSON.stringify(page.blocks.map(b => b.lines.join("\n"))), selectedFile.toString(), page.song ? page.song.title + " — " + page.song.artist : "")
         }
@@ -355,7 +385,7 @@ Item {
         nameFilters: ["PowerPoint (*.pptx)"]
         onAccepted: {
             templateName.text = backend.setTemplate(selectedFile.toString())
-            page.toastHost.show("템플릿을 변경했습니다")
+            page.toastHost.show("템플릿을 바꿨어요")
         }
     }
 
@@ -536,6 +566,7 @@ Item {
 
                             // ⌘Z / ⇧⌘Z 는 앱 전체 히스토리로 처리
                             Keys.onPressed: (event) => {
+                                if (page.dragging) return
                                 if (event.matches(StandardKey.Undo)) { page.undo(); event.accepted = true }
                                 else if (event.matches(StandardKey.Redo)) { page.redo(); event.accepted = true }
                             }
@@ -553,7 +584,7 @@ Item {
                         Text { id: kbd; anchors.centerIn: parent; text: "빈 줄"; color: Theme.text2; font.family: Theme.font; font.pixelSize: 11 }
                     }
                     Text {
-                        text: "하나가 슬라이드의 경계가 됩니다"
+                        text: "하나가 슬라이드의 경계가 돼요"
                         color: Theme.text3
                         font.family: Theme.font
                         font.pixelSize: 12
@@ -648,13 +679,13 @@ Item {
                             glyph: "undo"; variant: "ghost"; size: "small"
                             enabled: page.histIdx > 0
                             onClicked: page.undo()
-                            ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "되돌리기 (⌘Z)"
+                            ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "되돌리기 (" + Theme.undoKey + ")"
                         }
                         AppButton {
                             glyph: "redo"; variant: "ghost"; size: "small"
                             enabled: page.histIdx < page.hist.length - 1
                             onClicked: page.redo()
-                            ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "다시 실행 (⇧⌘Z)"
+                            ToolTip.visible: hovered; ToolTip.delay: 600; ToolTip.text: "다시 실행 (" + Theme.redoKey + ")"
                         }
                     }
                 }
@@ -676,7 +707,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "줄을 <b>드래그</b>해 옆 슬라이드로 옮길 수 있습니다"
+                    text: "줄을 <b>드래그</b>해 옆 슬라이드로 옮길 수 있어요"
                     textFormat: Text.StyledText
                     color: Theme.text3
                     font.family: Theme.font
@@ -716,7 +747,7 @@ Item {
                     AppButton { id: templateButton; visible: page.customTemplate; text: "변경"; variant: "ghost"; size: "small"; onClicked: templateDialog.open() }
                     Text {
                         visible: !page.customTemplate
-                        text: "· 커스텀 템플릿은 추후 지원 예정"
+                        text: "· 내 템플릿은 나중에 지원할 예정이에요"
                         color: Theme.text3
                         font.family: Theme.font
                         font.pixelSize: 12
@@ -724,14 +755,29 @@ Item {
                     HelpButton { onClicked: help.generate() }
                 }
                 Item { Layout.fillWidth: true }
-                AppButton {
-                    id: generateButton
-                    text: "PPT 생성"
-                    variant: "primary"
-                    size: "large"
-                    busy: page.generating
+                // 꺼진 버튼은 호버를 받지 못해, 바깥에 둔 영역으로 이유를 보여 준다
+                Item {
                     implicitWidth: 140
-                    onClicked: page.generate()
+                    implicitHeight: generateButton.implicitHeight
+                    AppButton {
+                        id: generateButton
+                        anchors.fill: parent
+                        text: "PPT 생성"
+                        variant: "primary"
+                        size: "large"
+                        busy: page.generating
+                        enabled: page.blocks.length > 0
+                        onClicked: page.generate()
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        visible: !generateButton.enabled
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                        ToolTip.visible: containsMouse
+                        ToolTip.delay: 300
+                        ToolTip.text: "가사를 입력하면 만들 수 있어요"
+                    }
                 }
             }
         }
