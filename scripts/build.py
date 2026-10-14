@@ -86,8 +86,45 @@ def nuitka(version, extra):
     ])
 
 
+# macOS 하한의 바닥값: PySide6 6.12 휠의 플랫폼 태그(macosx_14_0)이자 Qt 6.12의 요구 사항.
+# 실제 하한은 앱에 들어가는 바이너리의 minos(최소 macOS 버전) 중 큰 값이다 (patch_info_plist가 계산해 기록)
+MACOS_MIN_FLOOR = (14, 0)
+
+
+def macho_minos(path):
+    """Mach-O 파일(arm64)의 minos를 (주, 부) 튜플로. Mach-O가 아니거나 못 읽으면 None"""
+    result = subprocess.run(['vtool', '-arch', 'arm64', '-show-build', path], capture_output=True, text=True)
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == 'minos':
+            nums = [int(n) for n in parts[1].split('.') if n.isdigit()]
+            return (nums + [0, 0])[:2] if nums else None
+    return None
+
+
+def macos_minimum(app_path):
+    """앱이 실제로 요구하는 최소 macOS 버전을 구해 로그에 찍는다.
+
+    실행 파일(run)·Python·Qt 프레임워크의 minos와 바닥값 중 큰 값. PySide6 바인딩(.so)은 휠의
+    플랫폼 태그(14.0)만 믿고 minos는 SDK 버전(26.0 등)으로 찍혀 있어 제외한다(Qt 본체가 14.4라 실제 하한은 그 아래).
+    """
+    macos_dir = os.path.join(app_path, 'Contents', 'MacOS')
+    found = {}
+    for name in sorted(os.listdir(macos_dir)):
+        path = os.path.join(macos_dir, name)
+        if os.path.isfile(path) and (name == 'run' or name.startswith(('Python', 'libpython', 'Qt'))):
+            minos = macho_minos(path)
+            if minos:
+                found[name] = tuple(minos)
+    for name, minos in found.items():
+        print(f'minos {minos[0]}.{minos[1]}  {name}', flush=True)
+    floor = max([MACOS_MIN_FLOOR, *found.values()])
+    print(f'LSMinimumSystemVersion: {floor[0]}.{floor[1]}', flush=True)
+    return f'{floor[0]}.{floor[1]}'
+
+
 def patch_info_plist(app_path):
-    """Info.plist에 언어·분류를 넣고 다시 서명한다.
+    """Info.plist에 언어·분류·최소 macOS 버전을 넣고 다시 서명한다.
 
     언어 정보가 없으면 한국어 Mac에서도 OS 대화상자(PPT 저장 창 등)가 영어로 나온다.
     Info.plist를 고치면 Nuitka가 해 둔 서명이 깨지므로 ad-hoc으로 다시 서명한다(압축 전에).
@@ -98,6 +135,7 @@ def patch_info_plist(app_path):
     info['CFBundleDevelopmentRegion'] = 'ko'
     info['CFBundleLocalizations'] = ['ko']
     info['LSApplicationCategoryType'] = 'public.app-category.productivity'
+    info['LSMinimumSystemVersion'] = macos_minimum(app_path)
     with open(plist_path, 'wb') as f:
         plistlib.dump(info, f)
     run(['codesign', '--force', '--deep', '--sign', '-', app_path])
