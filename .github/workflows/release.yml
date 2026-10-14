@@ -54,7 +54,7 @@ jobs:
             choco install innosetup --version=6.4.3 -y --no-progress
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          (Get-Item $iscc).VersionInfo.FileVersion
+          Write-Host "Inno Setup $((Get-Item $iscc).VersionInfo.ProductVersion)"
 
       - name: 버전 결정
         shell: bash
@@ -78,6 +78,8 @@ jobs:
         run: python run.py --self-test
 
       - name: 빌드
+        # 셸을 꼭 bash로: 지정하지 않으면 Windows 기본 셸(PowerShell)에서 "$VERSION"이 빈 PowerShell 변수가 된다(v1.3.0-beta.2)
+        shell: bash
         run: python scripts/build.py "$VERSION"
 
       - name: 검증 (Windows 설치 → 실행 → 제거)
