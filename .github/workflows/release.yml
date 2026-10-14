@@ -46,7 +46,15 @@ jobs:
 
       - name: Inno Setup 설치
         if: runner.os == 'Windows'
-        run: choco install innosetup --version=6.4.3 -y --no-progress
+        # 러너 이미지에 Inno Setup이 이미 깔려 있어(v1.3.0-beta.1: 6.7.1) 낮은 버전을 고정해 깔면 choco가 실패한다.
+        # 깔려 있으면 그대로 쓰고 버전을 로그에 남기고, 없을 때만 설치한다 (scripts/build.py find_iscc)
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --version=6.4.3 -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          (Get-Item $iscc).VersionInfo.FileVersion
 
       - name: 버전 결정
         shell: bash

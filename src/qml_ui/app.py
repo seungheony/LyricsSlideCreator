@@ -55,8 +55,9 @@ def create_app(argv):
 
     art_provider = AlbumArtProvider()
     backend = Backend(art_provider)
-    # 창을 닫으면 진행 중인 업데이트 다운로드를 멈춘다 (설치를 시작하지 않고 받던 파일을 지운다)
-    app.aboutToQuit.connect(backend.cancelUpdate)
+    # 주의: app.aboutToQuit 등 Qt 시그널에 backend의 Slot 메서드를 직접 connect하지 말 것. Nuitka로 컴파일한 앱에서
+    # 시작하자마자 무관한 곳(python-pptx 템플릿 읽기)에서 SIGSEGV로 죽는다(v1.3.0-beta.1 개발 중 발견, 소스 실행에서는 멀쩡함).
+    # 창을 닫으면 main()이 backend.shutdown()을 부르고, 거기서 진행 중인 업데이트 다운로드를 취소한다
 
     engine = QQmlApplicationEngine()
     # QML 로드 중 경고를 모아둔다 (--self-test 에서 확인)
