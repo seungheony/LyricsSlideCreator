@@ -41,8 +41,8 @@ Item {
     readonly property string currentId: song ? song.song_id : ""
     // 곡 목록 패널에 보일 내용 (지금 곡은 편집 중인 내용으로)
     readonly property var setlistEntries: setlist.map(id => id === currentId
-        ? { id: id, title: song.title, artist: song.artist, slides: blocks.length, wraps: wrapSlides.length }
-        : { id: id, title: sessions[id].song.title, artist: sessions[id].song.artist,
+        ? { id: id, title: song.title || "제목 없음", artist: song.artist, slides: blocks.length, wraps: wrapSlides.length }
+        : { id: id, title: sessions[id].song.title || "제목 없음", artist: sessions[id].song.artist,
             slides: sessions[id].slides, wraps: sessions[id].wraps })
     readonly property int deckSize: E.deckSize(setlistEntries.map(e => e.slides))
     // 콘티의 곡 중 PPT로 만들지 않은 편집이 있는지 / 콘티에서 뺀 곡까지 포함해서
@@ -52,19 +52,27 @@ Item {
     signal backRequested()
     signal addSongRequested()
 
-    readonly property bool lyricsFocused: lyrics.activeFocus
+    // 머리글의 제목·가수 입력칸에 커서가 있다 (이때 ⌘Z는 그 칸의 되돌리기, Esc는 입력칸에서 빠져나오기)
+    readonly property bool headerFocused: titleField.activeFocus || artistField.activeFocus
+    readonly property bool lyricsFocused: lyrics.activeFocus || headerFocused
     readonly property bool dragging: slideList.dragging
 
     function contentKey(bs) { return E.serialize(E.linesOf(bs)) }
     function textKey(text) { return E.serialize(E.linesOf(E.parseBlocks(text))) }
 
     // ── 곡별 편집 상태 ──
-    // 처음 여는 곡: 멜론 가사는 절 사이에 빈 줄이 섞여 있으므로 처음에는 2줄씩 자동으로 나눈다
+    // 처음 여는 곡: 가사를 정리하고(맨 앞 제목 줄·절 번호·후렴 표시) 문단 안에서 2줄씩 자동으로 나눈다.
+    // 정리한 게 있으면 정리 전 가사를 히스토리 첫 단계로 남겨 되돌릴 수 있게 하고, 처음 열 때 알린다(notice)
     function newEntry(newSong, lyricsText) {
-        const text = E.serialize(E.regroup(E.allLines(E.parseBlocks(lyricsText)), 2))
+        const clean = E.cleanText(lyricsText || "")
+        const tidy = E.tidyMelonLyrics(clean, newSong.title)
+        const text = E.serialize(E.regroupWithin(tidy.text, 2))
+        const before = E.serialize(E.regroupWithin(clean, 2))
+        const tidied = text !== before
         const groups = E.linesOf(E.parseBlocks(text))
-        return { song: newSong, text: text, hist: [text], histIdx: 0, cursor: 0, contentY: 0, slideY: 0,
-                 kept: {}, savedKey: text, dirty: false, slides: groups.length, wraps: countWraps(groups) }
+        return { song: newSong, text: text, hist: tidied ? [before, text] : [text], histIdx: tidied ? 1 : 0,
+                 cursor: 0, contentY: 0, slideY: 0, kept: {}, savedKey: text, dirty: false,
+                 slides: groups.length, wraps: countWraps(groups), notice: tidied ? E.tidyMessage(tidy) : "" }
     }
 
     function saveState() {
@@ -132,7 +140,7 @@ Item {
         setlist = next
         if (id === currentId) openEntry(next[Math.min(idx, next.length - 1)])
         if (toastHost)
-            toastHost.show("'" + sessions[id].song.title + "' 곡을 콘티에서 뺐어요",
+            toastHost.show("'" + (sessions[id].song.title || "제목 없음") + "' 곡을 콘티에서 뺐어요",
                            { actionLabel: "되돌리기", duration: 5000, onAction: () => page.restoreSong(id, idx) })
     }
 
@@ -165,8 +173,11 @@ Item {
 
     function resume(newSong, st) {
         song = newSong
-        art.source = "image://art/" + newSong.song_id
-        backdrop.source = "image://art/" + newSong.song_id
+        // 직접 입력한 곡은 앨범아트가 없다
+        art.source = newSong.manual ? "" : "image://art/" + newSong.song_id
+        backdrop.source = art.source
+        titleField.text = newSong.title
+        artistField.text = newSong.artist
         longCheckTimer.stop()
         typingTimer.stop()
         dismissUndoToast()
@@ -187,6 +198,31 @@ Item {
             setLyricsY(st.contentY)
             slideList.setScrollY(st.slideY)
         })
+        // 처음 열면서 가사를 정리했으면 한 번 알린다 (되돌리면 정리 전 가사)
+        if (st.notice) {
+            const message = st.notice
+            st.notice = ""
+            showUndoToast(message)
+        }
+        // 직접 입력으로 연 곡은 바로 쓸 수 있게 한다: 제목이 비어 있으면 제목, 아니면 가사 칸
+        if (newSong.manual && !st.text) (newSong.title ? lyrics : titleField).forceActiveFocus()
+    }
+
+    // 지금 히스토리 위치에서 되돌릴 수 있는 토스트 (편집이 이어지면 record()에서 숨김)
+    function showUndoToast(message) {
+        if (!toastHost) return
+        const mine = histIdx
+        toastHist = mine
+        toastHost.show(message, { actionLabel: "되돌리기", duration: 5000,
+                                  onAction: () => { if (page.histIdx === mine) page.undo() } })
+    }
+
+    // 머리글에서 제목·가수를 고쳤다 (파일 이름·콘티 목록에 반영)
+    function setSongInfo(title, artist) {
+        if (!song) return
+        const t = title.trim(), a = artist.trim()
+        if (t === song.title && a === song.artist) return
+        song = Object.assign({}, song, { title: t, artist: a })
     }
 
     // ── 텍스트 반영 ──
@@ -237,7 +273,7 @@ Item {
 
     // 미리보기·단축키로 편집하기 전에: 조합 중인 한글을 확정하고, 미뤄 둔 목록 갱신을 반영한다
     function prepareEdit() {
-        if (lyrics.preeditText !== "") Qt.inputMethod.commit()
+        if (lyrics.preeditText !== "" || titleField.preeditText !== "" || artistField.preeditText !== "") Qt.inputMethod.commit()
         flushSync()
     }
 
@@ -304,13 +340,8 @@ Item {
             active = opts.focus
             Qt.callLater(slideList.flash, opts.focus)
         }
-        if (opts.message && toastHost) {
-            // 이 토스트가 알린 편집이 마지막일 때만 되돌린다 (다른 편집이 이어지면 record()에서 토스트를 숨김)
-            const mine = histIdx
-            toastHist = mine
-            toastHost.show(opts.message, { actionLabel: "되돌리기", duration: 5000,
-                                          onAction: () => { if (page.histIdx === mine) page.undo() } })
-        }
+        // 이 토스트가 알린 편집이 마지막일 때만 되돌린다 (다른 편집이 이어지면 record()에서 숨김)
+        if (opts.message) showUndoToast(opts.message)
     }
 
     // 되돌리기 토스트가 알린 편집의 히스토리 위치. 히스토리가 그 위치를 벗어나면 토스트를 숨긴다
@@ -376,7 +407,7 @@ Item {
     function freshLongInSetlist() {
         return setlistGroups().map(s => {
             const slides = E.longSlides(s.groups, s.kept)
-            return { id: s.id, title: s.song.title, slides: slides, keys: slides.map(i => E.slideKey(s.groups[i])) }
+            return { id: s.id, title: s.song.title || "제목 없음", slides: slides, keys: slides.map(i => E.slideKey(s.groups[i])) }
         }).filter(s => s.slides.length)
     }
 
@@ -780,28 +811,63 @@ Item {
                     Layout.preferredHeight: 64
                     radius: 10
                     placeholder: Theme.surface2
+                    // 앨범아트가 없으면(직접 입력·받지 못함) 음표
+                    Icon { anchors.centerIn: parent; glyph: "music"; size: 26; color: Theme.text3; visible: !art.ready }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 4
-                    Text {
+                    spacing: 2
+                    // 제목·가수는 눌러서 고칠 수 있다 (PPT 파일 이름·콘티 목록에 쓰임)
+                    TextField {
+                        id: titleField
                         Layout.fillWidth: true
-                        text: page.song ? page.song.title : ""
-                        textFormat: Text.PlainText
+                        placeholderText: "제목"
+                        placeholderTextColor: Theme.text3
                         color: Theme.text
                         font.family: Theme.font
                         font.pixelSize: 20
                         font.weight: Font.Bold
-                        elide: Text.ElideRight
+                        selectByMouse: true
+                        leftPadding: 6; rightPadding: 6; topPadding: 2; bottomPadding: 2
+                        background: Rectangle { radius: 6; color: "transparent"; border.width: titleField.activeFocus || titleField.hovered ? 1 : 0; border.color: titleField.activeFocus ? Theme.focusBorder : Theme.border }
+                        hoverEnabled: true
+                        onTextEdited: page.setSongInfo(text, artistField.text)
+                        onEditingFinished: page.setSongInfo(text, artistField.text)
+                        onAccepted: artistField.forceActiveFocus()
+                        Accessible.name: "곡 제목"
                     }
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: page.song ? [page.song.artist, page.song.album].filter(Boolean).join(" · ") : ""
-                        textFormat: Text.PlainText
-                        color: Theme.text2
-                        font.family: Theme.font
-                        font.pixelSize: 14
-                        elide: Text.ElideRight
+                        spacing: 0
+                        TextField {
+                            id: artistField
+                            Layout.preferredWidth: Math.max(60, contentWidth + 14)
+                            Layout.maximumWidth: 360
+                            placeholderText: "가수"
+                            placeholderTextColor: Theme.text3
+                            color: Theme.text2
+                            font.family: Theme.font
+                            font.pixelSize: 14
+                            selectByMouse: true
+                            leftPadding: 6; rightPadding: 6; topPadding: 1; bottomPadding: 1
+                            background: Rectangle { radius: 6; color: "transparent"; border.width: artistField.activeFocus || artistField.hovered ? 1 : 0; border.color: artistField.activeFocus ? Theme.focusBorder : Theme.border }
+                            hoverEnabled: true
+                            onTextEdited: page.setSongInfo(titleField.text, text)
+                            onEditingFinished: page.setSongInfo(titleField.text, text)
+                            onAccepted: lyrics.forceActiveFocus()
+                            Accessible.name: "가수"
+                        }
+                        Text {
+                            visible: !!(page.song && page.song.album)
+                            text: page.song && page.song.album ? "· " + page.song.album : ""
+                            textFormat: Text.PlainText
+                            color: Theme.text3
+                            font.family: Theme.font
+                            font.pixelSize: 14
+                            elide: Text.ElideRight
+                            Layout.maximumWidth: 260
+                        }
+                        Item { Layout.fillWidth: true }
                     }
                 }
             }
@@ -919,7 +985,10 @@ Item {
                                 page.syncActiveFromCaret()
                                 if (page.recordNextInput) {
                                     page.recordNextInput = false
-                                    page.record(text)
+                                    // 붙여 넣은 가사는 PPT를 망치는 글자(세로 탭·제로폭 문자 등)를 정리한다. 바뀐 구간만 고쳐 커서를 지킨다
+                                    const cleaned = E.cleanText(text)
+                                    if (cleaned !== text) page.setText(cleaned)
+                                    page.record(lyrics.text)
                                 } else {
                                     typingTimer.restart()
                                 }

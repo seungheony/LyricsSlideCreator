@@ -42,6 +42,13 @@ function regroup(lines, n) {
     return groups;
 }
 
+// 문단(빈 줄로 구분된 덩어리)마다 따로 n줄씩 묶는다. 절 경계(빈 줄)는 넘지 않는다
+function regroupWithin(text, n) {
+    const groups = [];
+    parseBlocks(text).forEach(b => regroup(b.lines, n).forEach(g => groups.push(g)));
+    return groups;
+}
+
 // 같은 줄 배열인지 (위치 start/end는 보지 않는다)
 function sameLines(a, b) {
     if (a.length !== b.length) return false;
@@ -234,12 +241,60 @@ function deckSize(counts) {
 // PPT 이름(기본 파일 이름·문서 제목): 곡이 하나면 '제목 — 가수', 여럿이면 'YYYY-MM-DD 예배 가사'
 function deckTitle(songs, date) {
     if (!songs.length) return '';
-    if (songs.length === 1) return [songs[0].title, songs[0].artist].filter(Boolean).join(' — ');
+    if (songs.length === 1) return [songs[0].title || '가사', songs[0].artist].filter(Boolean).join(' — ');
     const pad = n => (n < 10 ? '0' : '') + n;
     return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' 예배 가사';
 }
 
 // 파일 이름에 쓸 수 없는 글자를 바꾼다
 function safeFileName(name) {
-    return (name || 'lyrics').replace(/[\/\\:*?"<>|]/g, '_');
+    return (name || '가사').replace(/[\/\\:*?"<>|]/g, '_');
+}
+
+// ── 가사 정리 ──
+// 붙여 넣은 가사·멜론 가사에서 PPT와 슬라이드 나눔을 망치는 글자를 정리한다. ppt_engine.clean_lyrics_text와 같은 규칙:
+// \v·\f·U+2028/2029는 줄바꿈으로, 제로폭 문자는 제거, 탭은 공백으로, 그 밖의 제어 문자·짝 없는 서로게이트는 제거, NFC로 정규화
+function cleanText(text) {
+    let out = text.replace(/\r\n?/g, '\n').replace(/[\x0b\x0c\u2028\u2029\x85]/g, '\n').replace(/\t/g, ' ')
+                  .replace(/[\u200b-\u200d\u2060\ufeff\u00ad]/g, '')
+                  .replace(/[\x00-\x09\x0e-\x1f\x7f-\x9f\ufffe\uffff]/g, '');
+    let res = '';
+    for (let i = 0; i < out.length; i++) {
+        const c = out.charCodeAt(i);
+        if (isHighSurrogate(c) && i + 1 < out.length && isLowSurrogate(out.charCodeAt(i + 1))) { res += out[i] + out[i + 1]; i++; }
+        else if (!isHighSurrogate(c) && !isLowSurrogate(c)) res += out[i];
+    }
+    return res.normalize('NFC');
+}
+
+// ── 멜론 가사 정리 ──
+// 처음 불러온 가사에서 슬라이드에 나가면 안 되는 것을 지운다.
+//   · 맨 앞 한 줄짜리 문단이 곡 제목과 같으면 뺀다
+//   · 줄 앞의 절 번호('1.')와 '(후렴…)' 표시를 지운다 ('2.0'처럼 소수는 그대로)
+// 반환: { text: 문단을 빈 줄로 이은 텍스트, marks: 지운 절 번호·후렴 표시 수, title: 제목 줄을 뺐는지 }
+const VERSE_NO = /^\d{1,2}\.(?!\d)\s*/;
+const CHORUS_MARK = /[(（]\s*후렴[^)）]*[)）]\s*/g;
+
+function tidyMelonLyrics(text, title) {
+    const norm = s => (s || '').replace(/\s+/g, '').toLowerCase();
+    let paras = parseBlocks(text).map(b => b.lines);
+    let titleRemoved = false;
+    if (paras.length && paras[0].length === 1 && title && norm(paras[0][0]) === norm(title)) {
+        paras = paras.slice(1);
+        titleRemoved = true;
+    }
+    let marks = 0;
+    paras = paras.map(lines => lines.map(line => {
+        let out = line;
+        if (VERSE_NO.test(out)) { out = out.replace(VERSE_NO, ''); marks++; }
+        out = out.replace(CHORUS_MARK, () => { marks++; return ''; });
+        return out.trim();
+    }).filter(line => line !== '')).filter(lines => lines.length > 0);
+    return { text: serialize(paras), marks: marks, title: titleRemoved };
+}
+
+// 정리한 내용을 알리는 문구. 정리한 게 없으면 ''
+function tidyMessage(r) {
+    if (r.marks > 0) return (r.title ? '맨 앞의 제목 줄과 ' : '') + '절 번호·후렴 표시 ' + r.marks + '개를 정리했어요';
+    return r.title ? '맨 앞의 제목 줄을 정리했어요' : '';
 }

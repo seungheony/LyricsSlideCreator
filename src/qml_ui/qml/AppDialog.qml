@@ -9,8 +9,13 @@ Popup {
     property string title: ""
     property string message: ""
     property string detail: ""
+    // 확인 옆에 둘 수 있는 두 번째 동작 (예: '직접 입력으로 열기'). 누르면 창을 닫고 handler를 부른다
+    property string actionText: ""
+    property var actionHandler: null
 
-    function showError(title, detail) {
+    function showError(title, detail, action) {
+        dialog.actionText = action ? action.text : ""
+        dialog.actionHandler = action ? action.handler : null
         const parts = title.split('\n')
         dialog.title = parts[0]
         dialog.message = parts.slice(1).join('\n')
@@ -83,12 +88,24 @@ Popup {
                 background: null
             }
         }
-        AppButton {
-            text: "확인"
-            variant: "primary"
+        RowLayout {
             Layout.alignment: Qt.AlignRight
             Layout.topMargin: 14
-            onClicked: dialog.close()
+            spacing: 8
+            AppButton {
+                visible: dialog.actionText !== ""
+                text: dialog.actionText
+                onClicked: {
+                    const handler = dialog.actionHandler
+                    dialog.close()
+                    if (handler) handler()
+                }
+            }
+            AppButton {
+                text: "확인"
+                variant: "primary"
+                onClicked: dialog.close()
+            }
         }
     }
 }
