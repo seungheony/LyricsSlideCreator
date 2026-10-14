@@ -63,6 +63,7 @@ ApplicationWindow {
             sessions = next
             lastSession = next[song.song_id]
         }
+        editorPage.dismissUndoToast()    // 검색 화면에서 편집기의 되돌리기가 눌리지 않도록
         editorActive = false
         searchPage.focusSearch()
     }

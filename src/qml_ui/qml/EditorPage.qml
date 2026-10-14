@@ -275,7 +275,7 @@ Item {
 
     function checkLongSlides() {
         if (!keepTwo || !confirmDialog || !page.enabled || lyrics.activeFocus) return
-        if (Qt.application.state !== Qt.ApplicationActive) return
+        if (Qt.application.state !== Qt.ApplicationActive || !page.Window.active) return   // 다른 앱·창으로 전환
         // 다른 창이 떠 있거나(튜토리얼은 닫힌 뒤에 묻는다, 아래 Connections), PPT 생성·뒤로를 누르는 중이면 묻지 않는다
         if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible) return
         if (generating || generateButton.pressed || backButton.pressed) return
