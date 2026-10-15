@@ -139,6 +139,20 @@ class BackendFlow(unittest.TestCase):
         self.assertEqual(get.call_count, 1)    # 두 번째는 보관한 상세를 쓴다
         self.assertEqual(self.events[0][1], {'song_id': '1', 'lyrics': '가사'})
 
+    def test_art_from_stored_url_skips_detail_page(self):
+        with mock.patch.object(self.backend._scraper, 'get_song_detail') as get, \
+                mock.patch.object(self.backend, '_download_art', return_value=True) as down:
+            self.backend.loadArtFrom('7', 'http://x/saved.jpg')
+        get.assert_not_called()
+        down.assert_called_once_with('7', 'http://x/saved.jpg')
+
+    def test_art_falls_back_to_detail_when_stored_url_fails(self):
+        det = {'song_id': '8', 'lyrics': '', 'image_url': 'http://x/new.jpg', 'reason': None}
+        with mock.patch.object(self.backend._scraper, 'get_song_detail', return_value=det), \
+                mock.patch.object(self.backend, '_download_art', side_effect=[False, True]) as down:
+            self.backend.loadArtFrom('8', 'http://x/old.jpg')
+        self.assertEqual([c.args[1] for c in down.call_args_list], ['http://x/old.jpg', 'http://x/new.jpg'])
+
     def test_detail_failure_message_and_no_cache(self):
         det = {'song_id': '1', 'lyrics': '', 'image_url': '', 'reason': 'network'}
         with mock.patch.object(self.backend._scraper, 'get_song_detail', return_value=det) as get:

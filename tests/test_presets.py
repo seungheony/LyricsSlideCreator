@@ -54,6 +54,19 @@ class Pure(unittest.TestCase):
         items, added, _ = presets.add([], [entry('1', '  \n'), entry('', 'x')], 'now')
         self.assertEqual((items, added), ([], 0))
 
+    def test_rename(self):
+        items, _, _ = presets.add([], [entry('1'), entry('2')], 'now', '처음')
+        pid = presets.for_song(items, '1')[0]['id']
+        renamed = presets.rename(items, pid, '  청년부   버전 ')
+        self.assertEqual(presets.for_song(renamed, '1')[0]['name'], '청년부 버전')
+        self.assertEqual(presets.for_song(renamed, '2')[0]['name'], '처음')
+        self.assertIsNone(presets.rename(items, 'nope', 'x'))
+
+    def test_image_url_kept_when_resaved_without_it(self):
+        items, _, _ = presets.add([], [entry('1', image_url='http://x/a.jpg')], 'a')
+        items, _, _ = presets.add(items, [entry('1')], 'b')
+        self.assertEqual(items[0]['image_url'], 'http://x/a.jpg')
+
     def test_remove(self):
         items, _, _ = presets.add([], [entry('1'), entry('2')], 'now')
         items = presets.remove(items, presets.for_song(items, '1')[0]['id'])
@@ -131,6 +144,18 @@ class Storage(unittest.TestCase):
         self.assertFalse(backend.deletePreset(found[0]['id']))
         self.assertEqual(json.loads(backend.presetCounts()), {'1': 1, 'manual-c': 1})
         self.assertEqual(changed.call_count, 2)
+        backend.shutdown()
+
+    def test_backend_rename_and_art_url_from_detail_cache(self):
+        backend = Backend(mock.Mock())
+        backend._detail_cache['1'] = {'image_url': 'http://x/cached.jpg'}
+        backend.savePresets(json.dumps([entry('1'), entry('manual-z', manual=True)]), '')
+        saved = {p['song_id']: p for p in json.loads(backend.allPresets())}
+        self.assertEqual(saved['1']['image_url'], 'http://x/cached.jpg')
+        self.assertEqual(saved['manual-z']['image_url'], '')
+        self.assertTrue(backend.renamePreset(saved['1']['id'], '새 이름'))
+        self.assertFalse(backend.renamePreset('nope', 'x'))
+        self.assertEqual(json.loads(backend.presetsFor('1'))[0]['name'], '새 이름')
         backend.shutdown()
 
     def test_backend_save_failure(self):

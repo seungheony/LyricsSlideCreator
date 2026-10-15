@@ -96,11 +96,16 @@ ApplicationWindow {
     }
 
     // 프리셋 불러오기 (검색 결과의 '프리셋' 배지·직접 입력한 곡·보관함): 저장할 때의 슬라이드 그대로 연다 (제목·가수도 저장할 때의 것)
-    function openPreset(song, preset) {
+    // fromEditor: 편집 화면의 '프리셋 불러오기'로 골랐다 → 묻지 않고 콘티에 더한다 (편집 중인 곡이면 가사를 바꿈)
+    function openPreset(song, preset, fromEditor) {
         cancelOpen()
         const s = Object.assign({}, song, { title: preset.title || song.title, artist: preset.artist || song.artist,
                                            manual: song.manual === true || preset.manual === true })
-        if (!s.manual) backend.loadArt(s.song_id)
+        if (!s.manual) backend.loadArtFrom(s.song_id, preset.image_url || "")
+        if (fromEditor) {
+            editorPage.loadPreset(s, preset.text, false)
+            return
+        }
         chooseDestination(s, (fresh) => {
             win.addMode = false
             win.enterEditor(() => editorPage.loadPreset(s, preset.text, fresh))
@@ -276,8 +281,10 @@ ApplicationWindow {
         dialog: dialog
         tour: tour
         confirmDialog: confirmDialog
+        presetDialog: presetDialog
         onBackRequested: win.requestBack()
         onAddSongRequested: win.startAddSong()
+        onPresetLibraryRequested: presetDialog.openLibrary({ currentId: editorPage.currentId, fromEditor: true })
     }
 
     // 검색 화면: 편집하던 콘티로 돌아가기. '곡 추가' 중에는 고를 곡을 안내하고 누르면 편집 화면으로 돌아간다
@@ -372,7 +379,7 @@ ApplicationWindow {
     PresetDialog {
         id: presetDialog
         objectName: "presetDialog"
-        onLoadRequested: (song, preset) => win.openPreset(song, preset)
+        onLoadRequested: (song, preset, fromEditor) => win.openPreset(song, preset, fromEditor)
     }
 
     AppDialog { id: dialog; objectName: "errorDialog" }
@@ -498,27 +505,27 @@ ApplicationWindow {
     // ── 단축키 ──
     Shortcut {
         sequences: [StandardKey.Undo]
-        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !editorPage.presetSaveOpen && !presetDialog.opened && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.undo()
     }
     Shortcut {
         sequences: [StandardKey.Redo]
-        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !editorPage.presetSaveOpen && !presetDialog.opened && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.redo()
     }
     Shortcut {
         sequences: [StandardKey.Save]
-        enabled: win.editorActive && editorPage.deckSize > 0 && !editorPage.dragging && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && editorPage.deckSize > 0 && !editorPage.dragging && !editorPage.presetSaveOpen && !presetDialog.opened && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.savePresets()
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
-        enabled: win.editorActive && editorPage.deckSize > 0 && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && editorPage.deckSize > 0 && !editorPage.presetSaveOpen && !presetDialog.opened && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.generate()
     }
     Shortcut {
         sequence: "Escape"
-        enabled: win.editorActive && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && !editorPage.presetSaveOpen && !presetDialog.opened && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: {
             // 드래그 중이면 취소, 가사 입력 중이면 입력칸에서만 빠져나오고, 아니면 검색 화면으로
             if (editorPage.dragging) editorPage.cancelDrag()
