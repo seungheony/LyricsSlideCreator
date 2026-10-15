@@ -28,28 +28,43 @@ confirm() {
     [ "$answer" = "y" ] || [ "$answer" = "Y" ]
 }
 
-# 버전을 물어본다 (1.2.0 형식, 앞의 v는 붙여도 됨). 기본값이 있으면 Enter로 고른다
+# 버전을 물어본다 (1.4 또는 1.4.1 형식, 앞의 v·공백은 무시). 기본값이 있으면 Enter로 고른다.
+# 끝자리가 0이면 떼어 1.4.0 → 1.4로 쓴다 (같은 버전이 두 이름의 태그로 나뉘지 않게. 앱 비교에서는 1.4 = 1.4.0, src/utils/version.py)
 ask_version() {
     local default="$1" input
     while true; do
-        read -r -p "버전 (예: 1.2.0)${default:+ [Enter: $default]}: " input || die "취소했습니다"
+        read -r -p "버전 (예: 1.4, 1.4.1)${default:+ [Enter: $default]}: " input || die "취소했습니다"
+        input="${input//[[:space:]]/}"
         input="${input:-$default}"
-        input="${input#v}"
-        if [[ "$input" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "$input"
+        input="${input#[vV]}"
+        if [[ "$input" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "${input%.0}"
             return
         fi
-        echo "1.2.0 형식으로 입력하세요." >&2
+        echo "1.4 또는 1.4.1 형식으로 입력하세요." >&2
     done
 }
 
-# $1이 $2보다 높은 버전인지 (v1.10.0 > v1.9.0)
+# $1이 $2보다 높은 버전인지 (v1.10.0 > v1.9.0, v1.4 > v1.3.0). 세 자리로 맞춰 비교한다 (v1.4 = v1.4.0)
+full_version() { if [[ "$1" =~ ^v?[0-9]+\.[0-9]+$ ]]; then echo "$1.0"; else echo "$1"; fi; }
 version_gt() {
-    [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]
+    local a b
+    a=$(full_version "$1")
+    b=$(full_version "$2")
+    [ "$a" != "$b" ] && [ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | tail -n 1)" = "$a" ]
 }
 
-latest_stable_tag() { git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true; }
-latest_beta_tag() { git tag --list 'v*-beta.*' | sort -V | tail -n 1 || true; }
+# 정식 태그: v1.4 또는 v1.3.0 (v1.3.0까지는 세 자리로 냈다)
+latest_stable_tag() {
+    git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+(\.[0-9]+)?$' \
+        | while read -r t; do echo "$(full_version "$t") $t"; done | sort -V | tail -n 1 | cut -d' ' -f2 || true
+}
+# 베타 태그: v1.4-beta.N 또는 v1.3.0-beta.N. 정렬할 때만 세 자리로 맞춘다
+latest_beta_tag() {
+    git tag --list 'v*-beta.*' \
+        | while read -r t; do echo "$(full_version "${t%-beta.*}")-beta.${t##*-beta.} $t"; done \
+        | sort -V | tail -n 1 | cut -d' ' -f2 || true
+}
 
 # 정식 릴리스가 파일 3개(Windows 설치 파일, macOS zip, 체크섬)와 함께 올라가 있는지
 stable_release_ready() {
