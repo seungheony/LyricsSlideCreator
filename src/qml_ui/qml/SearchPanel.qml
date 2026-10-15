@@ -3,6 +3,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
+// 곡 찾기 서랍(SongDrawer)의 멜론 탭: 검색·결과·더 보기·가사 검색 대체·직접 입력 곡 결과·프리셋 배지.
+// 결과 행을 누르면 songClicked로 알리고, 담는 일은 Main·EditorPage가 한다 (행 오른쪽에 ＋ / 받는 중 / 담음 / 콘티에 있음)
 Item {
     id: page
 
@@ -11,15 +13,16 @@ Item {
     property var results: []
     property string emptyText: ""
     property string errorText: ""     // 검색을 못 했을 때 원인 안내 ('결과 없음'과 구분)
-    property string loadingId: ""     // 가사를 불러오는 중인 곡
+    // 콘티 상태 (행 오른쪽 표시): 콘티의 곡 / 가사를 받는 중인 곡 / 이번에 서랍을 연 뒤 담은 곡 (모두 song_id)
+    property var setlist: []
+    property var loadingIds: []
+    property var addedIds: []
     property int token: 0             // 오래된 검색 응답 무시용
-    property var tour: null
     property string mode: "song"      // 검색 방식: "song"(제목·가수) / "lyric"(가사 구절)
     property string resultMode: "song" // 지금 보이는 결과의 검색 방식 (곡 검색이 비면 가사 검색 결과로 바뀐다)
     property bool fallback: false     // 곡 검색 결과가 없어서 가사 검색 결과를 대신 보여 주는 중
     property int total: 0             // 멜론이 알려 준 전체 건수
     property bool loadingMore: false
-    property real bottomInset: 0      // 화면 아래에 떠 있는 표시('편집 중' 칩)가 가리는 높이
     property string moreError: ""
     property string melonError: ""    // 직접 입력한 곡 결과는 있는데 멜론 검색만 실패했을 때 (목록 위에 알림)
     // 저장한 프리셋 수 (곡 번호 → 수). 결과 행에 '프리셋 N' 배지를 띄운다
@@ -50,126 +53,9 @@ Item {
     readonly property bool hasMore: melonCount > 0 && melonCount < total
     function countText(n) { return Number(n).toLocaleString(Qt.locale("ko_KR"), "f", 0) }
 
-    function showHelp(opts) {
-        tour.start([
-            { target: searchBox, demo: searchDemo, title: "1. 노래 검색",
-              body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>(또는 <b>검색</b>)를 누르면 멜론에서 찾아와요.<br><br>"
-                  + "제목이 기억나지 않으면 <b>가사</b>를 눌러 가사 한 구절로 찾을 수 있어요. "
-                  + "멜론에 없는 곡은 아래 <b>가사 직접 입력</b>으로 가사를 붙여 넣어 만들 수 있어요." },
-            { target: resultsArea, demo: resultsDemo, title: "2. 곡 고르기",
-              body: "검색 결과에서 곡을 누르면 가사와 앨범아트를 불러와 <b>편집 화면</b>으로 넘어가요.<br><br>"
-                  + "편집 화면에서 <b>프리셋 저장</b>을 해 둔 곡은 오른쪽에 <b>프리셋</b>이 보이고, 누르면 그때 슬라이드 그대로 열어요. "
-                  + "직접 입력한 곡의 프리셋은 결과 맨 위에 나와요. 저장한 프리셋은 <b>보관함</b>에서 모두 볼 수 있어요." },
-            { target: null, title: "3. 다듬고 PPT 만들기",
-              body: "편집 화면에서 가사를 슬라이드 단위로 나누고, 아래의 <b>PPT 생성</b>을 누르면 끝이에요. "
-                  + "왼쪽 <b>곡 추가</b>로 여러 곡을 순서대로 한 PPT로 만들 수도 있어요.<br><br>"
-                  + "편집 화면 곳곳의 <b>?</b> 버튼을 누르면 그 부분의 사용 방법을 볼 수 있어요." }
-        ], opts)
-    }
-
-    // 검색창 복제본에 검색어를 한 글자씩 입력하고 검색을 누른다
-    property Component searchDemo: Component {
-        Demo {
-            id: d
-            readonly property string word: "노래 제목"
-            property int typed: 0
-            Rectangle { anchors.fill: parent; color: Theme.bg }
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: page.tour.pad
-                radius: 16
-                color: Theme.surface
-                border.width: 1.5
-                border.color: Theme.focusBorder
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 6
-                    spacing: 8
-                    Icon { glyph: "search"; color: Theme.text3 }
-                    Text {
-                        Layout.fillWidth: true
-                        leftPadding: 6
-                        text: d.typed ? d.word.slice(0, d.typed) + "|" : "노래 제목 또는 가수 이름"
-                        color: d.typed ? Theme.text : Theme.text3
-                        font.family: Theme.font
-                        font.pixelSize: 16
-                    }
-                    AppButton { id: demoSearchButton; text: "검색"; variant: "primary"; implicitHeight: 44 }
-                }
-            }
-            onReset: { typed = 0; d.jumpTo(demoSearchButton, -2, 2.2) }
-            script: {
-                const steps = [[500, () => d.moveTo(searchBox, 0.4, 0.5)], [700, () => d.click()]]
-                for (let i = 1; i <= word.length; i++) steps.push([i === 1 ? 400 : 140, () => d.typed++])
-                steps.push([500, () => d.moveTo(demoSearchButton)], [750, () => d.click()])
-                return steps
-            }
-        }
-    }
-
-    // 결과 목록 복제본에서 곡 하나를 누른다
-    property Component resultsDemo: Component {
-        Demo {
-            id: d
-            property int hover: -1
-            property bool loading: false
-            Rectangle { anchors.fill: parent; color: Theme.bg }
-            Column {
-                id: rows
-                anchors.fill: parent
-                anchors.margins: page.tour.pad
-                spacing: 4
-                Repeater {
-                    model: 3
-                    delegate: Rectangle {
-                        id: row
-                        required property int index
-                        width: rows.width
-                        height: 72
-                        radius: Theme.radius
-                        color: d.hover === index ? Theme.surface : Theme.surfaceClear
-                        Behavior on color { ColorAnimation { duration: Theme.fast } }
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 14
-                            spacing: 14
-                            Rectangle { Layout.preferredWidth: 52; Layout.preferredHeight: 52; radius: 8; color: Theme.surface2 }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 3
-                                Text { Layout.fillWidth: true; text: "노래 제목 " + (row.index + 1); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
-                                Text { Layout.fillWidth: true; text: "가수 · 앨범"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 13 }
-                            }
-                            Icon {
-                                id: demoArrow
-                                glyph: d.loading && d.hover === row.index ? "loader" : "chevron-right"
-                                color: Theme.text3
-                                opacity: d.hover === row.index ? 1 : 0
-                                RotationAnimation on rotation {
-                                    running: d.loading && d.hover === row.index
-                                    from: 0; to: 360; duration: 800; loops: Animation.Infinite
-                                    onStopped: demoArrow.rotation = 0
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            onReset: { hover = -1; loading = false; d.jumpTo(rows, 0.7, 0.9) }
-            script: [
-                [500, () => d.moveTo(rows.children[1], 0.35, 0.5)],
-                [450, () => { d.hover = 1 }],
-                [500, () => { d.click(); d.loading = true }]
-            ]
-        }
-    }
-
     signal songClicked(var song)
     // 결과 행의 '프리셋 N' 배지 (또는 그 행에서 →, 직접 입력한 곡은 행을 눌러도)
     signal presetsRequested(var song)
-    signal libraryRequested()
     // 멜론 없이 가사를 직접 입력해서 연다. info: { title, artist }
     signal manualRequested(var info)
 
@@ -269,82 +155,21 @@ Item {
 
     ColumnLayout {
         id: column
-        width: Math.min(640, page.width - 48)
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        anchors.topMargin: page.hasResults ? 28 : page.height * 0.22
+        anchors.fill: parent
+        anchors.leftMargin: 20
+        anchors.rightMargin: 20
         spacing: 0
-        Behavior on anchors.topMargin { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
-
-        // ── 로고 / 제목 ──
-        Item {
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredWidth: page.hasResults ? 0 : 64
-            Layout.preferredHeight: page.hasResults ? 0 : 64
-            Layout.bottomMargin: page.hasResults ? 0 : 16
-            opacity: page.hasResults ? 0 : 1
-            Behavior on Layout.preferredWidth { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
-            Behavior on Layout.bottomMargin { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: 300 } }
-            // 앱 아이콘. SVG는 1024 칸 안에 824 크기 둥근 사각형이 있어(여백 100) 그만큼 크게 그려 사각형이 이 칸에 맞게 한다
-            Image {
-                anchors.centerIn: parent
-                width: parent.width * 1024 / 824
-                height: width
-                source: assetsUrl + "/app-icon/icon.svg"
-                sourceSize: Qt.size(160, 160)
-                smooth: true
-                mipmap: true
-            }
-        }
-
-        Text {
-            Layout.alignment: Qt.AlignHCenter
-            text: "Lyrics Slide Creator"
-            color: Theme.text
-            font.family: Theme.font
-            font.pixelSize: page.hasResults ? 20 : 28
-            font.weight: Font.ExtraBold
-            font.letterSpacing: -0.4
-            Behavior on font.pixelSize { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
-
-            // 제목 가운데 정렬이 흐트러지지 않도록 레이아웃 밖에서 오른쪽에 붙인다
-            HelpButton {
-                label: "검색 화면"
-                anchors.left: parent.right
-                anchors.leftMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                onClicked: page.showHelp()
-            }
-        }
-
-        Text {
-            Layout.alignment: Qt.AlignHCenter
-            Layout.topMargin: page.hasResults ? 0 : 6
-            Layout.preferredHeight: page.hasResults ? 0 : implicitHeight
-            text: "멜론에서 노래를 검색하고 가사 슬라이드를 만들어보세요"
-            color: Theme.text3
-            font.family: Theme.font
-            font.pixelSize: 14
-            opacity: page.hasResults ? 0 : 1
-            clip: true
-            Behavior on opacity { NumberAnimation { duration: 300 } }
-            Behavior on Layout.preferredHeight { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
-        }
 
         // ── 검색창 ──
         Rectangle {
             id: searchBox
             Layout.fillWidth: true
-            Layout.topMargin: page.hasResults ? 14 : 28
-            Layout.preferredHeight: 58
-            radius: 16
+            Layout.topMargin: 4
+            Layout.preferredHeight: 48
+            radius: 14
             color: Theme.surface
             border.width: 1.5
             border.color: input.activeFocus ? Theme.focusBorder : Theme.border
-            Behavior on Layout.topMargin { NumberAnimation { duration: 450; easing.type: Easing.OutCubic } }
             Behavior on border.color { ColorAnimation { duration: Theme.fast } }
 
             // 포커스 링
@@ -361,9 +186,9 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
+                anchors.leftMargin: 12
                 anchors.rightMargin: 6
-                spacing: 8
+                spacing: 6
                 Icon { glyph: "search"; color: Theme.text3 }
                 TextField {
                     id: input
@@ -372,7 +197,7 @@ Item {
                     placeholderTextColor: Theme.text3
                     color: Theme.text
                     font.family: Theme.font
-                    font.pixelSize: 16
+                    font.pixelSize: 15
                     background: null
                     selectByMouse: true
                     focus: true
@@ -385,8 +210,8 @@ Item {
                 Rectangle {
                     id: modeSwitch
                     implicitWidth: modeRow.implicitWidth + 6
-                    implicitHeight: 34
-                    radius: 10
+                    implicitHeight: 32
+                    radius: 9
                     color: Theme.surface2
                     Row {
                         id: modeRow
@@ -397,8 +222,8 @@ Item {
                             delegate: Rectangle {
                                 required property var modelData
                                 readonly property bool on: page.mode === modelData.key
-                                width: label.implicitWidth + 20
-                                height: 28
+                                width: label.implicitWidth + 14
+                                height: 26
                                 radius: 8
                                 color: on ? Theme.surface : "transparent"
                                 border.width: on ? 1 : 0
@@ -426,7 +251,7 @@ Item {
                                     text: parent.modelData.label
                                     color: parent.on ? Theme.text : Theme.text3
                                     font.family: Theme.font
-                                    font.pixelSize: 13
+                                    font.pixelSize: 12
                                     font.weight: parent.on ? Font.DemiBold : Font.Normal
                                 }
                                 MouseArea {
@@ -441,37 +266,11 @@ Item {
                 AppButton {
                     text: "검색"
                     variant: "primary"
-                    implicitHeight: 44
+                    size: "small"
+                    implicitHeight: 34
                     enabled: !page.searching
                     onClicked: page.doSearch()
                 }
-            }
-        }
-
-        RowLayout {
-            Layout.alignment: Qt.AlignRight
-            Layout.topMargin: 6
-            spacing: 4
-            // 보관함: 저장한 프리셋을 모두 본다 (멜론 곡·직접 입력한 곡)
-            AppButton {
-                id: libraryButton
-                objectName: "libraryButton"
-                text: "보관함"
-                glyph: "library"
-                variant: "ghost"
-                size: "small"
-                onClicked: page.libraryRequested()
-                AppToolTip { visible: libraryButton.hovered; text: "저장한 프리셋을 모두 보고 불러와요" }
-            }
-            // 멜론에 없는 곡(CCM·찬송가·자작곡)이나 연결이 안 될 때: 빈 편집 화면으로
-            AppButton {
-                id: manualButton
-                text: "가사 직접 입력"
-                glyph: "plus"
-                variant: "ghost"
-                size: "small"
-                onClicked: page.manualRequested({ title: "", artist: "" })
-                AppToolTip { visible: manualButton.hovered; text: "멜론에 없는 곡은 가사를 직접 붙여 넣어 만들 수 있어요. 프리셋으로 저장하면 검색에서도 찾을 수 있어요" }
             }
         }
 
@@ -480,7 +279,7 @@ Item {
             id: resultsArea
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.topMargin: 16
+            Layout.topMargin: 12
 
             // 스켈레톤
             Column {
@@ -508,6 +307,26 @@ Item {
                             NumberAnimation { to: 1; duration: 600; easing.type: Easing.InOutSine }
                         }
                     }
+                }
+            }
+
+            // 검색하기 전
+            Column {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 40
+                width: parent.width - 32
+                spacing: 10
+                visible: !page.hasResults
+                Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "search"; size: 32; color: Theme.text3; opacity: 0.6 }
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "노래 제목이나 가수 이름으로 멜론에서 찾아요.\n제목이 기억나지 않으면 '가사'로 한 구절을 검색해 보세요."
+                    color: Theme.text3
+                    font.family: Theme.font
+                    font.pixelSize: 13
+                    lineHeight: 1.4
+                    wrapMode: Text.Wrap
                 }
             }
 
@@ -559,7 +378,7 @@ Item {
                 model: resultModel
                 spacing: 4
                 clip: true
-                bottomMargin: 40 + page.bottomInset
+                bottomMargin: 24
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar {}
 
@@ -660,15 +479,19 @@ Item {
                         if (manual) page.presetsRequested(modelData)
                         else page.songClicked(modelData)
                     }
-                    readonly property bool loading: page.loadingId === song_id
+                    // 콘티 상태: "loading"(가사 받는 중) / "added"(이번에 담음) / "inSetlist"(전에 담은 곡) / ""(＋)
+                    readonly property string status: page.loadingIds.indexOf(song_id) >= 0 ? "loading"
+                        : page.addedIds.indexOf(song_id) >= 0 ? "added"
+                        : page.setlist.indexOf(song_id) >= 0 ? "inSetlist" : ""
                     readonly property int presetCount: page.presetCounts[song_id] || 0
                     readonly property bool focused: ListView.isCurrentItem && list.activeFocus
 
                     width: ListView.view.width
-                    height: modelData.snippet ? 100 : 72
-                    radius: Theme.radius
-                    readonly property bool hovered: hover.containsMouse || presetBadge.hovered
-                    color: hovered || focused ? Theme.surface : Theme.surfaceClear
+                    height: modelData.snippet ? 92 : 60
+                    radius: Theme.radiusSm
+                    readonly property bool hovered: hover.containsMouse || presetBadge.hovered || addButton.hovered
+                    color: status === "added" || status === "loading" ? Theme.primarySoft
+                         : hovered || focused ? Theme.surface2 : Theme.surface2Clear
                     border.width: focused ? 2 : 0
                     border.color: Theme.primary
                     Behavior on color { ColorAnimation { duration: Theme.fast } }
@@ -676,6 +499,8 @@ Item {
                     Accessible.name: [title, artist, album].filter(Boolean).join(", ")
                                      + (manual ? ", 직접 입력한 곡, 프리셋 " + presetCount + "개"
                                         : presetCount ? ", 프리셋 " + presetCount + "개 (오른쪽 화살표로 열기)" : "")
+                                     + (status === "loading" ? ", 가사 받는 중" : status === "added" ? ", 담음"
+                                        : status === "inSetlist" ? ", 콘티에 있음" : "")
                     Accessible.onPressAction: open()
 
                     // 나타날 때 아래에서 살짝 올라온다
@@ -705,13 +530,13 @@ Item {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 14
-                        spacing: 14
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        spacing: 12
                         RoundedImage {
                             id: art
-                            Layout.preferredWidth: 52
-                            Layout.preferredHeight: 52
+                            Layout.preferredWidth: 44
+                            Layout.preferredHeight: 44
                             radius: 8
                             placeholder: row.manual ? Theme.surface2 : Theme.skeleton
                             Icon { anchors.centerIn: parent; visible: row.manual; glyph: "music"; size: 22; color: Theme.text3 }
@@ -728,7 +553,7 @@ Item {
                                     textFormat: Text.PlainText
                                     color: Theme.text
                                     font.family: Theme.font
-                                    font.pixelSize: 15
+                                    font.pixelSize: 14
                                     font.weight: Font.DemiBold
                                     elide: Text.ElideRight
                                 }
@@ -756,7 +581,7 @@ Item {
                                 textFormat: Text.PlainText
                                 color: Theme.text3
                                 font.family: Theme.font
-                                font.pixelSize: 13
+                                font.pixelSize: 12
                                 elide: Text.ElideRight
                             }
                             // 가사 검색: 일치한 가사 일부 (일치한 구절은 굵게)
@@ -785,16 +610,55 @@ Item {
                             onClicked: page.presetsRequested(row.modelData)
                             AppToolTip { visible: presetBadge.hovered; delay: 400; text: "예전에 저장한 슬라이드 그대로 열어요" }
                         }
-                        Icon {
-                            id: arrow
-                            glyph: row.loading ? "loader" : "chevron-right"
-                            color: Theme.text3
-                            opacity: row.loading || row.hovered || row.focused ? 1 : 0
-                            Behavior on opacity { NumberAnimation { duration: Theme.fast } }
-                            RotationAnimation on rotation {
-                                running: row.loading
-                                from: 0; to: 360; duration: 800; loops: Animation.Infinite
-                                onStopped: arrow.rotation = 0
+                        // 콘티 상태: ＋(누르면 담음) / 받는 중 / 담음 / 콘티에 있음
+                        Item {
+                            Layout.preferredWidth: row.status === "" ? 36 : statusText.implicitWidth + (row.status === "inSetlist" ? 0 : 18)
+                            Layout.preferredHeight: 36
+                            AppButton {
+                                id: addButton
+                                anchors.centerIn: parent
+                                visible: row.status === ""
+                                glyph: "plus"
+                                variant: "ghost"
+                                focusPolicy: Qt.NoFocus      // 키보드는 목록에서 Enter
+                                implicitHeight: 36
+                                onClicked: row.open()
+                                Accessible.name: "'" + row.title + "' 콘티에 담기"
+                                background: Rectangle {
+                                    radius: 18
+                                    color: addButton.hovered ? Theme.surface2 : Theme.surface
+                                    border.width: 1
+                                    border.color: addButton.hovered ? Theme.primary : Theme.border
+                                }
+                                AppToolTip { visible: addButton.hovered; delay: 400; text: row.manual ? "프리셋을 골라 콘티에 담아요" : "콘티에 담아요" }
+                            }
+                            Row {
+                                id: statusRow
+                                anchors.centerIn: parent
+                                visible: row.status !== ""
+                                spacing: 4
+                                Icon {
+                                    id: statusIcon
+                                    visible: row.status !== "inSetlist"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    glyph: row.status === "loading" ? "loader" : "check"
+                                    size: 14
+                                    color: Theme.primaryText
+                                    RotationAnimation on rotation {
+                                        running: row.status === "loading"
+                                        from: 0; to: 360; duration: 800; loops: Animation.Infinite
+                                        onStopped: statusIcon.rotation = 0
+                                    }
+                                }
+                                Text {
+                                    id: statusText
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: row.status === "loading" ? "받는 중" : row.status === "added" ? "담음" : "콘티에 있음"
+                                    color: row.status === "inSetlist" ? Theme.text3 : Theme.primaryText
+                                    font.family: Theme.font
+                                    font.pixelSize: 12
+                                    font.weight: row.status === "inSetlist" ? Font.Normal : Font.Bold
+                                }
                             }
                         }
                     }
