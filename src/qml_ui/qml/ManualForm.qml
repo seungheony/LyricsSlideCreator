@@ -6,22 +6,19 @@ import "editor.js" as E
 
 // 곡 찾기 서랍의 '직접 입력' 탭: 제목·가수·가사를 넣어 콘티에 담는다.
 // prefill(info): info = { title, artist, album, song_id, notice } — 멜론 곡에서 왔으면 album·song_id를 이어받으려고 보관한다
-// submitted(info, text, autoSplit): info = { title, artist, album, song_id } (없으면 빈 값).
-//   song_id 만들기(Main.manualId)와 콘티에 더하기는 받는 쪽이 한다. autoSplit이면 newEntry(정리·2줄 나누기), 아니면 presetEntry(그대로)
+// submitted(info, text): info = { title, artist, album, song_id } (없으면 빈 값).
+//   song_id 만들기(Main.manualId)와 콘티에 더하기는 받는 쪽이 한다. 멜론 가사를 처음 열 때처럼 정리하고 2줄씩 나눈다(newEntry)
 // reset(), focusFirst()
 Item {
     id: form
 
-    signal submitted(var info, string text, bool autoSplit)
+    signal submitted(var info, string text)
 
     property string notice: ""
     property string album: ""
     property string songId: ""
-    readonly property alias autoSplit: splitBox.checked
-    readonly property var blocks: E.parseBlocks(lyrics.text)
-    readonly property int slideCount: blocks.length
-    // 2줄씩 나누면 몇 장이 되는지 (켜져 있을 때만 안내)
-    readonly property int splitCount: autoSplit ? E.regroupWithin(lyrics.text, 2).length : slideCount
+    // 담으면 2줄씩 나뉘므로 그 기준의 장 수
+    readonly property int slideCount: E.regroupWithin(lyrics.text, 2).length
     readonly property bool canSubmit: slideCount > 0
 
     implicitWidth: 360
@@ -44,7 +41,6 @@ Item {
         album = ""
         songId = ""
         notice = ""
-        splitBox.checked = true
     }
 
     // 제목이 비었으면 제목, 미리 채웠으면 가사부터
@@ -57,7 +53,7 @@ Item {
         Qt.inputMethod.commit()    // 한글 조합 중인 글자를 확정한 뒤 읽는다
         if (!canSubmit) return
         submitted({ title: titleField.text.trim(), artist: artistField.text.trim(), album: album, song_id: songId },
-                  lyrics.text, autoSplit)
+                  lyrics.text)
     }
 
     // ⌘↵ / Ctrl+Enter: 어느 칸에서든 담기
@@ -187,71 +183,13 @@ Item {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            Text {
-                objectName: "manualSlideCount"
-                text: form.slideCount === 0 ? "슬라이드 없음"
-                      : "슬라이드 " + form.slideCount + "장"
-                        + (form.splitCount !== form.slideCount ? " → 나누면 " + form.splitCount + "장" : "")
-                color: form.slideCount === 0 ? Theme.text3 : Theme.text
-                font.family: Theme.font
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
-            }
-            Text {
-                Layout.fillWidth: true
-                text: "빈 줄 하나가 슬라이드의 경계가 돼요"
-                color: Theme.text3
-                font.family: Theme.font
-                font.pixelSize: 12
-                horizontalAlignment: Text.AlignRight
-                elide: Text.ElideRight
-            }
-        }
-
-        CheckBox {
-            id: splitBox
-            objectName: "manualAutoSplit"
-            Layout.topMargin: 2
-            text: "긴 덩어리는 2줄씩 자동으로 나누기"
-            checked: true
-            hoverEnabled: true
-            spacing: 6
-            padding: 4
-            leftPadding: 0
-            AppToolTip {
-                visible: splitBox.hovered
-                text: "3줄 이상인 덩어리를 2줄씩 나눠서 담아요. 끄면 입력한 그대로 담아요"
-            }
-            indicator: Rectangle {
-                x: splitBox.leftPadding
-                anchors.verticalCenter: parent.verticalCenter
-                width: 16; height: 16; radius: 4
-                color: splitBox.checked ? Theme.primary : Theme.surface
-                border.width: splitBox.checked ? 0 : 1.5
-                border.color: splitBox.hovered || splitBox.visualFocus ? Theme.primary : Theme.border
-                // 키보드 포커스 링
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: -3
-                    radius: 7
-                    color: "transparent"
-                    border.width: 2
-                    border.color: Theme.primary
-                    visible: splitBox.visualFocus
-                }
-                Icon { anchors.centerIn: parent; visible: splitBox.checked; glyph: "check"; size: 11; color: "white" }
-            }
-            contentItem: Text {
-                leftPadding: splitBox.indicator.width + splitBox.spacing
-                text: splitBox.text
-                color: splitBox.checked ? Theme.text : Theme.text2
-                font.family: Theme.font
-                font.pixelSize: 13
-                verticalAlignment: Text.AlignVCenter
-            }
+        Text {
+            objectName: "manualSlideCount"
+            text: form.slideCount === 0 ? "슬라이드 없음" : "슬라이드 " + form.slideCount + "장"
+            color: form.slideCount === 0 ? Theme.text3 : Theme.text
+            font.family: Theme.font
+            font.pixelSize: 13
+            font.weight: Font.DemiBold
         }
 
         AppButton {

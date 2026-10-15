@@ -22,6 +22,7 @@ Item {
     signal moveRequested(var src, var target)
     signal revealRequested(int slide, int line)   // line: 누른 줄 (-1이면 카드 바탕)
     signal editStarting()                         // 미리보기에서 편집을 시작하려고 누름 (EditorPage가 입력 중인 내용을 먼저 반영)
+    signal backgroundClicked()                    // 카드·버튼이 아닌 빈 곳을 누름 (EditorPage가 선택·입력 커서를 푼다)
 
     readonly property bool dragging: drag.active
 
@@ -232,6 +233,8 @@ Item {
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
         NumberAnimation { id: scrollAnim; target: flick; property: "contentY"; duration: 250; easing.type: Easing.OutCubic }
+        // 빈 곳(카드 사이 여백·목록 아래)을 누르면 알린다. 카드·버튼·줄은 각자 누름을 받으므로 여기까지 오지 않는다
+        TapHandler { enabled: !drag.active; onTapped: list.backgroundClicked() }
 
         Column {
             id: col

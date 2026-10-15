@@ -274,11 +274,11 @@ Item {
         if (!song) openFirstReady()
     }
 
-    // 직접 입력한 곡을 담는다 (서랍의 '직접 입력' 탭). autoSplit이면 처음 여는 곡처럼 정리하고 2줄씩 나누고(newEntry), 아니면 그대로(presetEntry).
+    // 직접 입력한 곡을 담는다 (서랍의 '직접 입력' 탭). 처음 여는 멜론 곡처럼 정리하고 2줄씩 나눈다(newEntry).
     // 이미 편집하던 곡이면(멜론 곡에서 넘어와 song_id가 같은 경우) 프리셋을 불러올 때처럼 히스토리에 남기고 바꾼다
-    function addManual(newSong, text, autoSplit) {
+    function addManual(newSong, text) {
         const id = newSong.song_id
-        const entry = autoSplit ? newEntry(newSong, text) : presetEntry(newSong, text)
+        const entry = newEntry(newSong, text)
         if (sessions[id] && !isLoading(id)) {
             loadPreset(newSong, entry.text)
             return
@@ -893,6 +893,13 @@ Item {
 
     function blurLyrics() { page.forceActiveFocus() }
 
+    // 빈 곳을 누름: 가사·제목 입력 커서를 빼고 슬라이드 강조를 푼다 (가사를 다시 누르면 커서 위치의 슬라이드가 다시 강조됨)
+    function clearSelection() {
+        if (dragging) return
+        page.forceActiveFocus()
+        active = -1
+    }
+
     // 입력칸에서 Tab·Shift+Tab: 포커스 순서의 다음·이전 컨트롤로
     function moveFocusFrom(item, forward) {
         const next = item.nextItemInFocusChain(forward)
@@ -1037,6 +1044,12 @@ Item {
         }
     }
 
+    // 맨 아래 깔린 빈 곳 누름 받기: 버튼·입력칸·목록이 받지 않은 누름(머리글·여백·막대 바탕 등)은 여기로 와서 선택을 푼다
+    MouseArea {
+        anchors.fill: parent
+        onPressed: (mouse) => { page.clearSelection(); mouse.accepted = false }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -1099,7 +1112,6 @@ Item {
                     entries: page.setlistEntries
                     pendingId: page.pendingOpenId
                     current: page.currentId
-                    deckSize: page.deckSize
                     onSelected: (id) => page.selectSong(id)
                     onRemoveRequested: (idx) => page.removeSong(idx)
                     onMoveRequested: (from, to) => page.moveSong(from, to)
@@ -1333,7 +1345,10 @@ Item {
                                         }
                                     }
                                     onCursorPositionChanged: if (!page.applying) page.syncActiveFromCaret()
-                                    onActiveFocusChanged: if (!activeFocus) longCheckTimer.restart()
+                                    onActiveFocusChanged: {
+                                        if (!activeFocus) longCheckTimer.restart()
+                                        else if (!page.applying) page.syncActiveFromCaret()   // 빈 곳을 눌러 강조를 푼 뒤 같은 자리로 돌아와도 다시 강조
+                                    }
 
                                     // Tab은 탭 문자를 넣지 않고 다음(Shift+Tab은 이전) 컨트롤로 옮긴다. PPT에 탭이 남지 않고, 키보드로 뒤쪽 버튼에 닿는다
                                     Keys.onTabPressed: (event) => { page.moveFocusFrom(lyrics, true); event.accepted = true }
@@ -1491,7 +1506,6 @@ Item {
                                         verticalAlignment: Text.AlignVCenter
                                     }
                                 }
-                                HelpButton { label: "2줄 유지"; onClicked: help.keepTwoHelp() }
                             }
                             RowLayout {
                                 id: historyRow
@@ -1527,6 +1541,7 @@ Item {
                             onMoveRequested: (src, target) => page.moveLine(src, target)
                             onRevealRequested: (slide, line) => page.revealInText(slide, line)
                             onEditStarting: page.prepareEdit()
+                            onBackgroundClicked: page.clearSelection()
                         }
 
                         Text {
@@ -1544,25 +1559,23 @@ Item {
                 }
 
                 // 빈 상태: 콘티가 비었거나 아직 가사를 받는 중
+                // 서랍이 열려 있으면 서랍 옆(오른쪽)에, 닫히면 편집 영역 가운데에 둔다.
+                // 서랍과 같은 속도로 두 자리 사이를 옮긴다 (비율만 움직여서 창 크기를 바꿀 때는 바로 따라감)
                 Column {
                     objectName: "editorEmptyState"
                     visible: page.song === null
                     anchors.verticalCenter: parent.verticalCenter
-                    anchors.right: parent.right
-                    anchors.rightMargin: Math.max(24, Math.min(60, parent.width - 430 - 24 - width))
+                    property real besideDrawer: page.drawerOpen ? 1 : 0
+                    Behavior on besideDrawer { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
+                    readonly property real centerX: (parent.width - width) / 2
+                    readonly property real rightX: parent.width - width - Math.max(24, Math.min(60, parent.width - 430 - 24 - width))
+                    x: centerX + (rightX - centerX) * besideDrawer
                     width: Math.min(300, parent.width - 48)
                     spacing: 10
-                    Row {
-                        spacing: 8
-                        Repeater {
-                            model: [1, 0.6, 0.3]
-                            Rectangle { required property real modelData; width: 64; height: 40; radius: 6; color: Theme.slideBg; opacity: modelData }
-                        }
-                    }
                     Text {
                         width: parent.width
                         text: !page.setlist.length ? "곡을 담으면 여기서 가사를 다듬어요"
-                            : page.drawerOpen ? "편집으로 가면 담은 곡을 열어요" : "가사를 받는 중이에요"
+                            : page.drawerOpen ? "검색창을 닫으면 담은 곡을 열어요" : "가사를 받는 중이에요"
                         color: Theme.text
                         font.family: Theme.font
                         font.pixelSize: 17
@@ -1572,26 +1585,20 @@ Item {
                     Text {
                         width: parent.width
                         text: !page.setlist.length ? "빈 줄로 슬라이드를 나누고, 줄을 끌어 옮기고, 콘티 전체를 PPT 한 파일로 만들어요"
-                            : page.drawerOpen ? "곡을 더 담거나 '편집으로'를 눌러 주세요" : "다 받으면 바로 열어요"
+                            : page.drawerOpen ? "곡을 더 담거나 검색창을 닫아 주세요" : "다 받으면 바로 열어요"
                         color: Theme.text2
                         font.family: Theme.font
                         font.pixelSize: 13
                         lineHeight: 1.4
                         wrapMode: Text.Wrap
                     }
-                    AppButton {
-                        visible: !page.drawerOpen && !page.setlist.length
-                        text: "곡 추가"
-                        glyph: "plus"
-                        variant: "primary"
-                        onClicked: page.openDrawer("melon")
-                    }
                 }
             }
         }
 
-        // ── 하단: 템플릿 / 생성 ──
+        // ── 하단: 템플릿 / 생성 ── (곡 찾기 서랍은 이 막대 위까지만 연다)
         Rectangle {
+            id: bottomBar
             Layout.fillWidth: true
             Layout.preferredHeight: 74
             color: Theme.surface
@@ -1722,7 +1729,7 @@ Item {
         x: setlistColumn.width
         y: topBar.height
         width: page.width - x
-        height: page.height - y
+        height: bottomBar.y - y
         // 편집기가 비었으면(빈 상태 안내) 가리지 않는다
         color: Qt.rgba(0.08, 0.09, 0.11, !page.song ? 0 : Theme.dark ? 0.45 : 0.18)
         visible: opacity > 0
@@ -1737,7 +1744,7 @@ Item {
         x: setlistColumn.width
         y: topBar.height
         width: Math.min(430, page.width - x)
-        height: page.height - y
+        height: bottomBar.y - y
         emptySetlist: page.setlist.length === 0
         setlist: page.setlist
         loadingIds: page.loadingIds
