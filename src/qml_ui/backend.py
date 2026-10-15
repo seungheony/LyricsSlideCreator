@@ -8,6 +8,7 @@ import sys
 import threading
 import traceback
 from collections import OrderedDict
+from datetime import datetime
 from urllib.parse import urlencode
 from concurrent.futures import ThreadPoolExecutor
 
@@ -20,7 +21,7 @@ from src.utils.melon_api import MelonError, MelonScraper
 from src.utils.ppt_engine import PPTBuilder
 from src.utils.line_fit import LineFit
 from src.utils.helpers import resource_path
-from src.utils import app_state, updater
+from src.utils import app_state, presets, updater
 from src.utils.version import get_version, parse_version
 
 
@@ -145,10 +146,12 @@ class Backend(QObject):
     updateFailed = Signal(str)           # JSON 객체 (message, detail)
     updateCancelled = Signal()           # 다운로드를 취소함 (받던 파일은 지웠다)
     updateReady = Signal()               # 설치 시작됨 → 앱을 종료해야 함
+    presetsChanged = Signal()            # 저장한 곡 구성이 바뀜 (검색 결과의 표시를 다시 그린다)
 
     def __init__(self, art_provider):
         super().__init__()
         self._state = app_state.load()
+        self._presets = presets.load()
         self._art = art_provider
         self._scraper = MelonScraper()
         self._pool = ThreadPoolExecutor(max_workers=4)        # 네트워크 작업: 앱 종료 때 기다리지 않는다
@@ -232,6 +235,62 @@ class Backend(QObject):
         if name not in seen:
             self._state['tutorials_seen'] = seen + [name]
             app_state.save(self._state)
+
+    # ── 창 크기·위치 ── (다음 실행 때 같은 자리에 연다, src/qml_ui/app.py)
+    def window_geometry(self):
+        """저장한 창 위치 {x, y, width, height, maximized}. 없거나 이상하면 None"""
+        w = self._state.get('window')
+        if not isinstance(w, dict):
+            return None
+        try:
+            geo = {k: int(w[k]) for k in ('x', 'y', 'width', 'height')}
+        except (KeyError, TypeError, ValueError):
+            return None
+        if geo['width'] <= 0 or geo['height'] <= 0:
+            return None
+        geo['maximized'] = w.get('maximized') is True
+        return geo
+
+    def save_window_geometry(self, x, y, width, height, maximized):
+        if width <= 0 or height <= 0:
+            return
+        geo = {'x': int(x), 'y': int(y), 'width': int(width), 'height': int(height), 'maximized': bool(maximized)}
+        if self._state.get('window') != geo:
+            self._state['window'] = geo
+            app_state.save(self._state)
+
+    # ── 저장한 곡 구성 ── (src/utils/presets.py)
+    @Slot(result=str)
+    def presetCounts(self):
+        """곡 번호 → 저장한 구성 수 (JSON 객체)"""
+        return json.dumps(presets.counts(self._presets))
+
+    @Slot(str, result=str)
+    def presetsFor(self, song_id):
+        """그 곡의 구성 (JSON 배열, 최근 저장한 것부터)"""
+        return json.dumps(presets.for_song(self._presets, song_id), ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def savePresets(self, entries_json):
+        """콘티 곡들의 구성을 저장한다. entries_json: [{song_id, title, artist, album, text}]
+        반환: JSON 객체 {added, same} 또는 저장하지 못했으면 {error, detail}"""
+        now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        updated, added, same = presets.add(self._presets, json.loads(entries_json), now)
+        if not presets.save(updated):
+            return json.dumps({'error': '구성을 저장하지 못했어요\n저장 폴더에 쓸 수 없어요. 디스크 공간이 부족하지 않은지 확인하고 다시 시도해 주세요.',
+                               'detail': f'경로: {app_state.data_path(presets.FILE_NAME)}'}, ensure_ascii=False)
+        self._presets = updated
+        self.presetsChanged.emit()
+        return json.dumps({'added': added, 'same': same})
+
+    @Slot(str, result=bool)
+    def deletePreset(self, preset_id):
+        updated = presets.remove(self._presets, preset_id)
+        if len(updated) == len(self._presets) or not presets.save(updated):
+            return False
+        self._presets = updated
+        self.presetsChanged.emit()
+        return True
 
     # ── 멜론 ──
     DETAIL_CACHE_MAX = 40

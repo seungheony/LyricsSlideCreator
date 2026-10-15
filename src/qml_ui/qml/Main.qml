@@ -16,20 +16,51 @@ ApplicationWindow {
     // 기본 1100×800, 작은 화면에서는 작업 영역의 92%×90%까지 줄여 가운데에 둔다 (제목 표시줄·작업 표시줄 몫을 남김).
     // 최소 크기(900×560)도 같은 한도로 낮춰, 작은 화면에서 창이 작업 영역 밖으로 나가지 않게 한다.
     // 작업 영역(workArea)은 app.py가 창이 열릴 화면에서 읽어 넣는다 (QML의 Screen.desktopAvailable*은 모니터가 여럿이면 전체 합이라 쓰지 않음)
+    // 지난번에 닫을 때의 크기·위치(savedGeometry, 그 화면이 지금도 연결돼 있을 때만)가 있으면 그대로 열되 작업 영역 안으로 넣는다
     property rect workArea: Qt.rect(0, 0, 0, 0)
+    property rect savedGeometry: Qt.rect(0, 0, 0, 0)
+    property bool savedMaximized: false
     function fitToScreen() {
         const a = workArea
         if (a.width > 0 && a.height > 0) {
             const maxW = Math.floor(a.width * 0.92), maxH = Math.floor(a.height * 0.90)
             minimumWidth = Math.min(900, maxW)
             minimumHeight = Math.min(560, maxH)
-            width = Math.min(1100, maxW)
-            height = Math.min(800, maxH)
-            x = a.x + Math.floor((a.width - width) / 2)
-            y = a.y + Math.floor((a.height - height) / 2)
+            const s = savedGeometry
+            if (s.width > 0 && s.height > 0) {
+                width = Math.max(minimumWidth, Math.min(s.width, a.width))
+                height = Math.max(minimumHeight, Math.min(s.height, a.height))
+                x = Math.max(a.x, Math.min(s.x, a.x + a.width - width))
+                y = Math.max(a.y, Math.min(s.y, a.y + a.height - height))
+            } else {
+                width = Math.min(1100, maxW)
+                height = Math.min(800, maxH)
+                x = a.x + Math.floor((a.width - width) / 2)
+                y = a.y + Math.floor((a.height - height) / 2)
+            }
         }
-        visible = true
+        normalGeometry = Qt.rect(x, y, width, height)
+        if (savedMaximized) showMaximized()
+        else visible = true
     }
+
+    // 최대화하지 않았을 때의 크기·위치와 최대화 여부 (닫을 때 app.py가 읽어 기록한다. 최대화 중이면 그 전 크기를 남긴다)
+    // 닫으면 visibility가 Hidden이 되므로 최대화 여부는 보이는 동안의 마지막 상태로 둔다. 전체 화면(macOS)도 최대화로 다시 연다
+    property rect normalGeometry: Qt.rect(0, 0, 0, 0)
+    property bool lastMaximized: false
+    function rememberGeometry() {
+        if (visibility === Window.Windowed) normalGeometry = Qt.rect(x, y, width, height)
+    }
+    onVisibilityChanged: {
+        if (visibility === Window.Maximized || visibility === Window.FullScreen) lastMaximized = true
+        else if (visibility === Window.Windowed) lastMaximized = false
+        Qt.callLater(rememberGeometry)
+    }
+    // 최대화할 때 크기가 먼저 바뀌고 visibility가 뒤따라오기도 해서, 한 박자 늦게 확인한다
+    onXChanged: Qt.callLater(rememberGeometry)
+    onYChanged: Qt.callLater(rememberGeometry)
+    onWidthChanged: Qt.callLater(rememberGeometry)
+    onHeightChanged: Qt.callLater(rememberGeometry)
 
     property bool editorActive: false
     property var pendingSong: null
@@ -59,6 +90,17 @@ ApplicationWindow {
             manual: !info.song_id
         }
         chooseDestination(song, (fresh) => win.placeSong(song, "", fresh))
+    }
+
+    // 검색 결과의 '저장된 구성'에서 불러오기: 저장할 때의 슬라이드 구성 그대로 연다 (제목·가수도 저장할 때의 것)
+    function openPreset(song, preset) {
+        cancelOpen()
+        const s = Object.assign({}, song, { title: preset.title || song.title, artist: preset.artist || song.artist })
+        backend.loadArt(s.song_id)
+        chooseDestination(s, (fresh) => {
+            win.addMode = false
+            win.enterEditor(() => editorPage.loadPreset(s, preset.text, fresh))
+        })
     }
 
     // 고른 곡을 콘티에 더할지 새 콘티로 시작할지 정해 open(fresh)를 부른다
@@ -208,6 +250,7 @@ ApplicationWindow {
         Behavior on opacity { NumberAnimation { duration: Theme.normal; easing.type: Easing.OutCubic } }
         onSongClicked: (song) => win.openSong(song)
         onManualRequested: (info) => win.openManual(info)
+        onPresetsRequested: (song) => presetDialog.openFor(song)
         tour: tour
     }
 
@@ -319,6 +362,12 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 96
         z: 100
+    }
+
+    PresetDialog {
+        id: presetDialog
+        objectName: "presetDialog"
+        onLoadRequested: (song, preset) => win.openPreset(song, preset)
     }
 
     AppDialog { id: dialog; objectName: "errorDialog" }
@@ -453,6 +502,11 @@ ApplicationWindow {
         onActivated: editorPage.redo()
     }
     Shortcut {
+        sequences: [StandardKey.Save]
+        enabled: win.editorActive && editorPage.deckSize > 0 && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        onActivated: editorPage.savePresets()
+    }
+    Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
         enabled: win.editorActive && editorPage.deckSize > 0 && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.generate()
@@ -469,12 +523,12 @@ ApplicationWindow {
     }
     Shortcut {
         sequence: "Escape"
-        enabled: !win.editorActive && win.pendingSong !== null && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: !win.editorActive && win.pendingSong !== null && !presetDialog.opened && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: win.cancelOpen()    // 불러오는 중인 곡 열기 취소
     }
     Shortcut {
         sequence: "Escape"
-        enabled: !win.editorActive && win.addMode && win.pendingSong === null && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: !win.editorActive && win.addMode && win.pendingSong === null && !presetDialog.opened && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: win.cancelAddSong()    // 곡 추가를 그만두고 편집 화면으로
     }
 }

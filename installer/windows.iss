@@ -76,6 +76,8 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags
 [UninstallDelete]
 ; 설치 폴더 전체 (설치 후 생긴 파일 포함)
 Type: filesandordirs; Name: "{app}"
+; 앱 데이터 폴더: 튜토리얼 기록·창 위치·저장한 곡 구성 (src/utils/app_state.py). 업데이트로는 지워지지 않고 제거할 때만 지운다
+Type: filesandordirs; Name: "{userappdata}\LyricsSlideCreator"
 ; 업데이트 다운로드 임시 폴더
 Type: filesandordirs; Name: "{%TEMP}\LyricsSlideCreator-update"
 ; 앱은 사용자 폴더에 캐시를 만들지 않지만(src/qml_ui/app.py), 혹시 남았을 경우를 대비해 함께 지운다

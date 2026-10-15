@@ -21,6 +21,8 @@ Item {
     property bool loadingMore: false
     property real bottomInset: 0      // 화면 아래에 떠 있는 표시('편집 중' 칩)가 가리는 높이
     property string moreError: ""
+    // 저장한 곡 구성 수 (곡 번호 → 수). 결과 행에 '저장된 구성' 배지를 띄운다
+    property var presetCounts: JSON.parse(backend.presetCounts())
     // 목록은 ListModel에 이어 붙인다 (배열을 통째로 바꾸면 다음 쪽을 붙일 때 스크롤이 맨 위로 돌아간다)
     ListModel { id: resultModel }
     function setResults(items) {
@@ -43,7 +45,9 @@ Item {
                   + "제목이 기억나지 않으면 <b>가사</b>를 눌러 가사 한 구절로 찾을 수 있어요. "
                   + "멜론에 없는 곡은 아래 <b>가사 직접 입력</b>으로 가사를 붙여 넣어 만들 수 있어요." },
             { target: resultsArea, demo: resultsDemo, title: "2. 곡 고르기",
-              body: "검색 결과에서 곡을 누르면 가사와 앨범아트를 불러와 <b>편집 화면</b>으로 넘어가요." },
+              body: "검색 결과에서 곡을 누르면 가사와 앨범아트를 불러와 <b>편집 화면</b>으로 넘어가요.<br><br>"
+                  + "편집 화면에서 <b>구성 저장</b>을 해 둔 곡은 오른쪽에 <b>저장된 구성</b>이 보여요. "
+                  + "누르면 그때 슬라이드 구성 그대로 열어요." },
             { target: null, title: "3. 다듬고 PPT 만들기",
               body: "편집 화면에서 가사를 슬라이드 단위로 나누고, 아래의 <b>PPT 생성</b>을 누르면 끝이에요. "
                   + "왼쪽 <b>곡 추가</b>로 여러 곡을 순서대로 한 PPT로 만들 수도 있어요.<br><br>"
@@ -151,6 +155,8 @@ Item {
     }
 
     signal songClicked(var song)
+    // 결과 행의 '저장된 구성' 배지 (또는 그 행에서 →)
+    signal presetsRequested(var song)
     // 멜론 없이 가사를 직접 입력해서 연다. info: { title, artist }
     signal manualRequested(var info)
 
@@ -206,6 +212,7 @@ Item {
 
     Connections {
         target: backend
+        function onPresetsChanged() { page.presetCounts = JSON.parse(backend.presetCounts()) }
         function onSearchFinished(t, json) {
             if (t !== page.token) return
             const res = JSON.parse(json)
@@ -528,6 +535,11 @@ Item {
                 Keys.onReturnPressed: openCurrent()
                 Keys.onEnterPressed: openCurrent()
                 Keys.onSpacePressed: openCurrent()
+                // →: 저장된 구성이 있으면 고르는 창을 연다
+                Keys.onRightPressed: (event) => {
+                    event.accepted = !!(currentItem && currentItem.presetCount)
+                    if (event.accepted) page.presetsRequested(currentItem.modelData)
+                }
 
                 // 끝 근처까지 내려오면 다음 쪽을 자동으로 받는다 (받는 중이면 loadMore가 막고, 실패하면 '다시 시도'를 누를 때까지 멈춘다)
                 function checkEnd() {
@@ -596,17 +608,20 @@ Item {
                     readonly property var modelData: ({ song_id: song_id, title: title, artist: artist,
                                                         album: album, adult: adult, snippet: snippet })
                     readonly property bool loading: page.loadingId === song_id
+                    readonly property int presetCount: page.presetCounts[song_id] || 0
                     readonly property bool focused: ListView.isCurrentItem && list.activeFocus
 
                     width: ListView.view.width
                     height: modelData.snippet ? 100 : 72
                     radius: Theme.radius
-                    color: hover.containsMouse || focused ? Theme.surface : Theme.surfaceClear
+                    readonly property bool hovered: hover.containsMouse || presetBadge.hovered
+                    color: hovered || focused ? Theme.surface : Theme.surfaceClear
                     border.width: focused ? 2 : 0
                     border.color: Theme.primary
                     Behavior on color { ColorAnimation { duration: Theme.fast } }
                     Accessible.role: Accessible.Button
                     Accessible.name: [title, artist, album].filter(Boolean).join(", ")
+                                     + (presetCount ? ", 저장된 구성 " + presetCount + "개 (오른쪽 화살표로 열기)" : "")
                     Accessible.onPressAction: page.songClicked(modelData)
 
                     // 나타날 때 아래에서 살짝 올라온다
@@ -703,11 +718,22 @@ Item {
                                 elide: Text.ElideRight
                             }
                         }
+                        // 저장한 구성이 있는 곡: 누르면 고르는 창 (행을 누르면 지금처럼 멜론 가사로 연다)
+                        AppButton {
+                            id: presetBadge
+                            visible: row.presetCount > 0
+                            text: "저장된 구성 " + row.presetCount
+                            variant: "primary"
+                            size: "small"
+                            focusPolicy: Qt.NoFocus      // 키보드는 목록에서 →
+                            onClicked: page.presetsRequested(row.modelData)
+                            AppToolTip { visible: presetBadge.hovered; delay: 400; text: "예전에 저장한 슬라이드 구성 그대로 열어요" }
+                        }
                         Icon {
                             id: arrow
                             glyph: row.loading ? "loader" : "chevron-right"
                             color: Theme.text3
-                            opacity: row.loading || hover.containsMouse || row.focused ? 1 : 0
+                            opacity: row.loading || row.hovered || row.focused ? 1 : 0
                             Behavior on opacity { NumberAnimation { duration: Theme.fast } }
                             RotationAnimation on rotation {
                                 running: row.loading
@@ -717,8 +743,10 @@ Item {
                         }
                     }
 
+                    // 행 전체를 누르는 영역. 배지 버튼이 위에서 클릭을 받도록 아래에 둔다
                     MouseArea {
                         id: hover
+                        z: -1
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor

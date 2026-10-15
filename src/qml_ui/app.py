@@ -1,7 +1,7 @@
 import os
 import sys
 
-from PySide6.QtCore import QBuffer, QByteArray, QCoreApplication, QIODevice, QMetaObject, QSize, QTimer, QTranslator, QUrl
+from PySide6.QtCore import QBuffer, QByteArray, QCoreApplication, QIODevice, QMetaObject, QRect, QSize, QTimer, QTranslator, QUrl
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QIcon, QImage
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -44,6 +44,31 @@ def window_icon():
     return icon
 
 
+def place_window(window, saved):
+    """창이 열릴 화면의 작업 영역(작업 표시줄·메뉴 막대 제외)에 맞춰 크기·위치를 정하고 보인다 (Main.qml fitToScreen).
+    지난번 창 위치(saved)가 있고 그 가운데가 지금 연결된 화면 안이면 그 화면에 같은 크기로 연다
+    (모니터를 뺐으면 기본 화면 가운데에 기본 크기로)"""
+    screen = None
+    if saved:
+        rect = QRect(saved['x'], saved['y'], saved['width'], saved['height'])
+        screen = QGuiApplication.screenAt(rect.center())
+    if screen:
+        window.setProperty('savedGeometry', rect)
+        window.setProperty('savedMaximized', saved['maximized'])
+    else:
+        screen = window.screen()
+    window.setProperty('workArea', screen.availableGeometry())
+    QMetaObject.invokeMethod(window, 'fitToScreen')
+
+
+def save_window(window, backend):
+    """창을 닫을 때 크기·위치를 기록한다. 최대화했으면 최대화 전 크기(Main.qml normalGeometry)와 함께"""
+    geo = window.property('normalGeometry')
+    if not geo or geo.width() <= 0:
+        return
+    backend.save_window_geometry(geo.x(), geo.y(), geo.width(), geo.height(), bool(window.property('lastMaximized')))
+
+
 def create_app(argv):
     """앱과 QML 엔진을 만든다. 실행(exec)은 하지 않는다. 반환: (app, engine, backend)"""
     # 모든 OS에서 같은 모양이 되도록, 직접 꾸미기 쉬운 Basic 스타일 사용
@@ -78,9 +103,7 @@ def create_app(argv):
     ctx.setContextProperty('assetsUrl', QUrl.fromLocalFile(resource_path('assets')).toString())
     engine.load(QUrl.fromLocalFile(resource_path(os.path.join('src', 'qml_ui', 'qml', 'Main.qml'))))
     for window in engine.rootObjects():
-        # 창이 열릴 화면의 작업 영역(작업 표시줄·메뉴 막대 제외)에 맞춰 크기·위치를 정하고 보인다
-        window.setProperty('workArea', window.screen().availableGeometry())
-        QMetaObject.invokeMethod(window, 'fitToScreen')
+        place_window(window, backend.window_geometry())
     if sys.platform != 'darwin':
         # Windows: 창마다 아이콘을 지정한다 (작업 표시줄·창 제목줄)
         icon = window_icon()
@@ -170,6 +193,9 @@ def main():
         sys.exit(1)
 
     code = app.exec()
+    if '--self-test' not in sys.argv:
+        for window in engine.rootObjects():
+            save_window(window, backend)
     backend.shutdown()
     # 남은 네트워크 작업(검색·앨범아트·업데이트 확인)이 끝나기를 기다리지 않고 바로 끝낸다.
     # sys.exit는 스레드 풀의 작업이 끝날 때까지(연결 시간 제한만큼) 프로세스를 붙잡는다. PPT 저장은 shutdown()에서 기다렸다
