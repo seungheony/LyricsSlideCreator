@@ -1,0 +1,20 @@
+📢 Lyrics Slide Creator 안내
+
+노래 제목만 검색하면 가사를 가져와서 예배용 가사 PPT를 만들어 주는 무료 프로그램이에요. 여러 곡을 한 파일로 만들 수 있고, 줄 나누기도 미리보기에서 바로 고칠 수 있어요.
+
+▶ 다운로드
+https://github.com/seungheony/LyricsSlideCreator/releases/latest
+페이지 아래 'Assets'에서 내 컴퓨터에 맞는 파일을 받으세요.
+
+[Windows]
+1. LyricsSlideCreator-버전-Setup.exe 받기
+2. 실행해서 설치
+※ 'Windows의 PC 보호' 창이 뜨면 [추가 정보] → [실행]
+
+[Mac] (M1 이상 Mac, macOS 14 이상)
+1. LyricsSlideCreator-버전-macOS.zip 받아서 풀기
+2. 앱을 '응용 프로그램' 폴더로 옮기기
+3. 처음 실행할 때 '열 수 없습니다'가 뜨면
+   시스템 설정 → 개인정보 보호 및 보안 → 맨 아래 [그래도 열기]
+
+설치한 뒤에는 새 버전이 나오면 프로그램이 알려 줘요.
