@@ -28,8 +28,11 @@ CI가 매번 자동으로 확인하는 것: 빌드, 화면·폰트·템플릿 �
 
 Windows 실기 확인 목록(줄바꿈 예측 비교, 해상도·배율, 업데이트·제거, 한글 입력): [WINDOWS_CHECK.md](WINDOWS_CHECK.md)
 
-- [ ] 처음 실행: 검색 화면 튜토리얼(닫기·Esc 없음, `건너뛰기`만 가능) → 처음 곡을 열면 편집 화면 튜토리얼(12단계, 첫 단계가 콘티) → 앱을 다시 실행하면 나오지 않음. 끝내거나 건너뛰면 "? 버튼으로 언제든 다시 볼 수 있어요" 안내가 뜸. 건너뛰면 편집 화면 튜토리얼도 나오지 않음
-  - (macOS) 응용 프로그램 폴더로 옮긴 앱에서 확인. 앱 안에 `app_state.json`이 생기지 않고(`ls "<앱>/Contents/MacOS"`), `defaults read io.github.seungheony.lyricsslidecreator tutorials_seen`에 기록이 남는지. 앱이 다시 실행이 잘 되는지
+- [ ] 처음 실행: 검색 화면 튜토리얼(닫기·Esc 없음, `건너뛰기`만 가능) → 처음 곡을 열면 편집 화면 튜토리얼(13단계, 첫 단계가 콘티) → 앱을 다시 실행하면 나오지 않음. 끝내거나 건너뛰면 "? 버튼으로 언제든 다시 볼 수 있어요" 안내가 뜸. 건너뛰면 편집 화면 튜토리얼도 나오지 않음
+  - 기록은 앱 데이터 폴더의 `state.json`(Windows `%APPDATA%\LyricsSlideCreator`, macOS `~/Library/Application Support/LyricsSlideCreator`). 앱 안에는 파일이 생기지 않음(macOS `ls "<앱>/Contents/MacOS"`). 앱이 다시 실행이 잘 되는지
+  - 업데이트한 뒤에도 튜토리얼이 다시 나오지 않음 (예전 macOS 앱의 plist 기록은 처음 실행 때 옮겨지고 `defaults read io.github.seungheony.lyricsslidecreator tutorials_seen`이 없다고 나옴)
+- [ ] 창 크기·위치를 바꾸고(최대화 포함) 닫았다 열면 같은 자리·크기로 열림. 모니터를 뺀 뒤에는 기본 화면 가운데에 열림
+- [ ] 구성 저장: 편집 화면 `구성 저장`(⌘S/Ctrl+S) → 같은 곡을 다시 검색하면 결과 옆 `저장된 구성 N` → 불러오기 하면 저장한 구성 그대로 열림(2줄 자동 나누기 없음). 편집 중인 곡에 불러오면 되돌리기 토스트. 삭제는 두 번 눌러야 지워짐. 업데이트한 뒤에도 남아 있음
 - [ ] 설치 폴더·앱 안에 `LICENSE`, `THIRD_PARTY_NOTICES.txt`가 있음
 - [ ] 각 `?` 버튼: 설명할 부분만 밝아지고 예시 동작(가짜 포인터)이 실제 화면 위에서 재생됨, 가사는 바뀌지 않음
 - [ ] 앱 이름이 'Lyrics Slide Creator' (창 제목·Dock/작업 표시줄·Windows 시작 메뉴·제어판), 앱 아이콘이 보임

@@ -76,6 +76,21 @@ Item {
                  slides: groups.length, wraps: countWraps(groups), notice: tidied ? E.tidyMessage(tidy) : "" }
     }
 
+    // 저장한 구성으로 여는 곡: 텍스트를 그대로 쓴다 (정리·자동 나누기 없음).
+    // 저장할 때 있던 3줄 이상 슬라이드는 그렇게 쓰기로 한 것이라 다시 묻지 않는다
+    function presetEntry(newSong, text) {
+        const groups = E.linesOf(E.parseBlocks(text))
+        return { song: newSong, text: text, hist: [text], histIdx: 0,
+                 cursor: 0, contentY: 0, slideY: 0, kept: longKeys(groups), savedKey: text, dirty: false,
+                 slides: groups.length, wraps: countWraps(groups), notice: "" }
+    }
+
+    function longKeys(groups) {
+        const kept = {}
+        E.longSlides(groups, {}).forEach(i => { kept[E.slideKey(groups[i])] = true })
+        return kept
+    }
+
     function saveState() {
         prepareEdit()
         flushTyping()
@@ -119,6 +134,58 @@ Item {
         storeCurrent()
         setlist = []
         addSong(newSong, lyricsText)
+    }
+
+    // 저장한 구성으로 곡을 연다 (fresh: 새 콘티로). 이어서 편집하던 곡이면 가사를 그 구성으로 바꾸고 되돌릴 수 있게 한다
+    function loadPreset(newSong, text, fresh) {
+        storeCurrent()
+        if (fresh) setlist = []
+        const id = newSong.song_id
+        const existed = !!sessions[id]
+        if (!existed) setEntry(id, presetEntry(newSong, text))
+        if (setlist.indexOf(id) < 0) setlist = setlist.concat([id])
+        if (id !== currentId) openEntry(id)
+        if (!existed) {
+            if (toastHost) toastHost.show("저장된 구성으로 열었어요")
+            return
+        }
+        prepareEdit()
+        flushTyping()
+        if (lyrics.text === text) {
+            if (toastHost) toastHost.show("이미 저장된 구성과 같아요")
+            return
+        }
+        keepLong(Object.keys(longKeys(E.linesOf(E.parseBlocks(text)))))
+        setText(text)
+        record(lyrics.text)
+        lyrics.cursorPosition = 0
+        setLyricsY(0)
+        slideList.scrollToTop()
+        showUndoToast("편집하던 가사를 저장된 구성으로 바꿨어요")
+    }
+
+    // 콘티 곡들의 지금 슬라이드 구성을 저장한다 (PPT 생성과 따로). 다음에 검색 결과의 '저장된 구성'으로 불러온다.
+    // 직접 입력한 곡은 멜론 곡 번호가 없어 검색 결과와 이을 수 없으므로 빼고 저장한다
+    function savePresets() {
+        prepareEdit()
+        const all = setlistGroups().filter(s => s.groups.length)
+        const songs = all.filter(s => !s.song.manual)
+        if (!toastHost) return
+        if (!songs.length) {
+            toastHost.show("직접 입력한 곡은 검색 결과에 나오지 않아서 구성을 저장할 수 없어요", { error: true, duration: 4000 })
+            return
+        }
+        const res = JSON.parse(backend.savePresets(JSON.stringify(songs.map(s => ({
+            song_id: s.id, title: s.song.title, artist: s.song.artist, album: s.song.album || "",
+            text: E.serialize(s.groups) })))))
+        if (res.error) {
+            if (dialog) dialog.showError(res.error, res.detail)
+            return
+        }
+        const skipped = all.length - songs.length
+        toastHost.show((songs.length > 1 ? songs.length + "곡의 구성을 저장했어요" : "구성을 저장했어요")
+                       + (skipped ? " (직접 입력한 곡 " + skipped + "곡 제외)" : "")
+                       + " · 검색 결과에서 불러올 수 있어요", { duration: 4000 })
     }
 
     function selectSong(id) {
@@ -655,6 +722,7 @@ Item {
         templateButton: templateButton
         customTemplate: page.customTemplate
         generateButton: generateButton
+        savePresetButton: savePresetButton
         setlistPanel: setlistPanel
     }
 
@@ -1266,6 +1334,20 @@ Item {
                     onClicked: page.feedbackRequested()
                 }
                 Item { Layout.fillWidth: true }
+                // 구성 저장: PPT 생성과 따로, 콘티 곡들의 슬라이드 구성을 저장한다
+                AppButton {
+                    id: savePresetButton
+                    objectName: "savePresetButton"
+                    text: "구성 저장"
+                    size: "large"
+                    enabled: page.deckSize > 0
+                    onClicked: page.savePresets()
+                    AppToolTip {
+                        visible: savePresetButton.hovered
+                        delay: 400
+                        text: "곡마다 지금 슬라이드 구성을 저장해요 (" + Theme.mod + "S). 다음에 검색 결과의 '저장된 구성'으로 그대로 불러올 수 있어요"
+                    }
+                }
                 // 꺼진 버튼은 호버를 받지 못해, 바깥에 둔 영역으로 이유를 보여 준다
                 Item {
                     implicitWidth: 140

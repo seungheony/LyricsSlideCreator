@@ -20,6 +20,7 @@ QtObject {
     property Item templateButton
     property bool customTemplate: false
     property Item generateButton
+    property Item savePresetButton
     property Item setlistPanel
 
     // 예시용 가사 줄: 지금 가사의 앞부분, 모자라면 "가사 N"
@@ -108,7 +109,11 @@ QtObject {
             { target: generateButton, demo: generateDemo, title: "PPT 생성",
               body: "저장할 위치를 고르면 콘티의 곡을 순서대로 <b>한 PPT</b>로 만들어요. "
                   + "처음·곡 사이·끝에는 <b>검은 빈 슬라이드</b>가 들어가요.<br>단축키: <b>"
-                  + Theme.mod + "Enter</b>" }
+                  + Theme.mod + "Enter</b>" },
+            { target: savePresetButton, title: "구성 저장",
+              body: "곡마다 지금 슬라이드 구성을 저장해요. 다음에 같은 곡을 검색하면 결과 옆에 <b>저장된 구성</b>이 보이고, "
+                  + "누르면 그때 구성 그대로 열 수 있어요. PPT를 만들지 않아도 저장할 수 있어요.<br>단축키: <b>"
+                  + Theme.mod + "S</b>" }
         ]
     }
 

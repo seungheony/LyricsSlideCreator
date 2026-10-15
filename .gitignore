@@ -20,5 +20,7 @@ test_output.pptx
 # 빌드 시 생성되는 버전 파일
 src/utils/_build_info.py
 
-# 앱 상태 기록 (첫 실행 튜토리얼 등, src/utils/app_state.py)
+# 개발 모드의 앱 데이터 폴더 (튜토리얼 기록·창 위치·저장한 곡 구성, src/utils/app_state.py)
+/user_data/
+# v1.3.0까지 개발 모드가 쓰던 앱 상태 파일
 app_state.json
