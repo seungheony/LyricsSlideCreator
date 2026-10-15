@@ -6,16 +6,15 @@ import "editor.js" as E
 
 // 보관함: 저장한 프리셋을 곡마다 카드 하나(앨범아트·제목·가수, 곡은 가나다순)에 한 줄씩(최근 저장한 것부터) 보인다.
 // 슬라이드는 줄을 눌러 펼쳐야 번호와 가사 줄로 보인다(높이가 정해진 칸 안에서 스크롤).
-// PresetDialog(창)와 곡 찾기 서랍의 '보관함' 탭이 함께 쓴다. 내용은 refresh()를 불러야 다시 읽는다.
-//   setlist: 콘티에 있는 song_id 배열. 들어 있는 곡 카드에는 '콘티 N번' 배지, 프리셋 줄 버튼은 ＋ 대신 '이걸로 바꾸기'
+// 곡 찾기 서랍(SongDrawer)의 '보관함' 탭. 내용은 refresh()를 불러야 다시 읽는다.
+//   setlist: 콘티에 있는 song_id 배열. 들어 있는 곡 카드에는 '콘티 N번' 배지, 프리셋 줄 버튼은 ＋ 대신 '이걸로 바꾸기'(replaceRequested)
 //   filterSong: 비어 있지 않으면 그 곡 카드만 (검색 결과의 '프리셋 N' 배지). 찾기 칸은 숨긴다
-//   currentId: 편집 중인 곡(맨 위에 '편집 중'), loadLabel: 비어 있지 않으면 버튼이 늘 이 글자로 addRequested만 낸다
+//   currentId: 편집 중인 곡(맨 위에 '편집 중')
 Item {
     id: lib
     property var setlist: []
     property string filterSong: ""
     property string currentId: ""
-    property string loadLabel: ""
     property int sideMargin: 24
     readonly property bool library: filterSong === ""
     property var songs: []              // 보이는 곡: [{ song_id, title, artist, album, manual, image_url, presets }]
@@ -94,7 +93,7 @@ Item {
 
     function load(group, preset) {
         const s = songOf(group)
-        if (!loadLabel && inSetlist(group.song_id)) replaceRequested(s, preset)
+        if (inSetlist(group.song_id)) replaceRequested(s, preset)
         else addRequested(s, preset)
     }
 
@@ -162,7 +161,7 @@ Item {
             Layout.fillWidth: true
             Layout.leftMargin: lib.sideMargin
             Layout.rightMargin: lib.sideMargin
-            Layout.topMargin: 14
+            Layout.topMargin: 6
             implicitHeight: 40
             radius: 10
             color: Theme.surface2
@@ -485,19 +484,20 @@ Item {
                                         Accessible.name: item.deleting ? "삭제 확인" : "삭제: " + item.label
                                         AppToolTip { visible: parent.hovered && !item.deleting; delay: 400; text: "삭제 (한 번 더 누르면 지워져요)" }
                                     }
-                                    // 불러오기: loadLabel이 있으면 그 글자, 콘티에 있는 곡이면 '이걸로 바꾸기', 아니면 ＋
+                                    // 불러오기: 콘티에 있는 곡이면 '이걸로 바꾸기', 아니면 ＋
                                     AppButton {
                                         id: loadButton
-                                        readonly property bool replace: !lib.loadLabel && card.setlistNo > 0
+                                        objectName: "presetLoadButton"
+                                        readonly property bool replace: card.setlistNo > 0
                                         visible: !item.renaming
                                         Layout.leftMargin: 4
-                                        glyph: lib.loadLabel || replace ? "" : "plus"
-                                        text: lib.loadLabel || (replace ? "이걸로 바꾸기" : "")
+                                        glyph: replace ? "" : "plus"
+                                        text: replace ? "이걸로 바꾸기" : ""
                                         variant: "primary"
                                         size: "small"
                                         onClicked: lib.load(card.modelData, item.modelData)
-                                        Accessible.name: (lib.loadLabel || (replace ? "이걸로 바꾸기" : "콘티에 추가")) + ": " + item.label
-                                        AppToolTip { visible: parent.hovered && !lib.loadLabel && !loadButton.replace; delay: 400; text: "콘티에 추가" }
+                                        Accessible.name: (replace ? "이걸로 바꾸기" : "콘티에 추가") + ": " + item.label
+                                        AppToolTip { visible: parent.hovered && !loadButton.replace; delay: 400; text: "콘티에 추가" }
                                     }
                                 }
                             }

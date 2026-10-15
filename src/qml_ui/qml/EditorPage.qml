@@ -13,7 +13,6 @@ Item {
     property var toastHost: null
     property var dialog: null
     property var confirmDialog: null
-    property var presetDialog: null    // Main의 보관함 (떠 있는 동안 3줄 확인을 묻지 않는다)
     property var tour: null
     // 내 템플릿(변경 버튼)은 아직 지원하지 않는다. 다시 쓸 때 true로 바꾸면 기존 기능이 그대로 살아난다
     readonly property bool customTemplate: false
@@ -57,7 +56,6 @@ Item {
     // PPT로 만들지 않은 편집이 있는지 (콘티에서 뺀 곡까지 포함해서)
     readonly property bool anyDirty: dirty || Object.keys(sessions).some(id => id !== currentId && sessions[id].dirty)
 
-    signal presetLibraryRequested()    // '프리셋 불러오기' (Main의 보관함을 편집 화면용으로 연다)
     signal feedbackRequested()
 
     // ── 곡 찾기 서랍 ── '곡 추가'(⌘K/Ctrl+K)로 연다. 열려 있는 동안 담은 곡은 콘티에 쌓이기만 하고 편집기는 그대로,
@@ -67,7 +65,9 @@ Item {
     property var drawerAdded: []        // 이번에 서랍을 연 뒤 콘티에 새로 담은 곡
     property string pendingOpenId: ""   // 가사를 다 받으면 열 곡
 
-    function openDrawer() {
+    // tab: "melon"(검색칸에 포커스) | "library" | "manual". opts: SongDrawer.show의 opts (filterSong·manual)
+    // tab을 주지 않으면 닫혀 있을 때는 멜론 탭으로 열고, 열려 있으면 탭을 그대로 둔다 (콘티를 다 뺐을 때 등)
+    function openDrawer(tab, opts) {
         if (!songDrawer.opened) {
             prepareEdit()
             longCheckTimer.stop()
@@ -75,11 +75,13 @@ Item {
             drawerAdded = []
             pendingOpenId = ""
             songDrawer.opened = true
+            songDrawer.show(tab || "melon", opts)
+        } else if (tab) {
+            songDrawer.show(tab, opts)
         }
-        Qt.callLater(songDrawer.focusSearch)
     }
 
-    // openAdded: 이번에 담은 곡을 연다 (직접 입력으로 곡을 열 때는 false)
+    // openAdded: 이번에 담은 곡을 연다 (콘티를 되돌려 서랍을 닫을 때는 false)
     function closeDrawer(openAdded) {
         if (!songDrawer.opened) return
         songDrawer.opened = false
@@ -272,6 +274,27 @@ Item {
         if (!song) openFirstReady()
     }
 
+    // 직접 입력한 곡을 담는다 (서랍의 '직접 입력' 탭). autoSplit이면 처음 여는 곡처럼 정리하고 2줄씩 나누고(newEntry), 아니면 그대로(presetEntry).
+    // 이미 편집하던 곡이면(멜론 곡에서 넘어와 song_id가 같은 경우) 프리셋을 불러올 때처럼 히스토리에 남기고 바꾼다
+    function addManual(newSong, text, autoSplit) {
+        const id = newSong.song_id
+        const entry = autoSplit ? newEntry(newSong, text) : presetEntry(newSong, text)
+        if (sessions[id] && !isLoading(id)) {
+            loadPreset(newSong, entry.text)
+            return
+        }
+        const open = !songDrawer.opened
+        if (open) storeCurrent()
+        setEntry(id, entry)
+        if (setlist.indexOf(id) < 0) {
+            setlist = setlist.concat([id])
+            noteAdded(id)
+        }
+        if (pendingOpenId === id) pendingOpenId = ""
+        if (open) openEntry(id)
+        if (toastHost) toastHost.show("'" + (newSong.title || "제목 없음") + "' 곡을 콘티에 담았어요")
+    }
+
     // 프리셋으로 곡을 담는다. 이어서 편집하던 곡이면 가사를 그 프리셋으로 바꾸고 되돌릴 수 있게 한다
     // open: 그 곡을 편집기에 연다 (기본: 서랍이 닫혀 있을 때만)
     function loadPreset(newSong, text, open) {
@@ -445,8 +468,6 @@ Item {
             st.notice = ""
             showUndoToast(message)
         }
-        // 직접 입력으로 연 곡은 바로 쓸 수 있게 한다: 제목이 비어 있으면 제목, 아니면 가사 칸
-        if (newSong.manual && !st.text) (newSong.title ? lyrics : titleField).forceActiveFocus()
     }
 
     // 지금 히스토리 위치에서 되돌릴 수 있는 토스트 (편집이 이어지면 record()에서 숨김)
@@ -731,7 +752,7 @@ Item {
         if (!keepTwo || !confirmDialog || !page.enabled || lyrics.activeFocus) return
         if (Qt.application.state !== Qt.ApplicationActive || !page.Window.active) return   // 다른 앱·창으로 전환
         // 다른 창이 떠 있거나(튜토리얼은 닫힌 뒤에 묻는다, 아래 Connections), PPT 생성·뒤로를 누르는 중이면 묻지 않는다
-        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible || (presetDialog && presetDialog.visible)) return
+        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible) return
         if (songDrawer.opened || !song) return    // 곡 찾기 서랍으로 옮겨 갔다 (페이지 전환과 같음)
         if (generating || generateButton.pressed || loadPresetButton.pressed || savePresetButton.pressed || setlistPanel.busy) return
         prepareEdit()
@@ -1082,7 +1103,7 @@ Item {
                     onSelected: (id) => page.selectSong(id)
                     onRemoveRequested: (idx) => page.removeSong(idx)
                     onMoveRequested: (from, to) => page.moveSong(from, to)
-                    onAddRequested: page.openDrawer()
+                    onAddRequested: page.openDrawer("melon")
                     onClearRequested: page.clearSetlist()
                     onHelpRequested: help.setlistHelp()
                 }
@@ -1563,7 +1584,7 @@ Item {
                         text: "곡 추가"
                         glyph: "plus"
                         variant: "primary"
-                        onClicked: page.openDrawer()
+                        onClicked: page.openDrawer("melon")
                     }
                 }
             }
@@ -1646,8 +1667,8 @@ Item {
                             glyph: "library"
                             variant: "ghost"
                             implicitHeight: 38
-                            onClicked: page.presetLibraryRequested()
-                            AppToolTip { visible: loadPresetButton.hovered; delay: 400; text: "보관함에서 프리셋을 골라 콘티에 더해요. 편집 중인 곡이면 가사를 그 프리셋으로 바꿔요" }
+                            onClicked: page.openDrawer("library")
+                            AppToolTip { visible: loadPresetButton.hovered; delay: 400; text: "보관함에서 프리셋을 골라 콘티에 더해요. 콘티에 있는 곡이면 가사를 그 프리셋으로 바꿔요" }
                         }
                         Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 20; color: Theme.border }
                         AppButton {
@@ -1721,6 +1742,8 @@ Item {
         setlist: page.setlist
         loadingIds: page.loadingIds
         addedIds: page.drawerAdded
+        currentId: page.currentId
+        tour: page.tour
         onCloseRequested: page.closeDrawer()
     }
 }

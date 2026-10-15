@@ -56,8 +56,21 @@ Item {
     signal songClicked(var song)
     // 결과 행의 '프리셋 N' 배지 (또는 그 행에서 →, 직접 입력한 곡은 행을 눌러도)
     signal presetsRequested(var song)
-    // 멜론 없이 가사를 직접 입력해서 연다. info: { title, artist }
+    // 멜론 없이 가사를 직접 입력한다 (서랍의 '직접 입력' 탭). info: { title, notice }
     signal manualRequested(var info)
+
+    // 튜토리얼 강조 대상 (SongDrawer의 도움말)
+    readonly property Item searchBoxItem: searchBox
+    readonly property Item resultsItem: resultsArea
+
+    // 결과 없음·검색 실패에서 '직접 입력으로 열기': 곡 검색이었으면 검색어를 제목으로 채운다
+    function requestManual(failed) {
+        const title = resultMode === "song" ? searchedText : ""
+        manualRequested({ title: title,
+                          notice: failed ? "멜론 검색이 되지 않아요. 가사를 붙여 넣으면 직접 담을 수 있어요"
+                                : title ? "멜론에 '" + title + "' 검색 결과가 없어요. 가사를 붙여 넣으면 직접 담을 수 있어요"
+                                : "멜론에서 찾지 못했어요. 가사를 붙여 넣으면 직접 담을 수 있어요" })
+    }
 
     function focusSearch() { input.forceActiveFocus(); input.selectAll() }
     // 검색칸에서 ↓: 결과 목록의 첫 곡으로. 목록이 없거나 검색 중이면 하지 않는다
@@ -341,7 +354,7 @@ Item {
                 AppButton {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "직접 입력으로 열기"
-                    onClicked: page.manualRequested({ title: page.mode === "song" ? page.searchedText : "", artist: "" })
+                    onClicked: page.requestManual(false)
                 }
             }
 
@@ -365,7 +378,7 @@ Item {
                 Row {
                     anchors.horizontalCenter: parent.horizontalCenter
                     spacing: 8
-                    AppButton { text: "직접 입력으로 열기"; onClicked: page.manualRequested({ title: page.resultMode === "song" ? page.searchedText : "", artist: "" }) }
+                    AppButton { text: "직접 입력으로 열기"; onClicked: page.requestManual(true) }
                     AppButton { text: "다시 시도"; variant: "primary"; onClicked: page.doSearch() }
                 }
             }
@@ -398,7 +411,7 @@ Item {
                 Keys.onReturnPressed: openCurrent()
                 Keys.onEnterPressed: openCurrent()
                 Keys.onSpacePressed: openCurrent()
-                // →: 프리셋이 있으면 고르는 창을 연다
+                // →: 프리셋이 있으면 보관함 탭에서 그 곡의 프리셋을 보인다
                 Keys.onRightPressed: (event) => {
                     event.accepted = !!(currentItem && currentItem.presetCount)
                     if (event.accepted) page.presetsRequested(currentItem.modelData)
@@ -474,7 +487,7 @@ Item {
                     required property bool manual
                     readonly property var modelData: ({ song_id: song_id, title: title, artist: artist,
                                                         album: album, adult: adult, snippet: snippet, manual: manual })
-                    // 직접 입력한 곡은 멜론 가사가 없으므로 프리셋을 고르는 창을 연다
+                    // 직접 입력한 곡은 멜론 가사가 없으므로 보관함 탭에서 그 곡의 프리셋을 고른다
                     function open() {
                         if (manual) page.presetsRequested(modelData)
                         else page.songClicked(modelData)
@@ -598,7 +611,7 @@ Item {
                                 elide: Text.ElideRight
                             }
                         }
-                        // 프리셋이 있는 곡: 누르면 고르는 창 (멜론 곡은 행을 누르면 지금처럼 멜론 가사로 연다)
+                        // 프리셋이 있는 곡: 누르면 보관함 탭에서 그 곡의 프리셋 (멜론 곡은 행을 누르면 멜론 가사로 담는다)
                         AppButton {
                             id: presetBadge
                             visible: row.presetCount > 0
