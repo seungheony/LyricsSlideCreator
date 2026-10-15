@@ -5,7 +5,8 @@
 직접 입력한 곡(manual)은 멜론에 없으므로 앱 안에서 제목·가수·가사로 찾는다(search_manual). song_id는 'manual-'로
 시작하는 고유한 값이라(Main.qml openManual) 같은 곡을 다시 저장하면 같은 곡으로 묶인다.
 파일: 앱 데이터 폴더의 presets.json (src/utils/app_state.py) — {"version": 1, "presets": [...]}
-  프리셋: {id, song_id, name, title, artist, album, manual, text, saved_at('YYYY-MM-DDTHH:MM:SS', 이 컴퓨터 시각)}
+  프리셋: {id, song_id, name, title, artist, album, manual, image_url, text, saved_at('YYYY-MM-DDTHH:MM:SS', 이 컴퓨터 시각)}
+  image_url: 멜론 앨범아트 주소 (저장할 때 알고 있으면). 보관함이 곡 상세 페이지를 거치지 않고 그림만 받는다
   name이 없는 프리셋(v1.4-beta.1)은 화면에서 저장한 날짜로 보인다
 """
 import html
@@ -56,6 +57,7 @@ def add(presets, entries, now, name=''):
             'artist': e.get('artist') or '',
             'album': e.get('album') or '',
             'manual': e.get('manual') is True,
+            'image_url': e.get('image_url') or (old or {}).get('image_url') or '',
             'text': text,
             'saved_at': now,
         })
@@ -64,6 +66,14 @@ def add(presets, entries, now, name=''):
         for p in mine[MAX_PER_SONG:]:
             result.remove(p)
     return result, added, same
+
+
+def rename(presets, preset_id, name):
+    """이름을 바꾼다. 반환: 새 목록 (그런 프리셋이 없으면 None)"""
+    if not any(p.get('id') == preset_id for p in presets):
+        return None
+    name = ' '.join((name or '').split())[:60]
+    return [dict(p, name=name) if p.get('id') == preset_id else p for p in presets]
 
 
 def remove(presets, preset_id):

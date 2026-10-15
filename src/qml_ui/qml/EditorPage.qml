@@ -13,6 +13,7 @@ Item {
     property var toastHost: null
     property var dialog: null
     property var confirmDialog: null
+    property var presetDialog: null    // Main의 보관함 (떠 있는 동안 3줄 확인을 묻지 않는다)
     property var tour: null
     // 내 템플릿(변경 버튼)은 아직 지원하지 않는다. 다시 쓸 때 true로 바꾸면 기존 기능이 그대로 살아난다
     readonly property bool customTemplate: false
@@ -51,6 +52,7 @@ Item {
 
     signal backRequested()
     signal addSongRequested()
+    signal presetLibraryRequested()    // '프리셋 불러오기' (Main의 보관함을 편집 화면용으로 연다)
     signal feedbackRequested()
 
     // 머리글의 제목·가수 입력칸에 커서가 있다 (이때 ⌘Z는 그 칸의 되돌리기, Esc는 입력칸에서 빠져나오기)
@@ -558,8 +560,8 @@ Item {
         if (!keepTwo || !confirmDialog || !page.enabled || lyrics.activeFocus) return
         if (Qt.application.state !== Qt.ApplicationActive || !page.Window.active) return   // 다른 앱·창으로 전환
         // 다른 창이 떠 있거나(튜토리얼은 닫힌 뒤에 묻는다, 아래 Connections), PPT 생성·뒤로를 누르는 중이면 묻지 않는다
-        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible) return
-        if (generating || generateButton.pressed || backButton.pressed || setlistPanel.busy) return
+        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible || (presetDialog && presetDialog.visible)) return
+        if (generating || generateButton.pressed || loadPresetButton.pressed || savePresetButton.pressed || backButton.pressed || setlistPanel.busy) return
         prepareEdit()
         const fresh = freshLongSlides()
         if (fresh.length) askLongSlides(fresh)
@@ -726,7 +728,7 @@ Item {
         templateButton: templateButton
         customTemplate: page.customTemplate
         generateButton: generateButton
-        savePresetButton: savePresetButton
+        savePresetButton: presetGroup
         setlistPanel: setlistPanel
     }
 
@@ -1338,18 +1340,55 @@ Item {
                     onClicked: page.feedbackRequested()
                 }
                 Item { Layout.fillWidth: true }
-                // 프리셋 저장: PPT 생성과 따로, 콘티 곡들의 지금 슬라이드를 이름을 붙여 저장한다
-                AppButton {
-                    id: savePresetButton
-                    objectName: "savePresetButton"
-                    text: "프리셋 저장"
-                    size: "large"
-                    enabled: page.deckSize > 0
-                    onClicked: page.savePresets()
-                    AppToolTip {
-                        visible: savePresetButton.hovered
-                        delay: 400
-                        text: "곡마다 지금 슬라이드를 이름을 붙여 저장해요 (" + Theme.mod + "S). 다음에 검색 결과나 보관함에서 그대로 불러올 수 있어요"
+                // 프리셋: 불러오기(보관함) | 저장(이름을 붙여 콘티 곡마다). PPT 생성과 따로
+                Rectangle {
+                    id: presetGroup
+                    objectName: "presetGroup"
+                    implicitWidth: presetRow.implicitWidth + 8
+                    implicitHeight: 46
+                    radius: Theme.radiusSm
+                    color: Theme.surface
+                    border.width: 1
+                    border.color: Theme.border
+                    RowLayout {
+                        id: presetRow
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Text {
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 4
+                            text: "프리셋"
+                            color: Theme.text3
+                            font.family: Theme.font
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                        }
+                        AppButton {
+                            id: loadPresetButton
+                            objectName: "loadPresetButton"
+                            text: "불러오기"
+                            glyph: "library"
+                            variant: "ghost"
+                            implicitHeight: 38
+                            onClicked: page.presetLibraryRequested()
+                            AppToolTip { visible: loadPresetButton.hovered; delay: 400; text: "보관함에서 프리셋을 골라 콘티에 더해요. 편집 중인 곡이면 가사를 그 프리셋으로 바꿔요" }
+                        }
+                        Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 20; color: Theme.border }
+                        AppButton {
+                            id: savePresetButton
+                            objectName: "savePresetButton"
+                            text: "저장"
+                            glyph: "save"
+                            variant: "ghost"
+                            implicitHeight: 38
+                            enabled: page.deckSize > 0
+                            onClicked: page.savePresets()
+                            AppToolTip {
+                                visible: savePresetButton.hovered
+                                delay: 400
+                                text: "곡마다 지금 슬라이드를 이름을 붙여 저장해요 (" + Theme.mod + "S). 다음에 검색 결과나 보관함에서 그대로 불러올 수 있어요"
+                            }
+                        }
                     }
                 }
                 // 꺼진 버튼은 호버를 받지 못해, 바깥에 둔 영역으로 이유를 보여 준다

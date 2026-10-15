@@ -285,13 +285,29 @@ class Backend(QObject):
         """콘티 곡들의 프리셋을 저장한다. entries_json: [{song_id, title, artist, album, manual, text}], name: 프리셋 이름
         반환: JSON 객체 {added, same} 또는 저장하지 못했으면 {error, detail}"""
         now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-        updated, added, same = presets.add(self._presets, json.loads(entries_json), now, name)
+        entries = json.loads(entries_json)
+        # 이번 실행에서 곡 상세를 받았으면 앨범아트 주소를 같이 남긴다 (보관함이 상세 페이지를 다시 받지 않게)
+        with self._detail_lock:
+            for e in entries:
+                det = self._detail_cache.get(str(e.get('song_id')))
+                if det and det.get('image_url') and not e.get('manual'):
+                    e['image_url'] = det['image_url']
+        updated, added, same = presets.add(self._presets, entries, now, name)
         if not presets.save(updated):
             return json.dumps({'error': '프리셋을 저장하지 못했어요\n저장 폴더에 쓸 수 없어요. 디스크 공간이 부족하지 않은지 확인하고 다시 시도해 주세요.',
                                'detail': f'경로: {app_state.data_path(presets.FILE_NAME)}'}, ensure_ascii=False)
         self._presets = updated
         self.presetsChanged.emit()
         return json.dumps({'added': added, 'same': same})
+
+    @Slot(str, str, result=bool)
+    def renamePreset(self, preset_id, name):
+        updated = presets.rename(self._presets, preset_id, name)
+        if updated is None or not presets.save(updated):
+            return False
+        self._presets = updated
+        self.presetsChanged.emit()
+        return True
 
     @Slot(str, result=bool)
     def deletePreset(self, preset_id):
@@ -384,6 +400,11 @@ class Backend(QObject):
     @Slot(str)
     def loadArt(self, song_id):
         """검색 결과 썸네일: 곡 상세 페이지에서 앨범아트 URL을 찾아 내려받는다."""
+        self.loadArtFrom(song_id, '')
+
+    @Slot(str, str)
+    def loadArtFrom(self, song_id, image_url):
+        """앨범아트를 받는다. image_url을 알면(프리셋에 저장해 둔 주소) 상세 페이지 없이 그림만 받는다"""
         if self._art.has(song_id):
             self.artReady.emit(song_id)
             return
@@ -396,9 +417,12 @@ class Backend(QObject):
             try:
                 if gen != self._thumb_gen:
                     return               # 그 사이 새 검색을 했다
-                det = self._detail(song_id)
-                if det.get('image_url'):
-                    self._download_art(song_id, det['image_url'])
+                # 저장해 둔 주소가 안 되면(멜론이 그림 주소를 바꿈) 상세 페이지에서 다시 찾는다
+                if image_url and self._download_art(song_id, image_url):
+                    return
+                url = self._detail(song_id).get('image_url')
+                if url:
+                    self._download_art(song_id, url)
             except Exception:
                 traceback.print_exc()
             finally:
@@ -406,12 +430,15 @@ class Backend(QObject):
         self._thumb_pool.submit(work)
 
     def _download_art(self, song_id, url):
+        """반환: 받았는지"""
         try:
             resp = self._scraper.get(url)
             if resp.status_code == 200 and self._art.put(song_id, resp.content):
                 self.artReady.emit(song_id)
+                return True
         except Exception:
             pass
+        return False
 
     # ── PPT 생성 ──
     @Slot(str, str, str)
