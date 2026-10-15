@@ -1,4 +1,4 @@
-"""앱 데이터 폴더: 앱 상태(튜토리얼을 봤는지, 창 크기·위치)와 저장한 곡 구성(src/utils/presets.py).
+"""앱 데이터 폴더: 앱 상태(튜토리얼을 봤는지, 창 크기·위치)와 저장한 프리셋(src/utils/presets.py).
 
 앱 폴더 안에 두면 업데이트할 때 앱 폴더를 새로 깔면서 지워지므로(Windows) 사용자 데이터 폴더에 둔다.
 - Windows: %APPDATA%\\LyricsSlideCreator (제거하면 installer/windows.iss가 지운다)

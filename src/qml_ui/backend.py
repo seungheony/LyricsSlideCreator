@@ -146,7 +146,7 @@ class Backend(QObject):
     updateFailed = Signal(str)           # JSON 객체 (message, detail)
     updateCancelled = Signal()           # 다운로드를 취소함 (받던 파일은 지웠다)
     updateReady = Signal()               # 설치 시작됨 → 앱을 종료해야 함
-    presetsChanged = Signal()            # 저장한 곡 구성이 바뀜 (검색 결과의 표시를 다시 그린다)
+    presetsChanged = Signal()            # 저장한 프리셋이 바뀜 (검색 결과·보관함을 다시 그린다)
 
     def __init__(self, art_provider):
         super().__init__()
@@ -259,25 +259,35 @@ class Backend(QObject):
             self._state['window'] = geo
             app_state.save(self._state)
 
-    # ── 저장한 곡 구성 ── (src/utils/presets.py)
+    # ── 프리셋 ── (src/utils/presets.py)
     @Slot(result=str)
     def presetCounts(self):
-        """곡 번호 → 저장한 구성 수 (JSON 객체)"""
+        """곡 번호 → 저장한 프리셋 수 (JSON 객체)"""
         return json.dumps(presets.counts(self._presets))
 
     @Slot(str, result=str)
     def presetsFor(self, song_id):
-        """그 곡의 구성 (JSON 배열, 최근 저장한 것부터)"""
+        """그 곡의 프리셋 (JSON 배열, 최근 저장한 것부터)"""
         return json.dumps(presets.for_song(self._presets, song_id), ensure_ascii=False)
 
-    @Slot(str, result=str)
-    def savePresets(self, entries_json):
-        """콘티 곡들의 구성을 저장한다. entries_json: [{song_id, title, artist, album, text}]
+    @Slot(result=str)
+    def allPresets(self):
+        """보관함: 모든 프리셋 (JSON 배열, 최근 저장한 것부터)"""
+        return json.dumps(self._presets, ensure_ascii=False)
+
+    @Slot(str, str, result=str)
+    def searchManualPresets(self, keyword, mode):
+        """직접 입력한 곡 중 검색어에 맞는 곡 (JSON 배열, 검색 결과 맨 위에 붙인다). mode: 'song' | 'lyric'"""
+        return json.dumps(presets.search_manual(self._presets, keyword, mode), ensure_ascii=False)
+
+    @Slot(str, str, result=str)
+    def savePresets(self, entries_json, name):
+        """콘티 곡들의 프리셋을 저장한다. entries_json: [{song_id, title, artist, album, manual, text}], name: 프리셋 이름
         반환: JSON 객체 {added, same} 또는 저장하지 못했으면 {error, detail}"""
         now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-        updated, added, same = presets.add(self._presets, json.loads(entries_json), now)
+        updated, added, same = presets.add(self._presets, json.loads(entries_json), now, name)
         if not presets.save(updated):
-            return json.dumps({'error': '구성을 저장하지 못했어요\n저장 폴더에 쓸 수 없어요. 디스크 공간이 부족하지 않은지 확인하고 다시 시도해 주세요.',
+            return json.dumps({'error': '프리셋을 저장하지 못했어요\n저장 폴더에 쓸 수 없어요. 디스크 공간이 부족하지 않은지 확인하고 다시 시도해 주세요.',
                                'detail': f'경로: {app_state.data_path(presets.FILE_NAME)}'}, ensure_ascii=False)
         self._presets = updated
         self.presetsChanged.emit()

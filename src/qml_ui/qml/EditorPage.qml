@@ -76,7 +76,7 @@ Item {
                  slides: groups.length, wraps: countWraps(groups), notice: tidied ? E.tidyMessage(tidy) : "" }
     }
 
-    // 저장한 구성으로 여는 곡: 텍스트를 그대로 쓴다 (정리·자동 나누기 없음).
+    // 프리셋으로 여는 곡: 텍스트를 그대로 쓴다 (정리·자동 나누기 없음).
     // 저장할 때 있던 3줄 이상 슬라이드는 그렇게 쓰기로 한 것이라 다시 묻지 않는다
     function presetEntry(newSong, text) {
         const groups = E.linesOf(E.parseBlocks(text))
@@ -136,7 +136,7 @@ Item {
         addSong(newSong, lyricsText)
     }
 
-    // 저장한 구성으로 곡을 연다 (fresh: 새 콘티로). 이어서 편집하던 곡이면 가사를 그 구성으로 바꾸고 되돌릴 수 있게 한다
+    // 프리셋으로 곡을 연다 (fresh: 새 콘티로). 이어서 편집하던 곡이면 가사를 그 프리셋으로 바꾸고 되돌릴 수 있게 한다
     function loadPreset(newSong, text, fresh) {
         storeCurrent()
         if (fresh) setlist = []
@@ -146,13 +146,13 @@ Item {
         if (setlist.indexOf(id) < 0) setlist = setlist.concat([id])
         if (id !== currentId) openEntry(id)
         if (!existed) {
-            if (toastHost) toastHost.show("저장된 구성으로 열었어요")
+            if (toastHost) toastHost.show("프리셋으로 열었어요")
             return
         }
         prepareEdit()
         flushTyping()
         if (lyrics.text === text) {
-            if (toastHost) toastHost.show("이미 저장된 구성과 같아요")
+            if (toastHost) toastHost.show("이미 이 프리셋과 같아요")
             return
         }
         keepLong(Object.keys(longKeys(E.linesOf(E.parseBlocks(text)))))
@@ -161,32 +161,36 @@ Item {
         lyrics.cursorPosition = 0
         setLyricsY(0)
         slideList.scrollToTop()
-        showUndoToast("편집하던 가사를 저장된 구성으로 바꿨어요")
+        showUndoToast("편집하던 가사를 프리셋으로 바꿨어요")
     }
 
-    // 콘티 곡들의 지금 슬라이드 구성을 저장한다 (PPT 생성과 따로). 다음에 검색 결과의 '저장된 구성'으로 불러온다.
-    // 직접 입력한 곡은 멜론 곡 번호가 없어 검색 결과와 이을 수 없으므로 빼고 저장한다
+    // 프리셋 저장 (PPT 생성과 따로): 이름을 물어 콘티 곡마다 지금 슬라이드를 저장한다.
+    // 멜론 곡은 검색 결과의 '프리셋' 배지로, 직접 입력한 곡은 검색 결과 맨 위에, 모두 보관함에서 다시 불러온다
+    readonly property bool presetSaveOpen: presetSaveDialog.opened
     function savePresets() {
         prepareEdit()
-        const all = setlistGroups().filter(s => s.groups.length)
-        const songs = all.filter(s => !s.song.manual)
-        if (!toastHost) return
-        if (!songs.length) {
-            toastHost.show("직접 입력한 곡은 검색 결과에 나오지 않아서 구성을 저장할 수 없어요", { error: true, duration: 4000 })
-            return
-        }
+        const songs = setlistGroups().filter(s => s.groups.length)
+        if (!songs.length || presetSaveDialog.opened) return
+        const now = new Date()
+        presetSaveDialog.ask(songs.map(s => "'" + (s.song.title || "제목 없음") + "'"),
+                             (now.getMonth() + 1) + "월 " + now.getDate() + "일",
+                             (name) => page.writePresets(songs, name))
+    }
+
+    function writePresets(songs, name) {
         const res = JSON.parse(backend.savePresets(JSON.stringify(songs.map(s => ({
             song_id: s.id, title: s.song.title, artist: s.song.artist, album: s.song.album || "",
-            text: E.serialize(s.groups) })))))
+            manual: s.song.manual === true, text: E.serialize(s.groups) }))), name))
         if (res.error) {
             if (dialog) dialog.showError(res.error, res.detail)
             return
         }
-        const skipped = all.length - songs.length
-        toastHost.show((songs.length > 1 ? songs.length + "곡의 구성을 저장했어요" : "구성을 저장했어요")
-                       + (skipped ? " (직접 입력한 곡 " + skipped + "곡 제외)" : "")
-                       + " · 검색 결과에서 불러올 수 있어요", { duration: 4000 })
+        if (toastHost)
+            toastHost.show((songs.length > 1 ? songs.length + "곡의 프리셋을 저장했어요" : "프리셋을 저장했어요")
+                           + " · 보관함에서 볼 수 있어요", { duration: 4000 })
     }
+
+    PresetSaveDialog { id: presetSaveDialog; objectName: "presetSaveDialog" }
 
     function selectSong(id) {
         if (id === currentId || !sessions[id]) return
@@ -554,7 +558,7 @@ Item {
         if (!keepTwo || !confirmDialog || !page.enabled || lyrics.activeFocus) return
         if (Qt.application.state !== Qt.ApplicationActive || !page.Window.active) return   // 다른 앱·창으로 전환
         // 다른 창이 떠 있거나(튜토리얼은 닫힌 뒤에 묻는다, 아래 Connections), PPT 생성·뒤로를 누르는 중이면 묻지 않는다
-        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible) return
+        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible) return
         if (generating || generateButton.pressed || backButton.pressed || setlistPanel.busy) return
         prepareEdit()
         const fresh = freshLongSlides()
@@ -1334,18 +1338,18 @@ Item {
                     onClicked: page.feedbackRequested()
                 }
                 Item { Layout.fillWidth: true }
-                // 구성 저장: PPT 생성과 따로, 콘티 곡들의 슬라이드 구성을 저장한다
+                // 프리셋 저장: PPT 생성과 따로, 콘티 곡들의 지금 슬라이드를 이름을 붙여 저장한다
                 AppButton {
                     id: savePresetButton
                     objectName: "savePresetButton"
-                    text: "구성 저장"
+                    text: "프리셋 저장"
                     size: "large"
                     enabled: page.deckSize > 0
                     onClicked: page.savePresets()
                     AppToolTip {
                         visible: savePresetButton.hovered
                         delay: 400
-                        text: "곡마다 지금 슬라이드 구성을 저장해요 (" + Theme.mod + "S). 다음에 검색 결과의 '저장된 구성'으로 그대로 불러올 수 있어요"
+                        text: "곡마다 지금 슬라이드를 이름을 붙여 저장해요 (" + Theme.mod + "S). 다음에 검색 결과나 보관함에서 그대로 불러올 수 있어요"
                     }
                 }
                 // 꺼진 버튼은 호버를 받지 못해, 바깥에 둔 영역으로 이유를 보여 준다

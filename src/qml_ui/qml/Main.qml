@@ -51,9 +51,9 @@ ApplicationWindow {
     function rememberGeometry() {
         if (visibility === Window.Windowed) normalGeometry = Qt.rect(x, y, width, height)
     }
-    onVisibilityChanged: {
-        if (visibility === Window.Maximized || visibility === Window.FullScreen) lastMaximized = true
-        else if (visibility === Window.Windowed) lastMaximized = false
+    onVisibilityChanged: (v) => {
+        if (v === Window.Maximized || v === Window.FullScreen) lastMaximized = true
+        else if (v === Window.Windowed) lastMaximized = false
         Qt.callLater(rememberGeometry)
     }
     // 최대화할 때 크기가 먼저 바뀌고 visibility가 뒤따라오기도 해서, 한 박자 늦게 확인한다
@@ -81,22 +81,26 @@ ApplicationWindow {
 
     // 멜론 없이 가사를 직접 입력해서 연다 (가사 직접 입력, 가사를 불러오지 못했을 때, 검색 실패).
     // info: { title, artist, album, song_id } — 멜론 곡에서 왔으면 song_id·앨범을 이어받는다 (앨범아트·같은 곡 이어서 편집)
-    property int manualSeq: 0
+    // 직접 입력한 곡의 song_id는 실행이 바뀌어도 겹치지 않게 만든다 (프리셋으로 저장하면 같은 곡으로 묶이고 검색 결과·보관함에서 다시 연다)
+    function manualId() {
+        return "manual-" + Date.now().toString(36) + Math.floor(Math.random() * 1679616).toString(36)
+    }
     function openManual(info) {
         cancelOpen()
         const song = {
-            song_id: info.song_id || "manual-" + (++manualSeq),
+            song_id: info.song_id || manualId(),
             title: info.title || "", artist: info.artist || "", album: info.album || "",
             manual: !info.song_id
         }
         chooseDestination(song, (fresh) => win.placeSong(song, "", fresh))
     }
 
-    // 검색 결과의 '저장된 구성'에서 불러오기: 저장할 때의 슬라이드 구성 그대로 연다 (제목·가수도 저장할 때의 것)
+    // 프리셋 불러오기 (검색 결과의 '프리셋' 배지·직접 입력한 곡·보관함): 저장할 때의 슬라이드 그대로 연다 (제목·가수도 저장할 때의 것)
     function openPreset(song, preset) {
         cancelOpen()
-        const s = Object.assign({}, song, { title: preset.title || song.title, artist: preset.artist || song.artist })
-        backend.loadArt(s.song_id)
+        const s = Object.assign({}, song, { title: preset.title || song.title, artist: preset.artist || song.artist,
+                                           manual: song.manual === true || preset.manual === true })
+        if (!s.manual) backend.loadArt(s.song_id)
         chooseDestination(s, (fresh) => {
             win.addMode = false
             win.enterEditor(() => editorPage.loadPreset(s, preset.text, fresh))
@@ -251,6 +255,7 @@ ApplicationWindow {
         onSongClicked: (song) => win.openSong(song)
         onManualRequested: (info) => win.openManual(info)
         onPresetsRequested: (song) => presetDialog.openFor(song)
+        onLibraryRequested: presetDialog.openLibrary()
         tour: tour
     }
 
@@ -493,27 +498,27 @@ ApplicationWindow {
     // ── 단축키 ──
     Shortcut {
         sequences: [StandardKey.Undo]
-        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.undo()
     }
     Shortcut {
         sequences: [StandardKey.Redo]
-        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && !editorPage.dragging && !editorPage.headerFocused && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.redo()
     }
     Shortcut {
         sequences: [StandardKey.Save]
-        enabled: win.editorActive && editorPage.deckSize > 0 && !editorPage.dragging && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && editorPage.deckSize > 0 && !editorPage.dragging && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.savePresets()
     }
     Shortcut {
         sequences: ["Ctrl+Return", "Ctrl+Enter"]
-        enabled: win.editorActive && editorPage.deckSize > 0 && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && editorPage.deckSize > 0 && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: editorPage.generate()
     }
     Shortcut {
         sequence: "Escape"
-        enabled: win.editorActive && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
+        enabled: win.editorActive && !editorPage.presetSaveOpen && !dialog.opened && !updateDialog.opened && !confirmDialog.visible && !tour.opened
         onActivated: {
             // 드래그 중이면 취소, 가사 입력 중이면 입력칸에서만 빠져나오고, 아니면 검색 화면으로
             if (editorPage.dragging) editorPage.cancelDrag()
