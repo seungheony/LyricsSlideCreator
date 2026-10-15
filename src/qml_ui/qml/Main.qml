@@ -88,25 +88,23 @@ ApplicationWindow {
         backend.songDetail(token, id)
     }
 
-    // 멜론 없이 가사를 직접 입력해서 연다 (가사 직접 입력, 가사를 불러오지 못했을 때, 검색 실패).
+    // 멜론 없이 가사를 직접 입력해서 담는다 (서랍의 '직접 입력' 탭. 검색 결과 없음·검색 실패·가사를 불러오지 못했을 때도 이 탭으로).
     // info: { title, artist, album, song_id } — 멜론 곡에서 왔으면 song_id·앨범을 이어받는다 (앨범아트·같은 곡 이어서 편집)
     // 직접 입력한 곡의 song_id는 실행이 바뀌어도 겹치지 않게 만든다 (프리셋으로 저장하면 같은 곡으로 묶이고 검색 결과·보관함에서 다시 연다)
-    // 가사를 바로 써야 하므로 서랍을 닫고 그 곡을 연다
     function manualId() {
         return "manual-" + Date.now().toString(36) + Math.floor(Math.random() * 1679616).toString(36)
     }
-    function openManual(info) {
+    function addManual(info, text, autoSplit) {
         const song = {
             song_id: info.song_id || manualId(),
             title: info.title || "", artist: info.artist || "", album: info.album || "",
             manual: !info.song_id
         }
-        editorPage.closeDrawer(false)
-        editorPage.addSong(song, "", true)
+        editorPage.addManual(song, text, autoSplit)
     }
 
-    // 프리셋 불러오기 (검색 결과의 '프리셋' 배지·직접 입력한 곡·보관함): 저장할 때의 슬라이드 그대로 콘티에 담는다 (제목·가수도 저장할 때의 것)
-    // 서랍이 열려 있으면 콘티에 쌓기만 하고, 닫혀 있으면(편집 화면의 '프리셋 불러오기') 그 곡을 연다 (편집 중인 곡이면 가사를 바꿈)
+    // 프리셋 불러오기 (서랍의 보관함 탭): 저장할 때의 슬라이드 그대로 콘티에 담는다 (제목·가수도 저장할 때의 것).
+    // 콘티에 있거나 전에 편집한 곡이면 그 곡의 히스토리에 남기고 가사를 바꾼다 (EditorPage.loadPreset)
     function openPreset(song, preset) {
         const s = Object.assign({}, song, { title: preset.title || song.title, artist: preset.artist || song.artist,
                                            manual: song.manual === true || preset.manual === true })
@@ -141,7 +139,9 @@ ApplicationWindow {
             if (det.error) {
                 // 자리를 뺀다. 그 사이 콘티에서 뺐거나 프리셋으로 채웠으면 알리지 않는다
                 if (!editorPage.dropLoading(song.song_id)) return
-                dialog.showError(det.error, det.detail, { text: "직접 입력으로 열기", handler: () => win.openManual(song) },
+                dialog.showError(det.error, det.detail, { text: "직접 입력으로 열기", handler: () => editorPage.openDrawer("manual", { manual: {
+                                     title: song.title, artist: song.artist, album: song.album, song_id: song.song_id,
+                                     notice: "멜론에서 '" + (song.title || "이 곡") + "' 가사를 불러오지 못했어요. 가사를 붙여 넣으면 이 곡으로 담아요" } }) },
                                  det.retry ? { handler: () => win.openSong(song) } : null)
                 return
             }
@@ -163,17 +163,14 @@ ApplicationWindow {
         dialog: dialog
         tour: tour
         confirmDialog: confirmDialog
-        presetDialog: presetDialog
-        onPresetLibraryRequested: presetDialog.openLibrary({ currentId: editorPage.currentId, fromEditor: true })
     }
 
     // 곡 찾기 서랍의 멜론 탭·보관함 탭·직접 입력 탭
     Connections {
         target: editorPage.drawer
         function onSongClicked(song) { win.openSong(song) }
-        function onPresetsRequested(song) { presetDialog.openFor(song) }
-        function onLibraryRequested() { presetDialog.openLibrary({ currentId: editorPage.currentId }) }
-        function onManualRequested(info) { win.openManual(info) }
+        function onPresetChosen(song, preset) { win.openPreset(song, preset) }
+        function onManualSubmitted(info, text, autoSplit) { win.addManual(info, text, autoSplit) }
     }
 
     // 버전 표시. 누르면 업데이트를 직접 확인한다 (알림을 닫았으면 다시 연다)
@@ -211,12 +208,6 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 96
         z: 100
-    }
-
-    PresetDialog {
-        id: presetDialog
-        objectName: "presetDialog"
-        onLoadRequested: (song, preset) => win.openPreset(song, preset)
     }
 
     AppDialog { id: dialog; objectName: "errorDialog" }
@@ -317,7 +308,8 @@ ApplicationWindow {
     }
 
     // ── 첫 실행 튜토리얼 ── 끝까지 보거나 건너뛰면 다시 나오지 않는다 (기록: src/utils/app_state.py)
-    // 건너뛰면 모든 튜토리얼을 본 것으로 기록한다. 편집 화면 튜토리얼은 곡 찾기 서랍을 닫고 처음 곡을 열었을 때 보여 준다
+    // 곡 찾기 서랍 튜토리얼(기록 이름 'search': 예전 검색 화면 튜토리얼과 같은 기록)은 서랍이 처음 열렸을 때,
+    // 편집 화면 튜토리얼('editor')은 곡을 담고 서랍을 닫아 처음 곡을 열었을 때 보여 준다. 건너뛰면 모두 본 것으로 기록한다
     readonly property string tutorialHint: "사용 방법은 화면 곳곳의 ? 버튼을 누르면 언제든 다시 볼 수 있어요"
     function finishTutorial(name) {
         backend.markTutorialSeen(name)
@@ -328,13 +320,25 @@ ApplicationWindow {
         backend.markTutorialSeen("editor")
         toast.show(tutorialHint, { duration: 4500 })
     }
+    function maybeDrawerTour() {
+        if (editorPage.drawerOpen && !tour.opened && !backend.tutorialSeen("search")) drawerTourTimer.restart()
+    }
     function maybeEditorTour() {
         if (editorPage.song && !editorPage.drawerOpen && !tour.opened && !backend.tutorialSeen("editor")) editorTourTimer.restart()
     }
     Connections {
         target: editorPage
         function onSongChanged() { win.maybeEditorTour() }
-        function onDrawerOpenChanged() { win.maybeEditorTour() }
+        function onDrawerOpenChanged() { win.maybeDrawerTour(); win.maybeEditorTour() }
+    }
+    // 서랍이 열리는 애니메이션이 끝난 뒤에 시작한다 (시작할 때 콘티가 비어 있으면 서랍이 저절로 열린다)
+    Timer {
+        id: drawerTourTimer
+        interval: Theme.normal + 200
+        onTriggered: {
+            if (editorPage.drawerOpen && !tour.opened && !backend.tutorialSeen("search"))
+                editorPage.drawer.showHelp({ required: true, onFinished: () => win.finishTutorial("search"), onSkipped: win.skipTutorial })
+        }
     }
     // 서랍이 닫히는 애니메이션이 끝난 뒤에 시작해야 강조할 위치가 맞는다
     Timer {
@@ -350,7 +354,7 @@ ApplicationWindow {
     Timer { interval: 1500; running: true; onTriggered: backend.checkForUpdate(false) }
 
     // ── 단축키 ──
-    readonly property bool modalOpen: editorPage.presetSaveOpen || presetDialog.opened || dialog.opened || updateDialog.opened || confirmDialog.visible || tour.opened
+    readonly property bool modalOpen: editorPage.presetSaveOpen || dialog.opened || updateDialog.opened || confirmDialog.visible || tour.opened
     Shortcut {
         sequences: [StandardKey.Undo]
         enabled: !editorPage.drawerOpen && !editorPage.dragging && !editorPage.headerFocused && !win.modalOpen
@@ -375,14 +379,15 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+K"
         enabled: !editorPage.dragging && !win.modalOpen
-        onActivated: editorPage.openDrawer()
+        onActivated: editorPage.openDrawer("melon")
     }
     Shortcut {
         sequence: "Escape"
         enabled: !win.modalOpen
         onActivated: {
-            // 드래그 중이면 취소, 가사 입력 중이면 입력칸에서만 빠져나오고, 서랍이 열려 있으면 닫는다
+            // 드래그 중이면 취소, 가사 입력 중이면 입력칸에서만 빠져나오고, 서랍이 열려 있으면 (보관함의 이름 고치기·삭제 확인을 먼저 취소하고) 닫는다
             if (editorPage.dragging) editorPage.cancelDrag()
+            else if (editorPage.drawerOpen && editorPage.drawer.handleEscape()) return
             else if (editorPage.lyricsFocused) editorPage.blurLyrics()
             else if (editorPage.drawerOpen) editorPage.closeDrawer()
         }

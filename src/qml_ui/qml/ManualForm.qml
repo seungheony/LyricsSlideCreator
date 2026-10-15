@@ -152,7 +152,7 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: 160
+            Layout.minimumHeight: 120
             radius: Theme.radiusSm
             color: Theme.surface
             border.width: 1.5

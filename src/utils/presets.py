@@ -3,7 +3,7 @@
 편집기는 곡마다 가사 텍스트가 유일한 원본(빈 줄로 나뉜 덩어리가 슬라이드 한 장)이므로 프리셋 = 그 텍스트다.
 멜론 곡은 곡 번호(song_id)로 검색 결과와 잇는다. 앨범아트는 저장하지 않고 곡 번호로 다시 받는다.
 직접 입력한 곡(manual)은 멜론에 없으므로 앱 안에서 제목·가수·가사로 찾는다(search_manual). song_id는 'manual-'로
-시작하는 고유한 값이라(Main.qml openManual) 같은 곡을 다시 저장하면 같은 곡으로 묶인다.
+시작하는 고유한 값이라(Main.qml manualId) 같은 곡을 다시 저장하면 같은 곡으로 묶인다.
 파일: 앱 데이터 폴더의 presets.json (src/utils/app_state.py) — {"version": 1, "presets": [...]}
   프리셋: {id, song_id, name, title, artist, album, manual, image_url, text, saved_at('YYYY-MM-DDTHH:MM:SS', 이 컴퓨터 시각)}
   image_url: 멜론 앨범아트 주소 (저장할 때 알고 있으면). 보관함이 곡 상세 페이지를 거치지 않고 그림만 받는다
