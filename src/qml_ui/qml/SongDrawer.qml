@@ -8,7 +8,7 @@ import "."
 // 서랍이 열려 있는 동안 담은 곡은 콘티에 쌓이기만 하고, 닫을 때 이번에 처음 담은 곡을 연다 (EditorPage.closeDrawer).
 // 담는 일은 받는 쪽(Main·EditorPage)이 한다:
 //   songClicked(song): 멜론 결과 행 / presetChosen(song, preset): 보관함의 ＋·'이걸로 바꾸기'
-//   manualSubmitted(info, text, autoSplit): 직접 입력의 '콘티에 담기' (보낸 뒤 입력칸을 비운다)
+//   manualSubmitted(info, text): 직접 입력의 '콘티에 담기' (보낸 뒤 입력칸을 비운다)
 // show(tab, opts): 탭을 바꾸고 포커스. opts.filterSong: 보관함을 그 곡만, opts.manual: 직접 입력 칸 미리 채우기(ManualForm.prefill)
 Rectangle {
     id: drawer
@@ -28,7 +28,7 @@ Rectangle {
     signal closeRequested()
     signal songClicked(var song)
     signal presetChosen(var song, var preset)
-    signal manualSubmitted(var info, string text, bool autoSplit)
+    signal manualSubmitted(var info, string text)
 
     function focusSearch() { searchPanel.focusSearch() }
 
@@ -259,43 +259,12 @@ Rectangle {
                     x: 20
                     width: manualScroll.width - 40
                     height: manualScroll.contentHeight - 20
-                    onSubmitted: (info, text, autoSplit) => {
-                        drawer.manualSubmitted(info, text, autoSplit)
+                    onSubmitted: (info, text) => {
+                        drawer.manualSubmitted(info, text)
                         manualForm.reset()
                         manualForm.focusFirst()
                     }
                 }
-            }
-        }
-
-        // ── 아래 막대 ──
-        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
-        RowLayout {
-            id: bottomBar
-            Layout.fillWidth: true
-            Layout.preferredHeight: 64
-            Layout.leftMargin: 20
-            Layout.rightMargin: 20
-            spacing: 10
-            Text {
-                Layout.fillWidth: true
-                text: drawer.addedIds.length ? "이번에 <b>" + drawer.addedIds.length + "곡</b> 담았어요"
-                    : drawer.tab === "library" ? "＋를 누르면 콘티 끝에 담아요"
-                    : drawer.tab === "manual" ? "가사를 넣고 '콘티에 담기'를 눌러요"
-                    : "곡을 누르면 콘티 끝에 담아요"
-                textFormat: Text.StyledText
-                color: Theme.text2
-                font.family: Theme.font
-                font.pixelSize: 13
-                elide: Text.ElideRight
-            }
-            AppButton {
-                id: doneButton
-                objectName: "drawerDoneButton"
-                text: "편집으로"
-                variant: "primary"
-                onClicked: drawer.closeRequested()
-                AppToolTip { visible: doneButton.hovered; delay: 600; text: "서랍을 닫고 담은 곡을 편집해요 (Esc)" }
             }
         }
     }
@@ -307,15 +276,15 @@ Rectangle {
         tour.start([
             { target: searchPanel.searchBoxItem, demo: searchDemo, title: "1. 멜론에서 찾기",
               body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>를 누르면 멜론에서 찾아와요.<br><br>"
-                  + "제목이 기억나지 않으면 <b>가사</b>를 눌러 가사 한 구절로 찾을 수 있어요." },
+                  + "제목이 기억나지 않으면 <b>가사</b>를 입력해서 찾을 수도 있어요." },
             { target: searchPanel.resultsItem, demo: resultsDemo, title: "2. ＋로 담기",
-              body: "곡을 누르면 콘티 끝에 담고 가사를 받아 와요. 서랍은 열린 채라 <b>여러 곡을 연달아</b> 담을 수 있어요.<br><br>"
-                  + "프리셋을 저장해 둔 곡은 오른쪽에 <b>프리셋</b>이 보이고, 누르면 그때 슬라이드 그대로 담아요." },
+              body: "곡을 누르면 콘티에 추가해요. 검색창은 열린 채로 <b>여러 곡을 연달아</b> 담을 수 있어요.<br><br>"
+                  + "프리셋을 저장해 둔 곡은 오른쪽에 <b>프리셋</b> 표시가 있고, 누르면 그 프리셋에 저장한 그대로 콘티에 담아요." },
             { target: tabBar, title: "3. 보관함 · 직접 입력",
-              body: "<b>보관함</b>: 저장한 프리셋을 곡마다 모아 보여 줘요. ＋로 콘티에 담고, 콘티에 있는 곡은 <b>이걸로 바꾸기</b>로 가사를 바꿔요.<br>"
-                  + "<b>직접 입력</b>: 멜론에 없는 곡은 제목과 가사를 붙여 넣어 담아요." },
-            { target: bottomBar, title: "4. 편집으로",
-              body: "다 담았으면 <b>편집으로</b>(또는 <b>Esc</b>)를 눌러요. 이번에 처음 담은 곡이 열려요.<br>"
+              body: "<b>보관함</b>: 이전에 저장했던 프리셋이나 직접 입력한 곡을 모아서 보여 줘요.<br>"
+                  + "<b>직접 입력</b>: 멜론에 없는 곡은 제목과 가사를 직접 적어요." },
+            { target: closeButton, title: "4. 닫고 편집하기",
+              body: "다 담았으면 <b>✕</b>(또는 <b>Esc</b>), 바깥 영역 클릭으로 검색창을 닫고 편집을 시작해요.<br>"
                   + "나중에 곡을 더하려면 콘티의 <b>곡 추가</b>나 <b>" + Theme.mod + "K</b>를 눌러요." }
         ], opts)
     }
@@ -344,7 +313,7 @@ Rectangle {
                     Text {
                         Layout.fillWidth: true
                         leftPadding: 2
-                        text: d.typed ? d.word.slice(0, d.typed) + "|" : "노래 제목 또는 가수 이름"
+                        text: d.typed ? d.word.slice(0, d.typed) + "|" : "제목, 아티스트, 가사"
                         color: d.typed ? Theme.text : Theme.text3
                         font.family: Theme.font
                         font.pixelSize: 15

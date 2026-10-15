@@ -40,24 +40,24 @@ QtObject {
     // ── 튜토리얼 ── (? 버튼마다 해당 부분만, 처음 들어왔을 때는 전부 이어서)
     function lyrics() { tour.start(lyricsSteps()) }
     function slides() { tour.start(slidesSteps()) }
-    function keepTwoHelp() { tour.start(keepTwoSteps()) }
     function generate() { tour.start(generateSteps()) }
     function setlistHelp() { tour.start(setlistSteps()) }
     function firstRun(onFinished, onSkipped) {
-        tour.start(setlistSteps().concat(lyricsSteps(), slidesSteps(), keepTwoSteps(), generateSteps()),
+        tour.start(setlistSteps().concat(lyricsSteps(), slidesSteps(), generateSteps()),
                    { required: true, onFinished: onFinished, onSkipped: onSkipped })
     }
 
     function lyricsSteps() {
         return [
             { target: lyricsBox, demo: lyricsDemo, title: "가사가 곧 슬라이드예요",
-              body: "<b>빈 줄</b>로 구분된 덩어리 하나가 슬라이드 한 장이 돼요. 가사를 고치면 오른쪽 미리보기에 바로 반영돼요." },
+              body: "<b>빈 줄</b>로 구분된 단락 하나가 슬라이드 한 장이 돼요. 가사를 고치면 오른쪽 미리보기에 바로 반영돼요." },
             { target: autoSplitRow, demo: autoSplitDemo, title: "자동 나누기",
               body: "가사 전체를 처음부터 <b>1줄씩</b> 또는 <b>2줄씩</b> 다시 나눠요. 곡을 처음 불러오면 2줄씩 나뉘어 있어요.<br>"
-                  + "직접 나눈 것은 사라지지만 <b>되돌리기(" + Theme.undoKey + ")</b>로 되돌릴 수 있어요." }
+                  + "<b>되돌리기(" + Theme.undoKey + ")</b>로 되돌릴 수 있어요." }
         ]
     }
 
+    // 슬라이드 미리보기와 2줄 유지는 줄 옮기기와 이어지므로 한 튜토리얼로 보여 준다
     function slidesSteps() {
         return [
             { target: slideList, demo: previewDemo, title: "슬라이드 미리보기",
@@ -68,32 +68,26 @@ QtObject {
                   + "누르면 거기서 나누거나 두 장을 합쳐요." },
             { target: slideList, demo: dragDemo, title: "줄 옮기기 (드래그)",
               body: "<b>첫 줄</b>은 앞 슬라이드로, <b>마지막 줄</b>은 뒤 슬라이드로 끌어서 옮길 수 있어요. "
-                  + "슬라이드 <b>사이</b>에 놓으면 새 슬라이드가 돼요." },
+                  + "슬라이드 <b>사이</b>에 놓으면 새 슬라이드가 돼요.<br>"
+                  + "<b>2줄 유지</b>를 끄면 옮긴 줄만 움직여서, 받은 슬라이드는 3줄, 준 슬라이드는 1줄이 된 채로 남아요." },
+            { target: keepTwoRow, demo: keepTwoToggleDemo, title: "2줄 유지란?",
+              body: "줄을 옆 슬라이드로 옮길 때, <b>넘치는 줄을 밀어서 2줄씩 다시 맞춰주는</b> 옵션이에요. "
+                  + "가사 짝이 한 줄씩 어긋나 있을 때, 한 줄만 옮겨서 뒤쪽을 한 번에 바로잡을 수 있어요. 기본으로 켜져 있어요." },
+            { target: slideList, demo: keepTwoDragDemo, title: "2줄 유지가 켜져 있으면",
+              body: "예: 첫 슬라이드의 마지막 줄을 뒤 슬라이드로 옮기면, 3줄이 된 슬라이드는 넘친 줄을 <b>같은 방향</b>으로 밀어내서 뒤쪽 슬라이드가 모두 <b>2줄씩 다시 맞춰져요</b>. "
+                  + "줄을 준 슬라이드는 채우지 않고 <b>1줄</b>로 남아요." },
             { target: historyRow, demo: historyDemo, title: "되돌리기",
               body: "모든 편집은 되돌릴 수 있어요. <b>" + Theme.undoKey + "</b> 되돌리기, <b>"
                   + Theme.redoKey + "</b> 다시 실행." }
         ]
     }
 
-    function keepTwoSteps() {
-        return [
-            { target: keepTwoRow, demo: keepTwoToggleDemo, title: "2줄 유지란?",
-              body: "줄을 옆 슬라이드로 옮길 때, <b>넘치는 줄을 밀어서 2줄씩 다시 맞춰주는</b> 옵션이에요. "
-                  + "가사 짝이 한 줄씩 어긋나 있을 때, 한 줄만 옮겨서 뒤쪽을 한 번에 바로잡을 수 있어요. 기본으로 켜져 있어요." },
-            { target: slideList, demo: dragDemo, title: "꺼져 있으면",
-              body: "옮긴 줄만 움직여요. 받은 슬라이드는 3줄, 준 슬라이드는 1줄이 된 채로 남아요." },
-            { target: slideList, demo: keepTwoDragDemo, title: "켜져 있으면",
-              body: "예: 첫 슬라이드의 마지막 줄을 뒤 슬라이드로 옮기면, 3줄이 된 슬라이드는 넘친 줄을 <b>같은 방향</b>으로 밀어내서 뒤쪽 슬라이드가 모두 <b>2줄씩 다시 맞춰져요</b>. "
-                  + "줄을 준 슬라이드는 채우지 않고 <b>1줄</b>로 남아요." }
-        ]
-    }
-
     function setlistSteps() {
         return [
             { target: setlistPanel, title: "콘티",
-              body: "예배 순서대로 여러 곡을 <b>한 PPT</b>로 만들 수 있어요. <b>곡 추가</b>(" + Theme.mod + "K)를 누르면 옆에 서랍이 열려 "
-                  + "멜론·보관함·직접 입력에서 곡을 연달아 담아요.<br>"
-                  + "곡을 누르면 그 곡의 가사를 편집하고, 끌어서 <b>순서</b>를 바꾸고, 마우스를 올리면 나오는 <b>휴지통</b>으로 뺄 수 있어요. "
+              body: "예배 순서대로 여러 곡을 <b>한 PPT</b>로 만들 수 있어요. <b>곡 추가</b>(" + Theme.mod + "K)를 누르면 옆에 검색창이 열려 "
+                  + "곡을 담아요.<br>"
+                  + "곡을 누르면 그 곡의 가사를 편집하고, 끌어서 <b>순서</b>를 바꿀 수 있어요. "
                   + "위의 <b>⋯</b> 메뉴의 <b>콘티 비우기</b>로 처음부터 다시 담을 수 있어요(되돌릴 수 있어요)." }
         ]
     }
@@ -113,9 +107,8 @@ QtObject {
                   + "처음·곡 사이·끝에는 <b>검은 빈 슬라이드</b>가 들어가요.<br>단축키: <b>"
                   + Theme.mod + "Enter</b>" },
             { target: savePresetButton, title: "프리셋",
-              body: "<b>저장</b>: 곡마다 지금 슬라이드를 이름을 붙여 저장해요. PPT를 만들지 않아도 저장할 수 있어요.<br>"
-                  + "<b>불러오기</b>: 곡 추가 서랍의 <b>보관함</b>을 열어요. 프리셋을 콘티에 더하고, 콘티에 있는 곡은 가사를 그 프리셋으로 바꿔요(되돌릴 수 있어요).<br><br>"
-                  + "멜론에서 같은 곡을 찾으면 결과 옆에 <b>프리셋</b>이 보이고, 직접 입력한 곡은 결과 맨 위에 나와요.<br>단축키(저장): <b>"
+              body: "<b>저장</b>: 곡마다 편집한 구성에 이름을 붙여 저장해요. <br>"
+                  + "<b>불러오기</b>: 곡 검색창에서 <b>보관함</b>을 열어요. 프리셋을 콘티에 불러올 수 있어요. <br><br>"
                   + Theme.mod + "S</b>" }
         ]
     }

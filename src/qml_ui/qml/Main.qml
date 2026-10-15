@@ -94,13 +94,13 @@ ApplicationWindow {
     function manualId() {
         return "manual-" + Date.now().toString(36) + Math.floor(Math.random() * 1679616).toString(36)
     }
-    function addManual(info, text, autoSplit) {
+    function addManual(info, text) {
         const song = {
             song_id: info.song_id || manualId(),
             title: info.title || "", artist: info.artist || "", album: info.album || "",
             manual: !info.song_id
         }
-        editorPage.addManual(song, text, autoSplit)
+        editorPage.addManual(song, text)
     }
 
     // 프리셋 불러오기 (서랍의 보관함 탭): 저장할 때의 슬라이드 그대로 콘티에 담는다 (제목·가수도 저장할 때의 것).
@@ -170,7 +170,7 @@ ApplicationWindow {
         target: editorPage.drawer
         function onSongClicked(song) { win.openSong(song) }
         function onPresetChosen(song, preset) { win.openPreset(song, preset) }
-        function onManualSubmitted(info, text, autoSplit) { win.addManual(info, text, autoSplit) }
+        function onManualSubmitted(info, text) { win.addManual(info, text) }
     }
 
     // 버전 표시. 누르면 업데이트를 직접 확인한다 (알림을 닫았으면 다시 연다)

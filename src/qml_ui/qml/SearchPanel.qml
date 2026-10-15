@@ -18,8 +18,8 @@ Item {
     property var loadingIds: []
     property var addedIds: []
     property int token: 0             // 오래된 검색 응답 무시용
-    property string mode: "song"      // 검색 방식: "song"(제목·가수) / "lyric"(가사 구절)
-    property string resultMode: "song" // 지금 보이는 결과의 검색 방식 (곡 검색이 비면 가사 검색 결과로 바뀐다)
+    // 검색은 늘 제목·가수(곡 검색)로 하고, 첫 쪽이 비면 백엔드가 같은 검색어로 가사 검색을 해서 대신 보여 준다(fallback)
+    property string resultMode: "song" // 지금 보이는 결과의 검색 방식: "song" / "lyric"(곡 검색이 비어 가사에서 찾음)
     property bool fallback: false     // 곡 검색 결과가 없어서 가사 검색 결과를 대신 보여 주는 중
     property int total: 0             // 멜론이 알려 준 전체 건수
     property bool loadingMore: false
@@ -87,9 +87,8 @@ Item {
         Qt.inputMethod.commit()    // 한글 조합 중인 글자를 확정한 뒤 읽는다
         const keyword = input.text.trim()
         if (!keyword) return
-        const key = mode + ":" + keyword
-        if (searching && key === searchedKeyword) return
-        searchedKeyword = key
+        if (searching && keyword === searchedKeyword) return
+        searchedKeyword = keyword
         searchedText = keyword
         token++
         hasResults = true
@@ -103,8 +102,8 @@ Item {
         errorText = ""
         melonError = ""
         localCount = 0
-        resultMode = mode
-        backend.searchPage(token, keyword, mode, 1)
+        resultMode = "song"
+        backend.searchPage(token, keyword, "song", 1)
     }
 
     property string searchedText: ""      // 마지막으로 검색한 검색어 (다음 쪽을 받을 때 쓴다)
@@ -116,12 +115,6 @@ Item {
         moreError = ""
         token++
         backend.searchPage(token, searchedText, resultMode, melonCount + 1)
-    }
-
-    function setMode(m) {
-        if (mode === m) return
-        mode = m
-        if (hasResults && input.text.trim()) doSearch()
     }
 
     Connections {
@@ -162,7 +155,7 @@ Item {
             page.errorText = locals.length ? "" : failed
             page.melonError = locals.length && failed ? failed.split("\n")[0] : ""
             page.emptyText = page.results.length || res.error ? ""
-                : (page.mode === "lyric" ? "이 구절이 들어간 가사를 찾지 못했어요" : "검색 결과가 없어요")
+                : "제목·가수·가사에서 찾지 못했어요"
         }
     }
 
@@ -206,7 +199,7 @@ Item {
                 TextField {
                     id: input
                     Layout.fillWidth: true
-                    placeholderText: page.mode === "lyric" ? "가사 한 구절" : "노래 제목 또는 가수 이름"
+                    placeholderText: "제목, 아티스트, 가사"
                     placeholderTextColor: Theme.text3
                     color: Theme.text
                     font.family: Theme.font
@@ -218,63 +211,6 @@ Item {
                     Keys.onDownPressed: (event) => { event.accepted = page.focusList() }
                     Accessible.name: "검색어"
                     ContextMenu.menu: AppTextMenu { editor: input }
-                }
-                // 검색 방식 전환
-                Rectangle {
-                    id: modeSwitch
-                    implicitWidth: modeRow.implicitWidth + 6
-                    implicitHeight: 32
-                    radius: 9
-                    color: Theme.surface2
-                    Row {
-                        id: modeRow
-                        anchors.centerIn: parent
-                        spacing: 2
-                        Repeater {
-                            model: [{ key: "song", label: "제목·가수" }, { key: "lyric", label: "가사" }]
-                            delegate: Rectangle {
-                                required property var modelData
-                                readonly property bool on: page.mode === modelData.key
-                                width: label.implicitWidth + 14
-                                height: 26
-                                radius: 8
-                                color: on ? Theme.surface : "transparent"
-                                border.width: on ? 1 : 0
-                                border.color: Theme.border
-                                Accessible.role: Accessible.RadioButton
-                                Accessible.name: modelData.label
-                                Accessible.checked: on
-                                Accessible.onPressAction: page.setMode(modelData.key)
-                                // Tab으로 닿고, Space·Enter로 고른다 (포커스가 있으면 테두리)
-                                activeFocusOnTab: true
-                                Keys.onSpacePressed: page.setMode(modelData.key)
-                                Keys.onReturnPressed: page.setMode(modelData.key)
-                                Keys.onEnterPressed: page.setMode(modelData.key)
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: parent.radius
-                                    color: "transparent"
-                                    border.width: 2
-                                    border.color: Theme.primary
-                                    visible: parent.activeFocus
-                                }
-                                Text {
-                                    id: label
-                                    anchors.centerIn: parent
-                                    text: parent.modelData.label
-                                    color: parent.on ? Theme.text : Theme.text3
-                                    font.family: Theme.font
-                                    font.pixelSize: 12
-                                    font.weight: parent.on ? Font.DemiBold : Font.Normal
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: { page.setMode(parent.modelData.key); input.forceActiveFocus() }
-                                }
-                            }
-                        }
-                    }
                 }
                 AppButton {
                     text: "검색"
@@ -334,7 +270,7 @@ Item {
                 Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: "노래 제목이나 가수 이름으로 멜론에서 찾아요.\n제목이 기억나지 않으면 '가사'로 한 구절을 검색해 보세요."
+                    text: "노래 제목이나 가수 이름으로 멜론에서 찾아요.\n제목·가수로 찾지 못하면 가사에서 찾아 줘요."
                     color: Theme.text3
                     font.family: Theme.font
                     font.pixelSize: 13

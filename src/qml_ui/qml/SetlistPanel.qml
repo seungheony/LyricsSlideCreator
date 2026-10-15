@@ -12,7 +12,6 @@ ColumnLayout {
     property var entries: []          // [{ id, title, artist, slides, wraps, loading }] (콘티 순서)
     property string current: ""       // 편집 중인 곡
     property string pendingId: ""     // 가사를 다 받으면 열 곡
-    property int deckSize: 0          // PPT 전체 장 수 (빈 슬라이드 포함)
     property alias addButton: addButton
     property alias listView: list
 
@@ -343,15 +342,5 @@ ColumnLayout {
         variant: panel.entries.length ? "secondary" : "primary"
         onClicked: panel.addRequested()
         AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K)" }
-    }
-
-    Text {
-        Layout.fillWidth: true
-        visible: panel.deckSize > 0
-        text: "PPT " + panel.deckSize + "장 · 처음·곡 사이·끝에 빈 슬라이드"
-        color: Theme.text3
-        font.family: Theme.font
-        font.pixelSize: 11
-        wrapMode: Text.Wrap
     }
 }

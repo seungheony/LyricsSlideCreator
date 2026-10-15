@@ -18,7 +18,7 @@ class ManualForm(unittest.TestCase):
         self.form = self.component.create()
         self.assertIsNotNone(self.form, self.component.errorString())
         self.got = []
-        self.form.submitted.connect(lambda info, text, auto: self.got.append((info, text, auto)))
+        self.form.submitted.connect(lambda info, text: self.got.append((info, text)))
 
     def tearDown(self):
         self.form.deleteLater()
@@ -41,33 +41,29 @@ class ManualForm(unittest.TestCase):
 
         text = '첫 줄\n둘째 줄\n셋째 줄\n\n넷째 줄\n\n\n다섯째 줄'
         self.child('manualLyrics').setProperty('text', text)
-        self.assertEqual(self.form.property('slideCount'), 3)
-        self.assertEqual(self.form.property('splitCount'), 4)
+        self.assertEqual(self.form.property('slideCount'), 4)    # 담으면 2줄씩 나뉘는 기준
         self.assertTrue(self.child('manualSubmit').property('enabled'))
-        self.assertIn('3장', self.child('manualSlideCount').property('text'))
+        self.assertIn('4장', self.child('manualSlideCount').property('text'))
 
         self.call('submit')
         self.assertEqual(len(self.got), 1)
-        info, got_text, auto = self.got[0]
+        info, got_text = self.got[0]
         info = info.toVariant() if hasattr(info, 'toVariant') else info
         self.assertEqual(info, {'title': '주 품에', 'artist': '어노인팅', 'album': '앨범', 'song_id': '123'})
-        self.assertEqual((got_text, auto), (text, True))
+        self.assertEqual(got_text, text)
 
-    def test_auto_split_off_and_reset(self):
+    def test_submit_without_prefill_and_reset(self):
         self.call('prefill', {'title': '새 곡'})
         self.child('manualLyrics').setProperty('text', '하나\n둘\n셋')
-        self.child('manualAutoSplit').setProperty('checked', False)
-        self.assertEqual(self.form.property('splitCount'), 1)
+        self.assertEqual(self.form.property('slideCount'), 2)
         self.call('submit')
-        info, _, auto = self.got[0]
+        info, _ = self.got[0]
         info = info.toVariant() if hasattr(info, 'toVariant') else info
         self.assertEqual(info, {'title': '새 곡', 'artist': '', 'album': '', 'song_id': ''})
-        self.assertFalse(auto)
 
         self.call('reset')
         self.assertEqual(self.child('manualLyrics').property('text'), '')
         self.assertEqual(self.form.property('notice'), '')
-        self.assertTrue(self.form.property('autoSplit'))
         self.call('submit')    # 가사가 없으면 담지 않는다
         self.assertEqual(len(self.got), 1)
 
