@@ -10,11 +10,13 @@ import "editor.js" as E
 //   setlist: 콘티에 있는 song_id 배열. 들어 있는 곡 카드에는 '콘티 N번' 배지, 프리셋 줄 버튼은 ＋ 대신 '이걸로 바꾸기'(replaceRequested)
 //   filterSong: 비어 있지 않으면 그 곡 카드만 (검색 결과의 '프리셋 N' 배지). 찾기 칸은 숨긴다
 //   currentId: 편집 중인 곡(맨 위에 '편집 중')
+//   appliedTexts: 콘티 곡의 지금 가사 (song_id → 텍스트). 지금 가사와 같은 프리셋은 줄을 초록으로 칠하고 '이걸로 바꾸기' 대신 '✓ 적용 중'
 Item {
     id: lib
     property var setlist: []
     property string filterSong: ""
     property string currentId: ""
+    property var appliedTexts: ({})
     property int sideMargin: 24
     readonly property bool library: filterSong === ""
     property var songs: []              // 보이는 곡: [{ song_id, title, artist, album, manual, image_url, presets }]
@@ -352,6 +354,8 @@ Item {
                             // 연필·휴지통은 줄에 마우스를 올리거나 키보드로 왔을 때만 (불러오기는 늘)
                             readonly property bool showTools: rowHover.hovered || toggleArea.activeFocus || renameButton.activeFocus
                                                               || deleteButton.activeFocus || deleting
+                            // 콘티 곡의 지금 가사가 이 프리셋과 같다 (바꿀 게 없으니 '적용 중'으로 보인다)
+                            readonly property bool applied: card.setlistNo > 0 && lib.appliedTexts[card.modelData.song_id] === modelData.text
                             Layout.fillWidth: true
                             spacing: 0
                             onExpandedChanged: if (expanded) lib.revealSoon(item)
@@ -361,7 +365,8 @@ Item {
                                 Layout.fillWidth: true
                                 implicitHeight: 44
                                 radius: 10
-                                color: item.expanded || rowHover.hovered ? Theme.surface2 : Theme.surface2Clear
+                                color: item.applied ? (rowHover.hovered ? Theme.primarySoftHover : Theme.primarySoft)
+                                     : item.expanded || rowHover.hovered ? Theme.surface2 : Theme.surface2Clear
                                 Behavior on color { ColorAnimation { duration: Theme.fast } }
                                 HoverHandler { id: rowHover }
 
@@ -382,7 +387,7 @@ Item {
                                         Keys.onReturnPressed: lib.toggle(item.modelData)
                                         Keys.onEnterPressed: lib.toggle(item.modelData)
                                         Accessible.role: Accessible.Button
-                                        Accessible.name: item.label + ", " + item.groups.length + "장, " + (item.expanded ? "슬라이드 접기" : "슬라이드 펼쳐 보기")
+                                        Accessible.name: item.label + ", " + item.groups.length + "장, " + (item.applied ? "지금 적용 중, " : "") + (item.expanded ? "슬라이드 접기" : "슬라이드 펼쳐 보기")
                                         Accessible.onPressAction: lib.toggle(item.modelData)
                                         RowLayout {
                                             anchors.fill: parent
@@ -489,7 +494,7 @@ Item {
                                         id: loadButton
                                         objectName: "presetLoadButton"
                                         readonly property bool replace: card.setlistNo > 0
-                                        visible: !item.renaming
+                                        visible: !item.renaming && !item.applied
                                         Layout.leftMargin: 4
                                         glyph: replace ? "" : "plus"
                                         text: replace ? "이걸로 바꾸기" : ""
@@ -498,6 +503,25 @@ Item {
                                         onClicked: lib.load(card.modelData, item.modelData)
                                         Accessible.name: (replace ? "이걸로 바꾸기" : "콘티에 추가") + ": " + item.label
                                         AppToolTip { visible: parent.hovered && !loadButton.replace; delay: 400; text: "콘티에 추가" }
+                                    }
+                                    // 지금 적용된 프리셋: 버튼 자리에 표시만
+                                    Row {
+                                        objectName: "presetAppliedMark"
+                                        visible: !item.renaming && item.applied
+                                        Layout.leftMargin: 4
+                                        Layout.rightMargin: 8
+                                        spacing: 4
+                                        Accessible.role: Accessible.StaticText
+                                        Accessible.name: "지금 적용 중인 프리셋"
+                                        Icon { glyph: "check"; size: 14; color: Theme.primaryText; anchors.verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            text: "적용 중"
+                                            color: Theme.primaryText
+                                            font.family: Theme.font
+                                            font.pixelSize: 13
+                                            font.weight: Font.Bold
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
                                     }
                                 }
                             }

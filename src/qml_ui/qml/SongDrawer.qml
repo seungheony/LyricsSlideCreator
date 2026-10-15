@@ -16,6 +16,7 @@ Rectangle {
     property bool opened: false
     property bool emptySetlist: false     // 콘티가 비었다 (머리말을 '어떤 곡으로 시작할까요?'로)
     property var setlist: []
+    property var appliedTexts: ({})   // 콘티 곡의 지금 가사 (보관함에서 같은 프리셋의 '이걸로 바꾸기'를 끔)
     property var loadingIds: []
     property var addedIds: []             // 이번에 서랍을 연 뒤 담은 곡
     property string currentId: ""         // 편집기에 열린 곡 (보관함 맨 위에 '편집 중')
@@ -239,6 +240,7 @@ Rectangle {
                     sideMargin: 20
                     setlist: drawer.setlist
                     currentId: drawer.currentId
+                    appliedTexts: drawer.appliedTexts
                     onAddRequested: (song, preset) => drawer.presetChosen(song, preset)
                     onReplaceRequested: (song, preset) => drawer.presetChosen(song, preset)
                     // 한 곡 보기에서 마지막 프리셋을 지우면 모든 곡으로

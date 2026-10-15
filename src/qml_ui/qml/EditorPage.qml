@@ -64,6 +64,16 @@ Item {
     readonly property bool drawerOpen: songDrawer.opened
     property var drawerAdded: []        // 이번에 서랍을 연 뒤 콘티에 새로 담은 곡
     property string pendingOpenId: ""   // 가사를 다 받으면 열 곡
+    // 서랍이 열려 있는 동안 콘티 곡의 지금 가사 (song_id → 텍스트). 편집기에 열린 곡은 화면의 가사로(서랍에서 바꾸면 sessions는 그대로라서)
+    readonly property var appliedTexts: {
+        if (!songDrawer.opened) return ({})
+        const m = {}
+        setlist.forEach(id => {
+            if (song && id === currentId) m[id] = lyrics.text
+            else if (sessions[id] && !sessions[id].loading) m[id] = sessions[id].text
+        })
+        return m
+    }
 
     // tab: "melon"(검색칸에 포커스) | "library" | "manual". opts: SongDrawer.show의 opts (filterSong·manual)
     // tab을 주지 않으면 닫혀 있을 때는 멜론 탭으로 열고, 열려 있으면 탭을 그대로 둔다 (콘티를 다 뺐을 때 등)
@@ -1750,6 +1760,7 @@ Item {
         loadingIds: page.loadingIds
         addedIds: page.drawerAdded
         currentId: page.currentId
+        appliedTexts: page.appliedTexts
         tour: page.tour
         onCloseRequested: page.closeDrawer()
     }
