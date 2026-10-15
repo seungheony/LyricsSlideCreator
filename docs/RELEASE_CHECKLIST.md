@@ -54,7 +54,7 @@ Windows 실기 확인 목록(줄바꿈 예측 비교, 해상도·배율, 업데�
 - [ ] 만든 PPT를 PowerPoint에서 열어 가사·줄 간격·Pretendard 서체 확인 (가능하면 Pretendard가 없는 PC에서)
 - [ ] (macOS) 다크 모드/라이트 모드에서 화면 확인
 
-문제가 있으면 고쳐서 master에 머지한 뒤 `./scripts/release.sh` → `1) 베타 배포`로 다음 베타(`v1.2.0-beta.2`)를 내고 1번부터 다시 합니다.
+문제가 있으면 고쳐서 master에 머지한 뒤 `./scripts/release.sh` → `1) 베타 배포`로 다음 베타(`v1.4-beta.2`)를 내고 1번부터 다시 합니다.
 
 ## 4. 정식 배포
 
