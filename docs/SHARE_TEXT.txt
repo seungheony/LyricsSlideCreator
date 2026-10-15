@@ -7,7 +7,7 @@ https://github.com/seungheony/LyricsSlideCreator/releases/latest
 페이지 아래 'Assets'에서 내 컴퓨터에 맞는 파일을 받으세요.
 
 [Windows]
-1. LyricsSlideCreator-버전-Setup.exe 받기
+1. LyricsSlideCreator-버전-Windows-Setup.exe 받기
 2. 실행해서 설치
 ※ 'Windows의 PC 보호' 창이 뜨면 [추가 정보] → [실행]
 

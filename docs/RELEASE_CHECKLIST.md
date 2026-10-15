@@ -9,7 +9,7 @@ CI가 매번 자동으로 확인하는 것: 빌드, 화면·폰트·템플릿 �
 
 - [ ] 배포할 내용이 master에 머지되어 있음
 - [ ] `./scripts/release.sh` → `1) 베타 배포` → 버전 입력 (베타 번호는 자동. master가 아니거나 최신이 아니면 master로 바꾸고 pull할지 물음)
-- [ ] Actions가 끝나면 [Releases](https://github.com/seungheony/LyricsSlideCreator/releases)에 프리릴리스와 파일 3개(`-Setup.exe`, `-macOS.zip`, `SHA256SUMS.txt`)가 있는지 확인
+- [ ] Actions가 끝나면 [Releases](https://github.com/seungheony/LyricsSlideCreator/releases)에 프리릴리스와 파일 3개(`-Windows-Setup.exe`, `-macOS.zip`, `SHA256SUMS.txt`)가 있는지 확인
 
 ## 2. 업데이트 테스트 (Windows, macOS 각각)
 
@@ -32,7 +32,9 @@ Windows 실기 확인 목록(줄바꿈 예측 비교, 해상도·배율, 업데�
   - 기록은 앱 데이터 폴더의 `state.json`(Windows `%APPDATA%\LyricsSlideCreator`, macOS `~/Library/Application Support/LyricsSlideCreator`). 앱 안에는 파일이 생기지 않음(macOS `ls "<앱>/Contents/MacOS"`). 앱이 다시 실행이 잘 되는지
   - 업데이트한 뒤에도 튜토리얼이 다시 나오지 않음 (예전 macOS 앱의 plist 기록은 처음 실행 때 옮겨지고 `defaults read io.github.seungheony.lyricsslidecreator tutorials_seen`이 없다고 나옴)
 - [ ] 창 크기·위치를 바꾸고(최대화 포함) 닫았다 열면 같은 자리·크기로 열림. 모니터를 뺀 뒤에는 기본 화면 가운데에 열림
-- [ ] 구성 저장: 편집 화면 `구성 저장`(⌘S/Ctrl+S) → 같은 곡을 다시 검색하면 결과 옆 `저장된 구성 N` → 불러오기 하면 저장한 구성 그대로 열림(2줄 자동 나누기 없음). 편집 중인 곡에 불러오면 되돌리기 토스트. 삭제는 두 번 눌러야 지워짐. 업데이트한 뒤에도 남아 있음
+- [ ] 프리셋: 편집 화면 `프리셋 저장`(⌘S/Ctrl+S) → 이름 입력(기본 오늘 날짜) → 같은 곡을 다시 검색하면 결과 옆 `프리셋 N` → 불러오기 하면 저장한 슬라이드 그대로 열림(2줄 자동 나누기 없음). 편집 중인 곡에 불러오면 되돌리기 토스트. 삭제는 두 번 눌러야 지워짐. 업데이트한 뒤에도 남아 있음
+  - 직접 입력한 곡: 프리셋 저장 → 제목으로 검색하면 결과 맨 위(음표 아이콘·'직접 입력'), 가사 검색으로도 나옴 → 누르면 프리셋 고르기. 앱을 다시 켜도 찾아짐
+  - 검색 화면 `보관함`: 멜론 곡·직접 입력한 곡의 프리셋이 곡별로 보이고, 찾기·불러오기·삭제가 됨
 - [ ] 설치 폴더·앱 안에 `LICENSE`, `THIRD_PARTY_NOTICES.txt`가 있음
 - [ ] 각 `?` 버튼: 설명할 부분만 밝아지고 예시 동작(가짜 포인터)이 실제 화면 위에서 재생됨, 가사는 바뀌지 않음
 - [ ] 앱 이름이 'Lyrics Slide Creator' (창 제목·Dock/작업 표시줄·Windows 시작 메뉴·제어판), 앱 아이콘이 보임

@@ -4,7 +4,7 @@
     python scripts/build.py 1.2.0
 
 - macOS:   dist/Lyrics Slide Creator.app  +  dist/LyricsSlideCreator-<버전>-macOS.zip
-- Windows: dist/LyricsSlideCreator-<버전>-Setup.exe  (Inno Setup 필요: iscc가 PATH에 있거나 기본 설치 경로)
+- Windows: dist/LyricsSlideCreator-<버전>-Windows-Setup.exe  (Inno Setup 필요: iscc가 PATH에 있거나 기본 설치 경로)
 
 Nuitka로 폴더 형태(standalone)/앱 번들로 빌드한다. 실행 파일 하나(onefile)와 달리
 실행할 때마다 파일을 풀 필요가 없어 빠르게 켜지고, 앱 폴더 밖에 캐시가 생기지 않는다.
@@ -237,7 +237,7 @@ def build_windows(version):
          f'/DSourceDir={os.path.join(BUILD, "run.dist")}',
          f'/DOutputDir={DIST}',
          os.path.join(ROOT, 'installer', 'windows.iss')])
-    return [os.path.join(DIST, f'{APP_FILE_NAME}-{version}-Setup.exe')]
+    return [os.path.join(DIST, f'{APP_FILE_NAME}-{version}-Windows-Setup.exe')]
 
 
 def main():

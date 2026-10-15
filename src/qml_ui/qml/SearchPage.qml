@@ -21,7 +21,8 @@ Item {
     property bool loadingMore: false
     property real bottomInset: 0      // 화면 아래에 떠 있는 표시('편집 중' 칩)가 가리는 높이
     property string moreError: ""
-    // 저장한 곡 구성 수 (곡 번호 → 수). 결과 행에 '저장된 구성' 배지를 띄운다
+    property string melonError: ""    // 직접 입력한 곡 결과는 있는데 멜론 검색만 실패했을 때 (목록 위에 알림)
+    // 저장한 프리셋 수 (곡 번호 → 수). 결과 행에 '프리셋 N' 배지를 띄운다
     property var presetCounts: JSON.parse(backend.presetCounts())
     // 목록은 ListModel에 이어 붙인다 (배열을 통째로 바꾸면 다음 쪽을 붙일 때 스크롤이 맨 위로 돌아간다)
     ListModel { id: resultModel }
@@ -32,10 +33,21 @@ Item {
     }
     function appendResults(items) {
         for (const r of items) resultModel.append({
-            song_id: r.song_id, title: r.title, artist: r.artist, album: r.album,
-            adult: r.adult === true, snippet: r.snippet || "" })
+            song_id: r.song_id, title: r.title, artist: r.artist, album: r.album || "",
+            adult: r.adult === true, snippet: r.snippet || "", manual: r.manual === true })
     }
-    readonly property bool hasMore: results.length > 0 && results.length < total
+    // 직접 입력한 곡의 프리셋 중 검색어에 맞는 곡 (멜론 결과보다 위에 둔다, results 앞쪽 localCount개)
+    property int localCount: 0
+    function manualMatches(keyword, modes) {
+        const seen = {}
+        const out = []
+        modes.forEach(m => JSON.parse(backend.searchManualPresets(keyword, m)).forEach(r => {
+            if (!seen[r.song_id]) { seen[r.song_id] = true; out.push(r) }
+        }))
+        return out
+    }
+    readonly property int melonCount: results.length - localCount
+    readonly property bool hasMore: melonCount > 0 && melonCount < total
     function countText(n) { return Number(n).toLocaleString(Qt.locale("ko_KR"), "f", 0) }
 
     function showHelp(opts) {
@@ -46,8 +58,8 @@ Item {
                   + "멜론에 없는 곡은 아래 <b>가사 직접 입력</b>으로 가사를 붙여 넣어 만들 수 있어요." },
             { target: resultsArea, demo: resultsDemo, title: "2. 곡 고르기",
               body: "검색 결과에서 곡을 누르면 가사와 앨범아트를 불러와 <b>편집 화면</b>으로 넘어가요.<br><br>"
-                  + "편집 화면에서 <b>구성 저장</b>을 해 둔 곡은 오른쪽에 <b>저장된 구성</b>이 보여요. "
-                  + "누르면 그때 슬라이드 구성 그대로 열어요." },
+                  + "편집 화면에서 <b>프리셋 저장</b>을 해 둔 곡은 오른쪽에 <b>프리셋</b>이 보이고, 누르면 그때 슬라이드 그대로 열어요. "
+                  + "직접 입력한 곡의 프리셋은 결과 맨 위에 나와요. 저장한 프리셋은 <b>보관함</b>에서 모두 볼 수 있어요." },
             { target: null, title: "3. 다듬고 PPT 만들기",
               body: "편집 화면에서 가사를 슬라이드 단위로 나누고, 아래의 <b>PPT 생성</b>을 누르면 끝이에요. "
                   + "왼쪽 <b>곡 추가</b>로 여러 곡을 순서대로 한 PPT로 만들 수도 있어요.<br><br>"
@@ -155,8 +167,9 @@ Item {
     }
 
     signal songClicked(var song)
-    // 결과 행의 '저장된 구성' 배지 (또는 그 행에서 →)
+    // 결과 행의 '프리셋 N' 배지 (또는 그 행에서 →, 직접 입력한 곡은 행을 눌러도)
     signal presetsRequested(var song)
+    signal libraryRequested()
     // 멜론 없이 가사를 직접 입력해서 연다. info: { title, artist }
     signal manualRequested(var info)
 
@@ -189,6 +202,8 @@ Item {
         moreError = ""
         emptyText = ""
         errorText = ""
+        melonError = ""
+        localCount = 0
         resultMode = mode
         backend.searchPage(token, keyword, mode, 1)
     }
@@ -201,7 +216,7 @@ Item {
         loadingMore = true
         moreError = ""
         token++
-        backend.searchPage(token, searchedText, resultMode, results.length + 1)
+        backend.searchPage(token, searchedText, resultMode, melonCount + 1)
     }
 
     function setMode(m) {
@@ -212,7 +227,17 @@ Item {
 
     Connections {
         target: backend
-        function onPresetsChanged() { page.presetCounts = JSON.parse(backend.presetCounts()) }
+        function onPresetsChanged() {
+            page.presetCounts = JSON.parse(backend.presetCounts())
+            // 프리셋을 모두 지운 직접 입력 곡은 결과에서 뺀다
+            for (let i = page.localCount - 1; i >= 0; i--) {
+                if (!page.presetCounts[page.results[i].song_id]) {
+                    resultModel.remove(i)
+                    page.results = page.results.slice(0, i).concat(page.results.slice(i + 1))
+                    page.localCount--
+                }
+            }
+        }
         function onSearchFinished(t, json) {
             if (t !== page.token) return
             const res = JSON.parse(json)
@@ -227,12 +252,17 @@ Item {
                 return
             }
             page.searching = false
-            page.setResults(res.results)
+            // 직접 입력한 곡이 맨 위 (곡 검색이 가사 검색으로 바뀌었으면 둘 다로 찾는다)
+            const locals = page.manualMatches(page.searchedText, res.fallback ? ["song", "lyric"] : [res.mode])
+            page.localCount = locals.length
+            page.setResults(locals.concat(res.results))
             page.total = res.total === null || res.total === undefined ? res.results.length : res.total
             page.resultMode = res.mode
             page.fallback = res.fallback
-            page.errorText = res.error ? res.error.message : ""
-            page.emptyText = res.results.length || res.error ? ""
+            const failed = res.error ? res.error.message : ""
+            page.errorText = locals.length ? "" : failed
+            page.melonError = locals.length && failed ? failed.split("\n")[0] : ""
+            page.emptyText = page.results.length || res.error ? ""
                 : (page.mode === "lyric" ? "이 구절이 들어간 가사를 찾지 못했어요" : "검색 결과가 없어요")
         }
     }
@@ -418,17 +448,31 @@ Item {
             }
         }
 
-        // 멜론에 없는 곡(CCM·찬송가·자작곡)이나 연결이 안 될 때: 빈 편집 화면으로
-        AppButton {
-            id: manualButton
+        RowLayout {
             Layout.alignment: Qt.AlignRight
             Layout.topMargin: 6
-            text: "가사 직접 입력"
-            glyph: "plus"
-            variant: "ghost"
-            size: "small"
-            onClicked: page.manualRequested({ title: "", artist: "" })
-            AppToolTip { visible: manualButton.hovered; text: "멜론에 없는 곡은 가사를 직접 붙여 넣어 만들 수 있어요" }
+            spacing: 4
+            // 보관함: 저장한 프리셋을 모두 본다 (멜론 곡·직접 입력한 곡)
+            AppButton {
+                id: libraryButton
+                objectName: "libraryButton"
+                text: "보관함"
+                glyph: "library"
+                variant: "ghost"
+                size: "small"
+                onClicked: page.libraryRequested()
+                AppToolTip { visible: libraryButton.hovered; text: "저장한 프리셋을 모두 보고 불러와요" }
+            }
+            // 멜론에 없는 곡(CCM·찬송가·자작곡)이나 연결이 안 될 때: 빈 편집 화면으로
+            AppButton {
+                id: manualButton
+                text: "가사 직접 입력"
+                glyph: "plus"
+                variant: "ghost"
+                size: "small"
+                onClicked: page.manualRequested({ title: "", artist: "" })
+                AppToolTip { visible: manualButton.hovered; text: "멜론에 없는 곡은 가사를 직접 붙여 넣어 만들 수 있어요. 프리셋으로 저장하면 검색에서도 찾을 수 있어요" }
+            }
         }
 
         // ── 결과 ──
@@ -530,12 +574,12 @@ Item {
                     event.accepted = true
                 }
                 function openCurrent() {
-                    if (currentItem) page.songClicked(currentItem.modelData)
+                    if (currentItem) currentItem.open()
                 }
                 Keys.onReturnPressed: openCurrent()
                 Keys.onEnterPressed: openCurrent()
                 Keys.onSpacePressed: openCurrent()
-                // →: 저장된 구성이 있으면 고르는 창을 연다
+                // →: 프리셋이 있으면 고르는 창을 연다
                 Keys.onRightPressed: (event) => {
                     event.accepted = !!(currentItem && currentItem.presetCount)
                     if (event.accepted) page.presetsRequested(currentItem.modelData)
@@ -557,11 +601,14 @@ Item {
                     color: Theme.text3
                     font.family: Theme.font
                     font.pixelSize: 13
-                    text: !page.results.length ? "" : (page.resultMode === "lyric"
+                    text: !page.results.length ? "" : (page.melonError ? "멜론 검색은 하지 못했어요. " + page.melonError + "\n" : "")
+                          + (page.resultMode === "lyric"
                            ? (page.fallback ? "곡 제목에는 없어서 가사에서 찾았어요.\n" : "")
                              + "가사에 이 구절이 있는 노래 · "
                            : "")
-                          + "총 " + page.countText(page.total) + "곡 중 " + page.countText(page.results.length) + "곡"
+                          + (page.localCount ? "직접 입력한 곡 " + page.localCount + "곡" + (page.melonCount || page.total ? " · " : "") : "")
+                          + (page.melonCount || page.total
+                             ? "멜론 총 " + page.countText(page.total) + "곡 중 " + page.countText(page.melonCount) + "곡" : "")
                 }
 
                 footer: Item {
@@ -605,8 +652,14 @@ Item {
                     required property string album
                     required property bool adult
                     required property string snippet
+                    required property bool manual
                     readonly property var modelData: ({ song_id: song_id, title: title, artist: artist,
-                                                        album: album, adult: adult, snippet: snippet })
+                                                        album: album, adult: adult, snippet: snippet, manual: manual })
+                    // 직접 입력한 곡은 멜론 가사가 없으므로 프리셋을 고르는 창을 연다
+                    function open() {
+                        if (manual) page.presetsRequested(modelData)
+                        else page.songClicked(modelData)
+                    }
                     readonly property bool loading: page.loadingId === song_id
                     readonly property int presetCount: page.presetCounts[song_id] || 0
                     readonly property bool focused: ListView.isCurrentItem && list.activeFocus
@@ -621,15 +674,16 @@ Item {
                     Behavior on color { ColorAnimation { duration: Theme.fast } }
                     Accessible.role: Accessible.Button
                     Accessible.name: [title, artist, album].filter(Boolean).join(", ")
-                                     + (presetCount ? ", 저장된 구성 " + presetCount + "개 (오른쪽 화살표로 열기)" : "")
-                    Accessible.onPressAction: page.songClicked(modelData)
+                                     + (manual ? ", 직접 입력한 곡, 프리셋 " + presetCount + "개"
+                                        : presetCount ? ", 프리셋 " + presetCount + "개 (오른쪽 화살표로 열기)" : "")
+                    Accessible.onPressAction: open()
 
                     // 나타날 때 아래에서 살짝 올라온다
                     opacity: 0
                     transform: Translate { id: shift; y: 8 }
                     Component.onCompleted: {
                         appear.start()
-                        backend.loadArt(modelData.song_id)
+                        if (!manual) backend.loadArt(modelData.song_id)
                     }
                     ParallelAnimation {
                         id: appear
@@ -659,7 +713,8 @@ Item {
                             Layout.preferredWidth: 52
                             Layout.preferredHeight: 52
                             radius: 8
-                            placeholder: Theme.skeleton
+                            placeholder: row.manual ? Theme.surface2 : Theme.skeleton
+                            Icon { anchors.centerIn: parent; visible: row.manual; glyph: "music"; size: 22; color: Theme.text3 }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -697,7 +752,7 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: [row.modelData.artist, row.modelData.album].filter(Boolean).join(" · ")
+                                text: [row.manual ? "직접 입력" : "", row.modelData.artist, row.modelData.album].filter(Boolean).join(" · ")
                                 textFormat: Text.PlainText
                                 color: Theme.text3
                                 font.family: Theme.font
@@ -718,16 +773,17 @@ Item {
                                 elide: Text.ElideRight
                             }
                         }
-                        // 저장한 구성이 있는 곡: 누르면 고르는 창 (행을 누르면 지금처럼 멜론 가사로 연다)
+                        // 프리셋이 있는 곡: 누르면 고르는 창 (멜론 곡은 행을 누르면 지금처럼 멜론 가사로 연다)
                         AppButton {
                             id: presetBadge
                             visible: row.presetCount > 0
-                            text: "저장된 구성 " + row.presetCount
+                            glyph: "bookmark"
+                            text: "프리셋 " + row.presetCount
                             variant: "primary"
                             size: "small"
                             focusPolicy: Qt.NoFocus      // 키보드는 목록에서 →
                             onClicked: page.presetsRequested(row.modelData)
-                            AppToolTip { visible: presetBadge.hovered; delay: 400; text: "예전에 저장한 슬라이드 구성 그대로 열어요" }
+                            AppToolTip { visible: presetBadge.hovered; delay: 400; text: "예전에 저장한 슬라이드 그대로 열어요" }
                         }
                         Icon {
                             id: arrow
@@ -750,7 +806,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: page.songClicked(row.modelData)
+                        onClicked: row.open()
                     }
                 }
             }

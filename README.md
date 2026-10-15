@@ -6,16 +6,16 @@ Lyrics Slide Creator는 Melon.com에서 노래 가사를 검색하고, 편집하
 
 *   **Melon.com 노래 검색**: 노래 제목 또는 가수 이름으로 검색하고 앨범아트와 함께 결과를 보여줍니다.
 *   **가사 편집**: 빈 줄로 슬라이드를 나누는 가사 편집기와 실시간 슬라이드 미리보기. 미리보기에서 줄 사이를 눌러 나누기, 슬라이드 사이를 눌러 합치기, 줄을 옆 슬라이드로 끌어 옮기기, 되돌리기(⌘Z / Ctrl+Z)를 지원합니다.
-*   **구성 저장**: 곡마다 슬라이드 구성을 저장해 두면, 다음에 같은 곡을 검색할 때 결과 옆 `저장된 구성`으로 그때 구성 그대로 다시 열 수 있습니다.
+*   **프리셋**: 곡마다 지금 슬라이드를 이름을 붙여 저장해 두면, 다음에 같은 곡을 검색할 때 결과 옆 `프리셋`으로 그대로 다시 열 수 있습니다. 직접 입력한 곡도 저장할 수 있고 제목·가사로 검색하면 결과 맨 위에 나옵니다. 저장한 프리셋은 검색 화면의 `보관함`에서 모두 볼 수 있습니다.
 *   **PowerPoint 생성**: 템플릿(`.pptx`) 서식을 그대로 유지한 채 가사 슬라이드를 만듭니다. 기본 템플릿과 앱 화면은 Pretendard 서체를 사용합니다.
 *   **자동 업데이트**: 새 버전이 나오면 앱에서 알려주고, [업데이트] 버튼 하나로 받아서 설치·재시작합니다.
-*   **깔끔한 설치/제거**: 앱은 설치 폴더(.app)와 앱 데이터 폴더(저장한 구성·창 위치·튜토리얼 기록, Windows `%APPDATA%\LyricsSlideCreator`, macOS `~/Library/Application Support/LyricsSlideCreator`) 밖에 파일을 남기지 않으며(OS가 남기는 기록과 업데이트 때 쓰는 임시 파일은 제외), Windows에서는 제어판에서 제거하면 앱 데이터 폴더까지 모두 지워집니다. macOS에서 저장한 구성까지 지우려면 앱 데이터 폴더도 지우세요.
+*   **깔끔한 설치/제거**: 앱은 설치 폴더(.app)와 앱 데이터 폴더(저장한 프리셋·창 위치·튜토리얼 기록, Windows `%APPDATA%\LyricsSlideCreator`, macOS `~/Library/Application Support/LyricsSlideCreator`) 밖에 파일을 남기지 않으며(OS가 남기는 기록과 업데이트 때 쓰는 임시 파일은 제외), Windows에서는 제어판에서 제거하면 앱 데이터 폴더까지 모두 지워집니다. macOS에서 저장한 프리셋까지 지우려면 앱 데이터 폴더도 지우세요.
 
 ## 설치 (사용자)
 
 [Releases](https://github.com/seungheony/LyricsSlideCreator/releases)에서 최신 버전을 받습니다.
 
-*   **Windows**: `LyricsSlideCreator-<버전>-Setup.exe` 실행. 관리자 권한 없이 현재 사용자 계정에 설치됩니다. 제거는 `설정 → 앱` 또는 `제어판 → 프로그램 제거`에서 합니다.
+*   **Windows**: `LyricsSlideCreator-<버전>-Windows-Setup.exe` 실행. 관리자 권한 없이 현재 사용자 계정에 설치됩니다. 제거는 `설정 → 앱` 또는 `제어판 → 프로그램 제거`에서 합니다.
     *   서명되지 않은 설치 파일이라 "Windows의 PC 보호" 창이 뜰 수 있습니다. **추가 정보 → 실행**을 누르면 설치됩니다.
 *   **macOS (Apple Silicon, macOS 14 이상)**: Intel Mac은 지원하지 않습니다. `LyricsSlideCreator-<버전>-macOS.zip`을 풀고 `Lyrics Slide Creator.app`을 **응용 프로그램 폴더로 옮긴 뒤** 실행합니다. 제거는 앱을 휴지통으로 옮기면 됩니다.
     *   서명되지 않은 앱이라 처음 실행하면 "열 수 없습니다" 경고가 뜹니다. **시스템 설정 → 개인정보 보호 및 보안**으로 가서 아래쪽의 **그래도 열기**를 누른 뒤 다시 실행하세요. 한 번만 하면 됩니다. (macOS 15부터는 우클릭 → 열기로는 실행되지 않습니다.)
@@ -55,7 +55,7 @@ python scripts/build.py 1.2.0
 ```
 
 *   **macOS**: `dist/Lyrics Slide Creator.app`, `dist/LyricsSlideCreator-1.2.0-macOS.zip`
-*   **Windows**: `dist/LyricsSlideCreator-1.2.0-Setup.exe` ([Inno Setup 6](https://jrsoftware.org/isinfo.php) 필요)
+*   **Windows**: `dist/LyricsSlideCreator-1.2.0-Windows-Setup.exe` ([Inno Setup 6](https://jrsoftware.org/isinfo.php) 필요)
 
 Nuitka로 C 컴파일하므로 macOS는 Xcode Command Line Tools, Windows는 Visual Studio Build Tools(C++)가 필요합니다. macOS 빌드는 앱 안 바이너리(실행 파일·Python·Qt)의 최소 macOS 버전(minos)을 로그에 찍고, 그 큰 값(PySide6 6.12 휠 기준 14.0 이상)을 `Info.plist`의 `LSMinimumSystemVersion`에 기록합니다. 설치 안내의 macOS 요구 버전은 이 값에 맞춥니다.
 
@@ -103,7 +103,7 @@ Windows 배포 파일(앱 실행 파일과 설치 파일)은 [SignPath Foundatio
 
 Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) *(pending approval)*.
 
-*   **서명 대상**: 이 저장소의 소스에서 GitHub Actions(GitHub 호스팅 러너, [`release.yml`](.github/workflows/release.yml))로 빌드한 Windows 릴리스 파일(`LyricsSlideCreator.exe`, `LyricsSlideCreator-<버전>-Setup.exe`)만 서명합니다. 함께 들어 있는 서드파티 라이브러리(Python, Qt 등)는 각 배포처의 파일을 그대로 씁니다.
+*   **서명 대상**: 이 저장소의 소스에서 GitHub Actions(GitHub 호스팅 러너, [`release.yml`](.github/workflows/release.yml))로 빌드한 Windows 릴리스 파일(`LyricsSlideCreator.exe`, `LyricsSlideCreator-<버전>-Windows-Setup.exe`)만 서명합니다. 함께 들어 있는 서드파티 라이브러리(Python, Qt 등)는 각 배포처의 파일을 그대로 씁니다.
 *   **승인**: 서명 요청은 릴리스마다 아래 승인자가 직접 확인하고 승인합니다.
 *   **배포처**: 공식 배포처는 이 저장소의 [Releases](https://github.com/seungheony/LyricsSlideCreator/releases)뿐입니다. 각 릴리스의 `SHA256SUMS.txt`로 파일을 확인할 수 있습니다.
 *   **macOS**: macOS 앱은 이 프로그램 대상이 아니며, 아직 Apple Developer ID로 서명·공증하지 않았습니다.

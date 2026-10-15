@@ -4,7 +4,7 @@
 param([Parameter(Mandatory = $true)][string]$Version)
 $ErrorActionPreference = 'Stop'
 
-$setup = Join-Path $PSScriptRoot "..\dist\LyricsSlideCreator-$Version-Setup.exe"
+$setup = Join-Path $PSScriptRoot "..\dist\LyricsSlideCreator-$Version-Windows-Setup.exe"
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\LyricsSlideCreator'
 $exe = Join-Path $installDir 'LyricsSlideCreator.exe'
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{99E90106-8A80-4B53-92E4-ADE0CCB80F0F}_is1'

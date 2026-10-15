@@ -9,7 +9,8 @@
 5. take_last_result(): 다음 실행 때 지난 업데이트가 됐는지 확인하고 임시 폴더를 지운다
 
 릴리스에 올라가야 하는 파일 (GitHub Actions가 만든다):
-    LyricsSlideCreator-<버전>-Setup.exe, LyricsSlideCreator-<버전>-macOS.zip, SHA256SUMS.txt
+    LyricsSlideCreator-<버전>-Windows-Setup.exe, LyricsSlideCreator-<버전>-macOS.zip, SHA256SUMS.txt
+    (v1.4-beta.1까지는 -Setup.exe. 찾을 때는 끝부분 -Setup.exe만 보므로 두 이름 모두 받는다)
 """
 import errno
 import glob
