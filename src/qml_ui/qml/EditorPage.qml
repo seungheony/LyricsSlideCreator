@@ -120,9 +120,7 @@ Item {
         else if (setlist.length) pendingOpenId = setlist[0]
     }
 
-    // 머리글의 제목·가수 입력칸에 커서가 있다 (이때 ⌘Z는 그 칸의 되돌리기, Esc는 입력칸에서 빠져나오기)
-    readonly property bool headerFocused: titleField.activeFocus || artistField.activeFocus
-    readonly property bool lyricsFocused: lyrics.activeFocus || headerFocused
+    readonly property bool lyricsFocused: lyrics.activeFocus
     readonly property bool dragging: slideList.dragging
 
     function contentKey(bs) { return E.serialize(E.linesOf(bs)) }
@@ -248,8 +246,6 @@ Item {
         song = null
         art.source = ""
         backdrop.source = ""
-        titleField.text = ""
-        artistField.text = ""
         keptLongSlides = {}
         savedKey = ""
         applying = true
@@ -555,8 +551,6 @@ Item {
         // 직접 입력한 곡은 앨범아트가 없다
         art.source = newSong.manual ? "" : "image://art/" + newSong.song_id
         backdrop.source = art.source
-        titleField.text = newSong.title
-        artistField.text = newSong.artist
         longCheckTimer.stop()
         typingTimer.stop()
         dismissUndoToast()
@@ -592,14 +586,6 @@ Item {
         toastHist = mine
         toastHost.show(message, { actionLabel: "되돌리기", duration: 5000,
                                   onAction: () => { if (page.histIdx === mine) page.undo() } })
-    }
-
-    // 머리글에서 제목·가수를 고쳤다 (파일 이름·콘티 목록에 반영)
-    function setSongInfo(title, artist) {
-        if (!song) return
-        const t = title.trim(), a = artist.trim()
-        if (t === song.title && a === song.artist) return
-        song = Object.assign({}, song, { title: t, artist: a })
     }
 
     // ── 텍스트 반영 ──
@@ -650,7 +636,7 @@ Item {
 
     // 미리보기·단축키로 편집하기 전에: 조합 중인 한글을 확정하고, 미뤄 둔 목록 갱신을 반영한다
     function prepareEdit() {
-        if (lyrics.preeditText !== "" || titleField.preeditText !== "" || artistField.preeditText !== "") Qt.inputMethod.commit()
+        if (lyrics.preeditText !== "") Qt.inputMethod.commit()
         flushSync()
     }
 
@@ -1321,51 +1307,34 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            // 제목·가수는 눌러서 고칠 수 있다 (PPT 파일 이름·콘티 목록에 쓰임)
-                            TextField {
-                                id: titleField
+                            // 제목·가수는 글자로만 보인다 (고치지 않는다)
+                            Text {
                                 Layout.fillWidth: true
-                                placeholderText: "제목"
-                                placeholderTextColor: Theme.text3
+                                text: page.song ? page.song.title || "제목 없음" : ""
+                                textFormat: Text.PlainText
                                 color: Theme.text
                                 font.family: Theme.font
                                 font.pixelSize: 20
                                 font.weight: Font.Bold
-                                selectByMouse: true
-                                leftPadding: 6; rightPadding: 6; topPadding: 2; bottomPadding: 2
-                                background: Rectangle { radius: 6; color: "transparent"; border.width: titleField.activeFocus || titleField.hovered ? 1 : 0; border.color: titleField.activeFocus ? Theme.focusBorder : Theme.border }
-                                hoverEnabled: true
-                                onTextEdited: page.setSongInfo(text, artistField.text)
-                                onEditingFinished: page.setSongInfo(text, artistField.text)
-                                onAccepted: artistField.forceActiveFocus()
-                                Accessible.name: "곡 제목"
-                                ContextMenu.menu: AppTextMenu { editor: titleField }
+                                elide: Text.ElideRight
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 0
-                                TextField {
-                                    id: artistField
-                                    Layout.preferredWidth: Math.max(60, contentWidth + 14)
-                                    Layout.maximumWidth: 360
-                                    placeholderText: "가수"
-                                    placeholderTextColor: Theme.text3
+                                Text {
+                                    visible: !!(page.song && page.song.artist)
+                                    text: page.song ? page.song.artist : ""
+                                    textFormat: Text.PlainText
                                     color: Theme.text2
                                     font.family: Theme.font
                                     font.pixelSize: 14
-                                    selectByMouse: true
-                                    leftPadding: 6; rightPadding: 6; topPadding: 1; bottomPadding: 1
-                                    background: Rectangle { radius: 6; color: "transparent"; border.width: artistField.activeFocus || artistField.hovered ? 1 : 0; border.color: artistField.activeFocus ? Theme.focusBorder : Theme.border }
-                                    hoverEnabled: true
-                                    onTextEdited: page.setSongInfo(titleField.text, text)
-                                    onEditingFinished: page.setSongInfo(titleField.text, text)
-                                    onAccepted: lyrics.forceActiveFocus()
-                                    Accessible.name: "가수"
-                                    ContextMenu.menu: AppTextMenu { editor: artistField }
+                                    elide: Text.ElideRight
+                                    Layout.maximumWidth: 360
+                                    Layout.rightMargin: 4
                                 }
                                 Text {
                                     visible: !!(page.song && page.song.album)
-                                    text: page.song && page.song.album ? "· " + page.song.album : ""
+                                    text: page.song && page.song.album ? (page.song.artist ? "· " : "") + page.song.album : ""
                                     textFormat: Text.PlainText
                                     color: Theme.text3
                                     font.family: Theme.font

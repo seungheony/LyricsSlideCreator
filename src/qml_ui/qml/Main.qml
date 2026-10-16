@@ -357,12 +357,12 @@ ApplicationWindow {
     readonly property bool modalOpen: editorPage.presetSaveOpen || dialog.opened || updateDialog.opened || confirmDialog.visible || tour.opened
     Shortcut {
         sequences: [StandardKey.Undo]
-        enabled: !editorPage.drawerOpen && !editorPage.dragging && !editorPage.headerFocused && !win.modalOpen
+        enabled: !editorPage.drawerOpen && !editorPage.dragging && !win.modalOpen
         onActivated: editorPage.undo()
     }
     Shortcut {
         sequences: [StandardKey.Redo]
-        enabled: !editorPage.drawerOpen && !editorPage.dragging && !editorPage.headerFocused && !win.modalOpen
+        enabled: !editorPage.drawerOpen && !editorPage.dragging && !win.modalOpen
         onActivated: editorPage.redo()
     }
     Shortcut {
