@@ -17,6 +17,9 @@ ColumnLayout {
     property alias listView: list
     property alias attachBefore: attachBefore
     property alias attachAfter: attachAfter
+    property alias formsRow: formsRow           // 찬양 전·후 두 칸 (튜토리얼 강조)
+    property alias menuButton: menuButton
+    property alias songCard: songCard
     property var attachments: ({ before: [], after: [] })    // backend.attachments()
     // 서랍에서 곡을 끌어 오는 중이면 놓을 자리(곡 사이 0~곡 수), 아니면 -1 (EditorPage.moveSongDrag)
     property int externalDrop: -1
@@ -35,11 +38,10 @@ ColumnLayout {
     signal helpRequested()
     // 앞·뒤에 붙일 PPT (side: 'before' | 'after')
     signal attachDropped(string side, var urls)
-    signal attachBrowse(string side)
     signal attachRemove(string side, int index)
     signal attachMove(string side, int from, int to)
     signal attachKeep(string side, int index)
-    // 구역 제목 옆 보관함 아이콘: 찬양 보관함(저장한 곡) / 양식 보관함 (focusId: 강조할 양식)
+    // 구역 제목 옆 보관함 아이콘: 찬양 보관함 / 양식 보관함 (focusId: 강조할 양식)
     signal songLibraryRequested()
     signal formLibraryRequested(string focusId)
     // 보관한 PPT id → 지금 붙어 있는 곳 ('앞' | '뒤')
@@ -54,10 +56,12 @@ ColumnLayout {
     readonly property bool busy: pressedRow || dragFrom >= 0 || addButton.pressed || menuButton.pressed
                                  || attachBefore.busy || attachAfter.busy
 
-    // ── 끌어서 순서 바꾸기 ──
+    // ── 끌어서 순서 바꾸기 · 목록 밖으로 끌어내 빼기 ──
     property bool pressedRow: false
     property int dragFrom: -1         // 끄는 곡
-    property real dragDy: 0           // 누른 곳에서 움직인 거리
+    property real dragDy: 0           // 누른 곳에서 움직인 거리 (목록 안으로 제한)
+    property bool dragOut: false      // 목록 밖에 있음: 놓으면 뺀다
+    property var dragHost: null       // EditorPage: 목록 밖에 있는 동안 커서를 따라가는 표시 (showOutDrag / hideOutDrag)
     readonly property int rowHeight: 40     // 앞·뒤 PPT 줄·놓기 칸·곡 추가와 같은 높이
     readonly property int rowGap: 4
     readonly property int step: rowHeight + rowGap
@@ -68,10 +72,15 @@ ColumnLayout {
     function endDrag(commit) {
         const from = dragFrom
         const to = dropIndex
+        const out = dragOut
         dragFrom = -1
         dragDy = 0
+        dragOut = false
         pressedRow = false
-        if (commit && from >= 0 && to !== from) moveRequested(from, to)
+        if (dragHost) dragHost.hideOutDrag()
+        if (!commit || from < 0) return
+        if (out) removeRequested(from)
+        else if (to !== from) moveRequested(from, to)
     }
 
     spacing: 10
@@ -131,7 +140,7 @@ ColumnLayout {
         Entry { objectName: "clearSetlistItem"; text: "콘티 비우기"; enabled: panel.entries.length > 0; onTriggered: panel.clearRequested() }
     }
 
-    // ── 양식: 찬양 전 · 찬양 후 ── (만들어질 PPT에서 곡들의 앞·뒤에 붙는 PPT. 아래 화살표가 '찬양 전 → 찬양 → 찬양 후')
+    // ── 양식: 찬양 전 · 찬양 후 ── (만들어질 PPT에서 곡들의 앞·뒤에 붙는 PPT)
     // 구역 제목: 왼쪽 이름, 오른쪽 그 구역의 보관함 (찬양 제목도 같은 모양)
     component LibraryButton: AppButton {
         glyph: "library"
@@ -162,11 +171,13 @@ ColumnLayout {
         }
     }
     RowLayout {
+        id: formsRow
         Layout.fillWidth: true
         spacing: 8
         AttachList {
             id: attachBefore
             objectName: "attachBefore"
+            dragHost: panel.dragHost
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.preferredWidth: 1          // 두 칸을 같은 폭으로
@@ -174,7 +185,7 @@ ColumnLayout {
             externalHover: panel.formDropSide === "before"
             items: panel.attachments.before
             onFilesDropped: (urls) => panel.attachDropped("before", urls)
-            onBrowseRequested: panel.attachBrowse("before")
+            onBrowseRequested: panel.formLibraryRequested("")
             onRemoveRequested: (index) => panel.attachRemove("before", index)
             onMoveRequested: (from, to) => panel.attachMove("before", from, to)
             onKeepRequested: (index) => panel.attachKeep("before", index)
@@ -183,6 +194,7 @@ ColumnLayout {
         AttachList {
             id: attachAfter
             objectName: "attachAfter"
+            dragHost: panel.dragHost
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.preferredWidth: 1          // 두 칸을 같은 폭으로
@@ -190,68 +202,34 @@ ColumnLayout {
             externalHover: panel.formDropSide === "after"
             items: panel.attachments.after
             onFilesDropped: (urls) => panel.attachDropped("after", urls)
-            onBrowseRequested: panel.attachBrowse("after")
+            onBrowseRequested: panel.formLibraryRequested("")
             onRemoveRequested: (index) => panel.attachRemove("after", index)
             onMoveRequested: (from, to) => panel.attachMove("after", from, to)
             onKeepRequested: (index) => panel.attachKeep("after", index)
             onLibraryRequested: (id) => panel.formLibraryRequested(id)
         }
     }
-    // 찬양 구역 제목 + 흐름 화살표: 찬양 전 칸에서 내려와 '찬양' 제목을 지나 찬양 후 칸으로 올라간다
-    // (만들어질 PPT 순서 '찬양 전 → 찬양 → 찬양 후'를 그림으로 보인다)
-    Item {
+    // 찬양 구역 제목: 양식 제목과 같은 모양 (왼쪽 이름, 오른쪽 찬양 보관함)
+    RowLayout {
         Layout.fillWidth: true
-        Layout.topMargin: -10
-        Layout.bottomMargin: -4
-        implicitHeight: 30
-        LibraryButton {
-            id: songLibraryButton
-            objectName: "songLibraryButton"
-            anchors.right: parent.right
-            y: songsTitle.y + songsTitle.height / 2 - height / 2
-            onClicked: panel.songLibraryRequested()
-            Accessible.name: "찬양 보관함"
-            AppToolTip { visible: songLibraryButton.hovered; delay: 400; text: "찬양 보관함 · 저장한 곡의 프리셋을 담거나 지워요" }
-        }
+        Layout.topMargin: 4
+        Layout.bottomMargin: -6
+        spacing: 4
         Text {
-            id: songsTitle
-            x: 2
-            y: 13
+            Layout.leftMargin: 2
             text: "찬양"
             color: Theme.text3
             font.family: Theme.font
             font.pixelSize: 12
             font.weight: Font.DemiBold
         }
-        Canvas {
-            id: flowArrow
-            anchors.fill: parent
-            readonly property color ink: Theme.text3
-            onInkChanged: requestPaint()
-            onWidthChanged: requestPaint()
-            onPaint: {
-                const ctx = getContext("2d")
-                ctx.reset()
-                const xs = songsTitle.x + songsTitle.width / 2         // 제목 위로 내려오는 짧은 선
-                const mid = songsTitle.y + songsTitle.height / 2
-                const x1 = songsTitle.x + songsTitle.width + 6          // 제목 오른쪽에서 출발
-                const x2 = width * 0.75 + 2, r = 7                      // 찬양 후 칸 가운데로 올라간다
-                ctx.strokeStyle = ink
-                ctx.lineWidth = 1.5
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-                ctx.beginPath()
-                ctx.moveTo(xs, 0)
-                ctx.lineTo(xs, songsTitle.y - 2)
-                ctx.moveTo(x1, mid)
-                ctx.lineTo(x2 - r, mid)
-                ctx.quadraticCurveTo(x2, mid, x2, mid - r)
-                ctx.lineTo(x2, 2)
-                ctx.moveTo(x2 - 4, 6)
-                ctx.lineTo(x2, 1)
-                ctx.lineTo(x2 + 4, 6)
-                ctx.stroke()
-            }
+        Item { Layout.fillWidth: true }
+        LibraryButton {
+            id: songLibraryButton
+            objectName: "songLibraryButton"
+            onClicked: panel.songLibraryRequested()
+            Accessible.name: "찬양 보관함"
+            AppToolTip { visible: songLibraryButton.hovered; delay: 400; text: "찬양 보관함 · 저장한 프리셋을 담거나 지워요" }
         }
     }
 
@@ -335,14 +313,14 @@ ColumnLayout {
                 // 놓을 자리 표시 (ListView 안의 항목은 내용 좌표로 놓인다)
                 Rectangle {
                     readonly property int gap: panel.dropIndex > panel.dragFrom ? panel.dropIndex + 1 : panel.dropIndex
-                    visible: panel.dragFrom >= 0 && panel.dropIndex !== panel.dragFrom
+                    visible: panel.dragFrom >= 0 && panel.dropIndex !== panel.dragFrom && !panel.dragOut
                     z: 3
                     x: 4
                     width: list.width - 8
                     height: 2
                     radius: 1
                     color: Theme.primary
-                    // 맨 위·맨 아래도 목록 안에 보이게 (목록이 clip하므로 끝에서 잘리지 않게 붙인다)
+                    // 맨 위·맨 아래도 목록 안에 보이게 (목록이 clip하므로 끝에서 잘리지 않게 붙인다). 밖으로 끌어냈으면 숨김
                     y: Math.max(0, Math.min(list.contentHeight - height, gap * panel.step - panel.rowGap / 2 - 1))
                 }
 
@@ -361,11 +339,13 @@ ColumnLayout {
                         id: card
                         width: parent.width
                         height: parent.height
-                        y: row.dragged ? panel.dragDy : 0
+                        y: row.dragged && !panel.dragOut ? panel.dragDy : 0     // 목록 밖으로 끌어냈으면 제자리에서 빨갛게
+                        readonly property bool out: row.dragged && panel.dragOut     // 놓으면 빠진다
                         radius: Theme.radiusSm
-                        color: row.isCurrent ? Theme.primarySoft : area.containsMouse || row.dragged ? Theme.border : Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0)
-                        border.width: row.focused ? 2 : row.isCurrent || row.dragged || row.modelData.loading ? 1 : 0
-                        border.color: row.focused ? Theme.primary : row.isCurrent || row.modelData.loading ? Theme.focusBorder : Theme.border
+                        color: out ? Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.15)
+                             : row.isCurrent ? Theme.primarySoft : area.containsMouse || row.dragged ? Theme.border : Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0)
+                        border.width: row.focused ? 2 : out || row.isCurrent || row.dragged || row.modelData.loading ? 1 : 0
+                        border.color: out ? Theme.danger : row.focused ? Theme.primary : row.isCurrent || row.modelData.loading ? Theme.focusBorder : Theme.border
                         Accessible.role: Accessible.ListItem
                         Accessible.name: row.modelData.title + (row.modelData.loading ? ", 가사 받는 중" : row.modelData.wraps > 0 ? ", 줄바꿈 있음" : "")
                         Accessible.selected: row.isCurrent
@@ -424,6 +404,15 @@ ColumnLayout {
                                 Text { text: "줄바꿈"; color: Theme.warning; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold }
                             }
                             Item { Layout.preferredWidth: removeButton.visible ? removeButton.width : 0; Layout.preferredHeight: 1 }
+                            // 목록 밖으로 끌어냈을 때
+                            Text {
+                                visible: card.out
+                                text: "놓으면 빼요"
+                                color: Theme.danger
+                                font.family: Theme.font
+                                font.pixelSize: 11
+                                font.weight: Font.Bold
+                            }
                         }
 
                         MouseArea {
@@ -432,15 +421,24 @@ ColumnLayout {
                             hoverEnabled: true
                             preventStealing: true
                             cursorShape: panel.dragFrom >= 0 ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                            property real pressX: 0
                             property real pressY: 0
-                            onPressed: (mouse) => { pressY = mouse.y; panel.pressedRow = true }
+                            onPressed: (mouse) => { pressX = mouse.x; pressY = mouse.y; panel.pressedRow = true }
                             onPositionChanged: (mouse) => {
                                 if (!pressed) return
-                                const dy = mouse.y - pressY + (row.dragged ? panel.dragDy : 0)
-                                if (panel.dragFrom < 0 && Math.abs(mouse.y - pressY) > 6 && panel.entries.length > 1) panel.dragFrom = row.index
-                                // card가 따라 움직이므로 card 안의 좌표는 그대로 → 움직인 거리를 더해 간다
-                                if (row.dragged) panel.dragDy = Math.max(-row.index * panel.step,
+                                // card가 위아래로 따라 움직이므로 card 안의 좌표는 그대로 → 움직인 거리를 더해 간다 (옆으로는 움직이지 않고, 밖으로 나가면 빨갛게)
+                                const dy = mouse.y - pressY + card.y
+                                if (panel.dragFrom < 0 && Math.max(Math.abs(mouse.x - pressX), Math.abs(mouse.y - pressY)) > 6) panel.dragFrom = row.index
+                                if (!row.dragged) return
+                                panel.dragDy = Math.max(-row.index * panel.step,
                                     Math.min((panel.entries.length - 1 - row.index) * panel.step, dy))
+                                // 손가락(포인터)이 곡 목록 밖으로 16px 넘게 나가면 놓았을 때 뺀다
+                                const p = mapToItem(list, mouse.x, mouse.y)
+                                panel.dragOut = p.x < -16 || p.x > list.width + 16 || p.y < -16 || p.y > list.height + 16
+                                if (!panel.dragHost) return
+                                const sp = mapToItem(null, mouse.x, mouse.y)
+                                if (panel.dragOut) panel.dragHost.showOutDrag(row.modelData.title, "music", sp.x, sp.y)
+                                else panel.dragHost.hideOutDrag()
                             }
                             onReleased: {
                                 if (panel.dragFrom >= 0) panel.endDrag(true)
@@ -461,7 +459,7 @@ ColumnLayout {
                             size: "small"
                             onClicked: panel.removeRequested(row.index)
                             Accessible.name: "'" + row.modelData.title + "' 이번 예배 PPT에서 빼기"
-                            AppToolTip { visible: removeButton.hovered; text: "이번 예배 PPT에서 빼기 · 저장한 곡과 프리셋은 그대로예요" }
+                            AppToolTip { visible: removeButton.hovered; text: "이번 예배 PPT에서 빼기 · 보관함의 프리셋은 그대로예요" }
                         }
                     }
                 }
@@ -477,7 +475,7 @@ ColumnLayout {
                 text: "곡 추가"
                 lit: panel.externalDrop >= 0
                 onClicked: panel.addRequested()
-                AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K) · 서랍에서 끌어다 놓아도 돼요" }
+                AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K) · 검색창에서 끌어다 놓아도 돼요" }
             }
 
             // 빈 콘티: 누르면 곡 추가 (마우스를 올리면 초록으로 바뀌며 '곡 추가'가 보인다)

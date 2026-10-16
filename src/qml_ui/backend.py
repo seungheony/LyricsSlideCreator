@@ -231,6 +231,7 @@ class Backend(QObject):
         super().__init__()
         self._state = app_state.load()
         self._presets = presets.load()
+        self._choices = presets.load_choices()   # 곡별 설정 (프리셋 id 또는 'melon')
         self._saved_ppts = saved_ppts.load()
         self._art = art_provider
         self._scraper = MelonScraper()
@@ -304,17 +305,35 @@ class Backend(QObject):
                            'availablePt': round(box.available_pt, 1), 'exact': box.exact})
 
     # ── 첫 실행 튜토리얼 ── (name: "search" | "editor")
+    # 본 기록: tutorials_seen(이름 목록) + tutorial_revs(이름 → 본 단계 리비전). 단계마다 rev(기본 1)가 있고,
+    # 업데이트로 단계를 새로 만들거나 바꾸면 그 단계의 rev를 올린다 → 다음 실행 때 본 리비전보다 높은 단계만 다시 보여 준다.
+    # rev 기록 없이 본 것(v1.4까지의 예전 튜토리얼)은 0으로 본다.
     # 시작할 때 한 번 읽어 메모리에 둔다. 저장에 실패해도 이번 실행에서는 다시 띄우지 않는다
     @Slot(str, result=bool)
     def tutorialSeen(self, name):
         return name in self._state.get('tutorials_seen', [])
 
-    @Slot(str)
-    def markTutorialSeen(self, name):
+    @Slot(str, result=int)
+    def tutorialRev(self, name):
+        """본 단계 리비전. 본 적 없으면 -1, 리비전 기록 없이 봤으면 0"""
+        if not self.tutorialSeen(name):
+            return -1
+        revs = self._state.get('tutorial_revs')
+        rev = revs.get(name) if isinstance(revs, dict) else None
+        return rev if isinstance(rev, int) and not isinstance(rev, bool) else 0
+
+    @Slot(str, int)
+    def markTutorialSeen(self, name, rev):
         seen = self._state.get('tutorials_seen', [])
+        revs = self._state.get('tutorial_revs')
+        revs = dict(revs) if isinstance(revs, dict) else {}
+        if name in seen and revs.get(name) == rev:
+            return
         if name not in seen:
             self._state['tutorials_seen'] = seen + [name]
-            app_state.save(self._state)
+        revs[name] = max(rev, revs.get(name, 0) if isinstance(revs.get(name), int) else 0)
+        self._state['tutorial_revs'] = revs
+        app_state.save(self._state)
 
     # ── 창 크기·위치 ── (다음 실행 때 같은 자리에 연다, src/qml_ui/app.py)
     def window_geometry(self):
@@ -478,13 +497,13 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def presetsFor(self, song_id):
-        """그 곡의 프리셋 (JSON 배열, 최근 저장한 것부터)"""
-        return json.dumps(presets.for_song(self._presets, song_id), ensure_ascii=False)
+        """그 곡의 프리셋 (JSON 배열, 설정된 프리셋(default: true)이 맨 앞, 나머지는 최근 저장한 것부터. 멜론 가사로 정했으면 default 없음)"""
+        return json.dumps(presets.with_default(presets.for_song(self._presets, song_id), self._choices), ensure_ascii=False)
 
     @Slot(result=str)
     def allPresets(self):
-        """보관함: 모든 프리셋 (JSON 배열, 최근 저장한 것부터)"""
-        return json.dumps(self._presets, ensure_ascii=False)
+        """보관함: 모든 프리셋 (JSON 배열, 곡마다 설정된 프리셋(default: true)이 앞, 나머지는 최근 저장한 것부터)"""
+        return json.dumps(presets.with_default(self._presets, self._choices), ensure_ascii=False)
 
     @Slot(str, str, result=str)
     def searchManualPresets(self, keyword, mode):
@@ -504,7 +523,7 @@ class Backend(QObject):
                 if det and det.get('image_url') and not e.get('manual'):
                     e['image_url'] = det['image_url']
         updated, added, same = presets.add(self._presets, entries, now, name)
-        if not presets.save(updated):
+        if not presets.save(updated, self._choices):
             return json.dumps({'error': '프리셋을 저장하지 못했어요\n저장 폴더에 쓸 수 없어요. 디스크 공간이 부족하지 않은지 확인하고 다시 시도해 주세요.',
                                'detail': f'경로: {app_state.data_path(presets.FILE_NAME)}'}, ensure_ascii=False)
         self._presets = updated
@@ -514,16 +533,26 @@ class Backend(QObject):
     @Slot(str, str, result=bool)
     def renamePreset(self, preset_id, name):
         updated = presets.rename(self._presets, preset_id, name)
-        if updated is None or not presets.save(updated):
+        if updated is None or not presets.save(updated, self._choices):
             return False
         self._presets = updated
+        self.presetsChanged.emit()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setPresetChoice(self, song_id, value):
+        """곡의 설정을 바꾼다 (value: 그 곡의 프리셋 id 또는 'melon'). 그 곡은 이 설정으로 담긴다"""
+        choices = presets.set_choice(self._presets, self._choices, song_id, value)
+        if choices is None or not presets.save(self._presets, choices):
+            return False
+        self._choices = choices
         self.presetsChanged.emit()
         return True
 
     @Slot(str, result=bool)
     def deletePreset(self, preset_id):
         updated = presets.remove(self._presets, preset_id)
-        if len(updated) == len(self._presets) or not presets.save(updated):
+        if len(updated) == len(self._presets) or not presets.save(updated, self._choices):
             return False
         self._presets = updated
         self.presetsChanged.emit()

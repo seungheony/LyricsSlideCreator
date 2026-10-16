@@ -112,10 +112,17 @@ ApplicationWindow {
         editorPage.loadPreset(s, preset.text)
     }
 
-    // 창 닫기: PPT로 만들지 않은 편집이 있으면 확인한다
+    // 창 닫기: 프리셋으로 저장하지 않은 콘티 곡이 있으면 저장할지 묻고(그러면 아래 확인은 하지 않는다),
+    // 없으면 PPT로 만들지 않은 편집이 있을 때 확인한다
     onClosing: (close) => {
         if (closeConfirmed) return
         editorPage.prepareEdit()
+        const unsaved = editorPage.unsavedSongs()
+        if (unsaved.length) {
+            close.accepted = false
+            editorPage.askSaveBeforeClose(unsaved, () => { win.closeConfirmed = true; win.close() })
+            return
+        }
         if (!editorPage.anyDirty) return
         close.accepted = false
         confirmDialog.ask({
@@ -307,24 +314,32 @@ ApplicationWindow {
         }
     }
 
-    // ── 첫 실행 튜토리얼 ── 끝까지 보거나 건너뛰면 다시 나오지 않는다 (기록: src/utils/app_state.py)
+    // ── 첫 실행 튜토리얼 ── 건너뛸 수 없고 끝까지 보면 다시 나오지 않는다 (기록: src/utils/app_state.py, Backend.tutorialRev)
     // 곡 찾기 서랍 튜토리얼(기록 이름 'search': 예전 검색 화면 튜토리얼과 같은 기록)은 서랍이 처음 열렸을 때,
-    // 편집 화면 튜토리얼('editor')은 곡을 담고 서랍을 닫아 처음 곡을 열었을 때 보여 준다. 건너뛰면 모두 본 것으로 기록한다
+    // 편집 화면 튜토리얼('editor')은 곡을 담고 서랍을 닫아 처음 곡을 열었을 때 보여 준다.
+    // 업데이트 후 첫 실행: 단계마다 rev(기본 1)가 있어, 본 리비전보다 높은 단계(새로 만들거나 바꾼 단계)만 '새로 바뀐 점'으로 보여 준다
     readonly property string tutorialHint: "사용 방법은 화면 곳곳의 ? 버튼을 누르면 언제든 다시 볼 수 있어요"
-    function finishTutorial(name) {
-        backend.markTutorialSeen(name)
+    function tutorialRevOf(steps) { return steps.reduce((m, st) => Math.max(m, st.rev || 1), 1) }
+    // 아직 안 본 단계 (본 적 없으면 전부, 리비전 없이 본 예전 기록은 0이라 전부)
+    function pendingSteps(name, steps) {
+        const seen = backend.tutorialRev(name)
+        return steps.filter(st => (st.rev || 1) > seen)
+    }
+    function tutorialOpts(name, steps) {
+        return { required: true, badge: backend.tutorialRev(name) >= 0 ? "새로 바뀐 점" : "",
+                 onFinished: () => win.finishTutorial(name, win.tutorialRevOf(steps)) }
+    }
+    function finishTutorial(name, rev) {
+        backend.markTutorialSeen(name, rev)
         toast.show(tutorialHint, { duration: 4500 })
     }
-    function skipTutorial() {
-        backend.markTutorialSeen("search")
-        backend.markTutorialSeen("editor")
-        toast.show(tutorialHint, { duration: 4500 })
-    }
+    function drawerTourSteps() { return pendingSteps("search", editorPage.drawer.helpSteps(true)) }
+    function editorTourSteps() { return pendingSteps("editor", editorPage.firstRunSteps()) }
     function maybeDrawerTour() {
-        if (editorPage.drawerOpen && !tour.opened && !backend.tutorialSeen("search")) drawerTourTimer.restart()
+        if (editorPage.drawerOpen && !tour.opened && drawerTourSteps().length) drawerTourTimer.restart()
     }
     function maybeEditorTour() {
-        if (editorPage.song && !editorPage.drawerOpen && !tour.opened && !backend.tutorialSeen("editor")) editorTourTimer.restart()
+        if (editorPage.song && !editorPage.drawerOpen && !tour.opened && editorTourSteps().length) editorTourTimer.restart()
     }
     Connections {
         target: editorPage
@@ -336,8 +351,9 @@ ApplicationWindow {
         id: drawerTourTimer
         interval: Theme.normal + 200
         onTriggered: {
-            if (editorPage.drawerOpen && !tour.opened && !backend.tutorialSeen("search"))
-                editorPage.drawer.showHelp({ required: true, onFinished: () => win.finishTutorial("search"), onSkipped: win.skipTutorial })
+            const steps = win.drawerTourSteps()
+            if (editorPage.drawerOpen && !tour.opened && steps.length)
+                editorPage.drawer.showHelp(Object.assign({ steps: steps }, win.tutorialOpts("search", editorPage.drawer.helpSteps(true))))
         }
     }
     // 서랍이 닫히는 애니메이션이 끝난 뒤에 시작해야 강조할 위치가 맞는다
@@ -345,8 +361,9 @@ ApplicationWindow {
         id: editorTourTimer
         interval: Theme.normal + 200
         onTriggered: {
-            if (editorPage.song && !editorPage.drawerOpen && !tour.opened && !backend.tutorialSeen("editor"))
-                editorPage.showFirstRunTour(() => win.finishTutorial("editor"), win.skipTutorial)
+            const steps = win.editorTourSteps()
+            if (editorPage.song && !editorPage.drawerOpen && !tour.opened && steps.length)
+                tour.start(steps, win.tutorialOpts("editor", editorPage.firstRunSteps()))
         }
     }
 

@@ -20,6 +20,10 @@ Item {
     // 담으면 2줄씩 나뉘므로 그 기준의 장 수
     readonly property int slideCount: E.regroupWithin(lyrics.text, 2).length
     readonly property bool canSubmit: slideCount > 0
+    // 튜토리얼 예시가 위에 덮어 그릴 칸
+    readonly property Item titleItem: titleField
+    readonly property Item lyricsItem: lyricsFrame
+    readonly property Item submitItem: submitButton
 
     implicitWidth: 360
     implicitHeight: column.implicitHeight
@@ -146,6 +150,7 @@ Item {
 
         FieldLabel { text: "가사"; Layout.topMargin: 6 }
         Rectangle {
+            id: lyricsFrame
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 120

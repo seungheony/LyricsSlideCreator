@@ -100,8 +100,10 @@ ColumnLayout {
             font.pixelSize: 14
             font.weight: Font.DemiBold
         }
+        // 안쪽 레이아웃은 가장 넓은 항목보다 넓어지지 않는다: 폭을 채워 아래 글들이 가운데에 오게
+        Item { Layout.fillWidth: true; implicitHeight: 0 }
         BalancedText {
-            maxWidth: parent.width
+            maxWidth: Math.min(360, parent.width)
             Layout.preferredWidth: fitWidth
             Layout.alignment: Qt.AlignHCenter
             horizontalAlignment: Text.AlignHCenter

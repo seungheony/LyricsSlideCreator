@@ -6,7 +6,7 @@ import "."
 // 예배 PPT 패널의 양식 칸 하나('찬양 전' / '찬양 후'). 곡 카드와 같은 카드 모양:
 // 칸 제목 → 파일 줄(30px: 이름 · ⚠ · 책갈피 · 휴지통) → 끝의 '＋ 양식 추가' 칸(AddRow).
 // PPT 파일을 구역에 끌어다 놓거나 넣기 칸으로 골라 넣고, 끌어서 순서를 바꾸고, 휴지통으로 뺀다.
-// 오른쪽 보관함 아이콘으로 양식 보관함에 넣으면(saved_ppts, 보관한 것은 초록 아이콘이 늘 보임) 빼도 양식 보관함
+// 오른쪽 보관함 아이콘으로 양식 보관함에 넣으면(saved_ppts, 보관한 것은 초록 아이콘) 빼도 양식 보관함
 // (곡 찾기 서랍의 '양식 보관함' 화면)에서 다시 꺼내 쓴다. 초록 아이콘을 누르면 보관함에서 그 양식을 보여 준다. 보관하지 않은 파일은 PPT를 만들 때마다 원본을 읽고, 오래 고치지 않았으면(stale)
 // '⚠ 지난 파일'로 알린다. 목록은 EditorPage가 갖고 있고(backend.setAttachments로 저장), 여기서는 신호로 알리기만 한다.
 Rectangle {
@@ -23,7 +23,7 @@ Rectangle {
     property var items: []            // [{ path, name, slides, error, missing, sizeMismatch, stale, saved, id, hasSource }] (backend.describe_attachments)
 
     signal filesDropped(var urls)
-    signal browseRequested()
+    signal browseRequested()                   // '＋ 양식 추가': 양식 보관함 열기 (SetlistPanel)
     signal removeRequested(int index)
     signal moveRequested(int from, int to)
     signal keepRequested(int index)            // 양식 보관함에 넣기
@@ -33,10 +33,12 @@ Rectangle {
     readonly property bool busy: pressedRow || dragFrom >= 0 || addButton.pressed
     readonly property bool dropHover: drop.containsDrag
 
-    // ── 끌어서 순서 바꾸기 ── (SetlistPanel과 같은 방식)
+    // ── 끌어서 순서 바꾸기 · 칸 밖으로 끌어내 빼기 ── (SetlistPanel과 같은 방식)
     property bool pressedRow: false
     property int dragFrom: -1
     property real dragDy: 0
+    property bool dragOut: false      // 칸 밖에 있음: 놓으면 뺀다
+    property var dragHost: null       // EditorPage: 칸 밖에 있는 동안 커서를 따라가는 표시 (showOutDrag / hideOutDrag)
     readonly property int rowHeight: 30
     readonly property int rowGap: 3
     readonly property int step: rowHeight + rowGap
@@ -46,10 +48,15 @@ Rectangle {
     function endDrag(commit) {
         const from = dragFrom
         const to = dropIndex
+        const out = dragOut
         dragFrom = -1
         dragDy = 0
+        dragOut = false
         pressedRow = false
-        if (commit && from >= 0 && to !== from) moveRequested(from, to)
+        if (dragHost) dragHost.hideOutDrag()
+        if (!commit || from < 0) return
+        if (out) removeRequested(from)
+        else if (to !== from) moveRequested(from, to)
     }
 
     // 오른쪽 상태 (짧게, 자세한 것은 툴팁)
@@ -115,7 +122,7 @@ Rectangle {
             cursorShape: Qt.PointingHandCursor
             onClicked: box.browseRequested()
         }
-        AppToolTip { visible: emptyHover.containsMouse; delay: 600; text: "PPT 파일을 끌어다 놓거나 눌러서 골라요 · 보관한 양식은 '양식' 옆 보관함에서" }
+        AppToolTip { visible: emptyHover.containsMouse; delay: 600; text: "눌러서 양식 보관함에서 골라요 · PPT 파일을 끌어다 놓아도 돼요" }
     }
 
     ColumnLayout {
@@ -155,7 +162,7 @@ Rectangle {
                 // 놓을 자리 표시
                 Rectangle {
                     readonly property int gap: box.dropIndex > box.dragFrom ? box.dropIndex + 1 : box.dropIndex
-                    visible: box.dragFrom >= 0 && box.dropIndex !== box.dragFrom
+                    visible: box.dragFrom >= 0 && box.dropIndex !== box.dragFrom && !box.dragOut
                     z: 3
                     x: 4
                     width: parent.width - 8
@@ -199,11 +206,13 @@ Rectangle {
                             id: card
                             width: parent.width
                             height: parent.height
-                            y: row.dragged ? box.dragDy : 0
-                            color: row.hot || row.dragged ? Theme.border : Theme.surface
+                            y: row.dragged && !box.dragOut ? box.dragDy : 0     // 칸 밖으로 끌어냈으면 제자리에서 빨갛게
+                            readonly property bool out: row.dragged && box.dragOut     // 놓으면 빠진다
+                            color: out ? Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.15)
+                                 : row.hot || row.dragged ? Theme.border : Theme.surface
                             radius: 8
-                            border.width: row.activeFocus ? 2 : 0
-                            border.color: Theme.primary
+                            border.width: row.activeFocus ? 2 : out ? 1 : 0
+                            border.color: out ? Theme.danger : Theme.primary
                             opacity: row.dragged ? 0.9 : 1
                             Behavior on color { ColorAnimation { duration: Theme.fast } }
 
@@ -224,13 +233,22 @@ Rectangle {
                                 }
                                 // 상태: 곡 줄의 '⚠ 줄바꿈'과 같은 모양 (마우스를 올리면 버튼 자리를 내준다)
                                 // 상태는 ⚠만 (무엇인지는 툴팁)
-                                Icon { visible: row.state_ !== "" && !row.hot; glyph: "alert"; size: 12; color: row.problem ? Theme.danger : Theme.warning; Layout.rightMargin: 4 }
-                                // 보관: 보관한 것은 초록 책갈피가 늘 보이고, 아닌 것은 마우스를 올렸을 때만
+                                Text {
+                                    visible: card.out
+                                    Layout.rightMargin: 6
+                                    text: "놓으면 빼요"
+                                    color: Theme.danger
+                                    font.family: Theme.font
+                                    font.pixelSize: 11
+                                    font.weight: Font.Bold
+                                }
+                                Icon { visible: row.state_ !== "" && !row.hot && !card.out; glyph: "alert"; size: 12; color: row.problem ? Theme.danger : Theme.warning; Layout.rightMargin: 4 }
+                                // 보관: 보관한 것은 초록, 아닌 것은 회색. 빼기(×)처럼 마우스를 올리거나 키보드로 왔을 때만
                                 AppButton {
                                     id: keepButton
                                     readonly property bool on: !!row.modelData.saved
-                                    visible: !row.problem && (on || row.hot || row.activeFocus || activeFocus || removeButton.activeFocus)
-                                    glyph: "library"                  // 저장한 곡(보관함)과 같은 표시
+                                    visible: !row.problem && box.dragFrom < 0 && (row.hot || row.activeFocus || activeFocus || removeButton.activeFocus)
+                                    glyph: "library"                  // 찬양 보관함과 같은 표시
                                     variant: "ghost"
                                     size: "small"
                                     implicitHeight: 24
@@ -265,15 +283,25 @@ Rectangle {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 preventStealing: true
-                                cursorShape: box.dragFrom >= 0 ? Qt.ClosedHandCursor : box.items.length > 1 ? Qt.OpenHandCursor : Qt.ArrowCursor
+                                cursorShape: box.dragFrom >= 0 ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                property real pressX: 0
                                 property real pressY: 0
-                                onPressed: (mouse) => { pressY = mouse.y; box.pressedRow = true }
+                                onPressed: (mouse) => { pressX = mouse.x; pressY = mouse.y; box.pressedRow = true }
                                 onPositionChanged: (mouse) => {
                                     if (!pressed) return
-                                    const dy = mouse.y - pressY + (row.dragged ? box.dragDy : 0)
-                                    if (box.dragFrom < 0 && Math.abs(mouse.y - pressY) > 6 && box.items.length > 1) box.dragFrom = row.index
-                                    if (row.dragged) box.dragDy = Math.max(-row.index * box.step,
+                                    // card가 위아래로 따라 움직이므로 card 안의 좌표는 그대로 → 움직인 거리를 더해 간다 (옆으로는 움직이지 않고, 밖으로 나가면 빨갛게)
+                                    const dy = mouse.y - pressY + card.y
+                                    if (box.dragFrom < 0 && Math.max(Math.abs(mouse.x - pressX), Math.abs(mouse.y - pressY)) > 6) box.dragFrom = row.index
+                                    if (!row.dragged) return
+                                    box.dragDy = Math.max(-row.index * box.step,
                                         Math.min((box.items.length - 1 - row.index) * box.step, dy))
+                                    // 포인터가 이 칸(찬양 전·후) 밖으로 16px 넘게 나가면 놓았을 때 뺀다
+                                    const p = mapToItem(box, mouse.x, mouse.y)
+                                    box.dragOut = p.x < -16 || p.x > box.width + 16 || p.y < -16 || p.y > box.height + 16
+                                    if (!box.dragHost) return
+                                    const sp = mapToItem(null, mouse.x, mouse.y)
+                                    if (box.dragOut) box.dragHost.showOutDrag(row.modelData.name, "library", sp.x, sp.y)
+                                    else box.dragHost.hideOutDrag()
                                 }
                                 onReleased: {
                                     if (box.dragFrom >= 0) box.endDrag(true)
@@ -295,7 +323,7 @@ Rectangle {
                 text: drop.containsDrag || box.externalHover ? "여기에 놓기" : "양식 추가"
                 lit: drop.containsDrag || box.externalHover
                 onClicked: box.browseRequested()
-                AppToolTip { visible: addButton.hovered; delay: 600; text: "PPT 파일을 끌어다 놓거나 눌러서 골라요 · 보관한 양식은 '양식' 옆 보관함에서" }
+                AppToolTip { visible: addButton.hovered; delay: 600; text: "눌러서 양식 보관함에서 골라요 · PPT 파일을 끌어다 놓아도 돼요" }
             }
         }
 

@@ -67,6 +67,30 @@ class Pure(unittest.TestCase):
         items, _, _ = presets.add(items, [entry('1')], 'b')
         self.assertEqual(items[0]['image_url'], 'http://x/a.jpg')
 
+    def test_choice(self):
+        items, _, _ = presets.add([], [entry('1', 'a')], 't1')
+        items, _, _ = presets.add(items, [entry('1', 'b'), entry('m', 'x', manual=True)], 't2')
+        old = presets.for_song(items, '1')[1]['id']           # 'a'
+        # 정한 것이 없으면 가장 최근 프리셋
+        self.assertEqual(presets.default_ids(items, {})['1'], presets.for_song(items, '1')[0]['id'])
+        choices = presets.set_choice(items, {}, '1', old)
+        shown = presets.with_default(presets.for_song(items, '1'), choices)
+        self.assertEqual([(p['text'], p['default']) for p in shown], [('a', True), ('b', False)])
+        # 새로 저장해도 설정은 그대로
+        items, _, _ = presets.add(items, [entry('1', 'c')], 't3')
+        self.assertEqual(presets.default_ids(items, choices)['1'], old)
+        # 멜론 가사: 멜론 곡만
+        choices = presets.set_choice(items, choices, '1', presets.MELON)
+        self.assertEqual(presets.default_ids(items, choices)['1'], presets.MELON)
+        self.assertFalse(any(p['default'] for p in presets.with_default(items, choices) if p['song_id'] == '1'))
+        self.assertIsNone(presets.set_choice(items, choices, 'm', presets.MELON))
+        self.assertIsNone(presets.set_choice(items, choices, '1', 'nope'))
+        # 설정한 프리셋을 지우면 다시 가장 최근 것, 정리하면 설정도 빠진다
+        choices = presets.set_choice(items, choices, '1', old)
+        items = presets.remove(items, old)
+        self.assertEqual(presets.default_ids(items, choices)['1'], presets.for_song(items, '1')[0]['id'])
+        self.assertNotIn('1', presets.clean_choices(items, choices))
+
     def test_remove(self):
         items, _, _ = presets.add([], [entry('1'), entry('2')], 'now')
         items = presets.remove(items, presets.for_song(items, '1')[0]['id'])
@@ -144,6 +168,13 @@ class Storage(unittest.TestCase):
         self.assertFalse(backend.deletePreset(found[0]['id']))
         self.assertEqual(json.loads(backend.presetCounts()), {'1': 1, 'manual-c': 1})
         self.assertEqual(changed.call_count, 2)
+        # 곡별 설정: 멜론 가사로 정하면 다시 켜도 남는다
+        self.assertTrue(backend.setPresetChoice('1', 'melon'))
+        self.assertFalse(backend.setPresetChoice('manual-c', 'melon'))
+        backend.shutdown()
+        backend = Backend(mock.Mock())
+        self.assertFalse(any(p['default'] for p in json.loads(backend.presetsFor('1'))))
+        self.assertTrue(json.loads(backend.presetsFor('manual-c'))[0]['default'])
         backend.shutdown()
 
     def test_backend_rename_and_art_url_from_detail_cache(self):

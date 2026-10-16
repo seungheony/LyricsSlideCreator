@@ -99,9 +99,22 @@ class BackendTutorial(unittest.TestCase):
                 mock.patch.dict(os.environ, {'LSC_DATA_DIR': '/nonexistent-dir/x'}):
             backend = Backend(mock.Mock())
             self.assertFalse(backend.tutorialSeen('search'))
-            backend.markTutorialSeen('search')
+            backend.markTutorialSeen('search', 1)
             self.assertTrue(backend.tutorialSeen('search'))
             self.assertFalse(backend.tutorialSeen('editor'))
+            backend.shutdown()
+
+    def test_revision(self):
+        # 리비전 없이 본 예전 기록은 0, 본 적 없으면 -1. 낮은 리비전으로 다시 적어도 내려가지 않는다
+        with mock.patch.object(app_state, 'load', return_value={'tutorials_seen': ['search']}), \
+                mock.patch.object(app_state, 'save', return_value=True):
+            backend = Backend(mock.Mock())
+            self.assertEqual(backend.tutorialRev('search'), 0)
+            self.assertEqual(backend.tutorialRev('editor'), -1)
+            backend.markTutorialSeen('editor', 2)
+            self.assertEqual(backend.tutorialRev('editor'), 2)
+            backend.markTutorialSeen('editor', 1)
+            self.assertEqual(backend.tutorialRev('editor'), 2)
             backend.shutdown()
 
     def test_reads_state_once(self):

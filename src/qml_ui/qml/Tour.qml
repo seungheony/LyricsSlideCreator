@@ -6,8 +6,11 @@ import "."
 // 튜토리얼: 설명할 부분만 밝게 남기고 나머지를 어둡게 덮은 뒤, 옆에 단계별 설명 카드를 띄운다.
 // start([{ target: Item(없으면 가운데 카드만), title, body(StyledText), demo: Component(선택) }, ...])
 // demo는 강조 영역 위에 그대로 겹쳐 만들어져, 실제 화면 위에서 예시 동작을 재생한다 (Demo.qml)
-// opts.required: 첫 실행용. 닫기·Esc 없이 마지막 단계의 "완료"까지 보거나 "건너뛰기"로 끝낸다.
-//   끝까지 보면 opts.onFinished(), 건너뛰면 opts.onSkipped() (없으면 onFinished)
+// enter / leave(선택): 그 단계에 들어설 때·떠날 때(다른 단계로, 닫을 때) 부르는 함수 (예: 서랍을 열어 보여 주고 다시 닫기).
+//   target은 함수여도 된다(enter 뒤에 생기는 화면 요소)
+// opts.required: 첫 실행·업데이트 후 첫 실행용. 닫기·Esc·건너뛰기 없이 마지막 단계의 "완료"까지 본다(끝까지 보면 opts.onFinished()).
+//   ? 버튼으로 연 튜토리얼은 "건너뛰기"·Esc로 언제든 닫는다.
+// opts.badge: 진행 표시 앞에 붙일 말 (업데이트 후 '새로 바뀐 점')
 Popup {
     id: tour
     objectName: "tour"
@@ -15,40 +18,58 @@ Popup {
     property var steps: []
     property int index: 0
     readonly property var step: steps[index] || null
-    readonly property bool hasTarget: !!(step && step.target)
+    readonly property Item target: !step ? null : typeof step.target === "function" ? step.target() : (step.target || null)
+    readonly property bool hasTarget: !!target
+
+    // 단계 진입·이탈 (enter / leave)
+    property var entered: null
+    function leaveStep() {
+        const st = entered
+        entered = null
+        if (st && st.leave) st.leave()
+    }
+    onStepChanged: {
+        if (!visible) return
+        leaveStep()
+        entered = step
+        if (step && step.enter) {
+            step.enter()
+            Qt.callLater(() => tour.contentItem.forceActiveFocus())    // 연 화면이 포커스를 가져가도 ←→·Enter가 튜토리얼로 오게
+        }
+    }
+    onAboutToShow: { entered = step; if (step && step.enter) step.enter() }
+    onAboutToHide: leaveStep()
 
     property bool required: false
+    property string badge: ""
     property var onFinished: null
-    property var onSkipped: null
 
     function start(newSteps, opts) {
         opts = opts || {}
         steps = newSteps
         index = 0
         required = !!opts.required
+        badge = opts.badge || ""
         onFinished = opts.onFinished || null
-        onSkipped = opts.onSkipped || opts.onFinished || null
         open()
     }
     function next() {
         if (index < steps.length - 1) { index++; return }
         const done = onFinished
         onFinished = null
-        onSkipped = null
         close()
         if (done) done()
     }
+    // ? 버튼으로 연 튜토리얼만 (첫 실행은 끝까지 본다)
     function skip() {
-        const done = onSkipped
+        if (required) return
         onFinished = null
-        onSkipped = null
         close()
-        if (done) done()
     }
     readonly property int pad: 6     // 강조 영역이 대상보다 넓은 정도
     function prev() { if (index > 0) index-- }
 
-    onAboutToShow: contentItem.forceActiveFocus()
+    onOpened: contentItem.forceActiveFocus()
 
     parent: Overlay.overlay
     x: 0
@@ -70,10 +91,13 @@ Popup {
     Timer { interval: 100; repeat: true; running: tour.visible; onTriggered: tour.refresh++ }
     readonly property rect hole: {
         const w = tour.width, h = tour.height, _ = tour.refresh
-        const t = tour.step ? tour.step.target : null
+        const t = tour.target
         if (!t || !tour.visible) return Qt.rect(w / 2, h / 2, 0, 0)
         const p = t.mapToItem(tour.parent, 0, 0)
-        return Qt.rect(p.x - pad, p.y - pad, t.width + pad * 2, t.height + pad * 2)
+        // 창 가장자리에 붙은 대상도 강조 테두리가 보이게 창 안으로 줄인다
+        const x1 = Math.max(2, p.x - pad), y1 = Math.max(2, p.y - pad)
+        const x2 = Math.min(w - 2, p.x + t.width + pad), y2 = Math.min(h - 2, p.y + t.height + pad)
+        return Qt.rect(x1, y1, Math.max(0, x2 - x1), Math.max(0, y2 - y1))
     }
 
     // 설명 카드: 폭은 강조 영역 옆에 남은 자리에 맞춰 260~360으로 줄인다
@@ -189,20 +213,13 @@ Popup {
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: (tour.index + 1) + " / " + tour.steps.length
+                        text: (tour.badge ? tour.badge + " · " : "") + (tour.index + 1) + " / " + tour.steps.length
                         color: Theme.primaryText
                         font.family: Theme.font
                         font.pixelSize: 12
                         font.weight: Font.Bold
                     }
                     Item { Layout.fillWidth: true }
-                    AppButton {
-                        glyph: "x"; variant: "ghost"; size: "small"
-                        visible: !tour.required
-                        implicitHeight: 26
-                        Accessible.name: "닫기"
-                        onClicked: tour.close()
-                    }
                 }
 
                 BalancedText {
@@ -226,13 +243,29 @@ Popup {
                     lineHeight: 1.45
                 }
 
-                RowLayout {
+                // 진행: 단계가 적으면 점, 많으면(점이 버튼 자리를 밀어내므로) 가는 막대
+                Rectangle {
+                    visible: tour.steps.length > 8
                     Layout.fillWidth: true
                     Layout.topMargin: 10
+                    implicitHeight: 4
+                    radius: 2
+                    color: Theme.border
+                    Rectangle {
+                        width: parent.width * (tour.index + 1) / Math.max(1, tour.steps.length)
+                        height: parent.height
+                        radius: 2
+                        color: Theme.primary
+                        Behavior on width { NumberAnimation { duration: Theme.fast } }
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: tour.steps.length > 8 ? 4 : 10
                     spacing: 6
                     Row {
                         spacing: 5
-                        visible: tour.steps.length > 1
+                        visible: tour.steps.length > 1 && tour.steps.length <= 8
                         Repeater {
                             model: tour.steps.length
                             delegate: Rectangle {
@@ -248,7 +281,7 @@ Popup {
                     Item { Layout.fillWidth: true }
                     AppButton {
                         text: "건너뛰기"; variant: "ghost"; size: "small"
-                        visible: tour.required && tour.index < tour.steps.length - 1
+                        visible: !tour.required && tour.index < tour.steps.length - 1
                         onClicked: tour.skip()
                     }
                     AppButton {

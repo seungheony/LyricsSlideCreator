@@ -23,12 +23,16 @@ Rectangle {
     property int dragLine: -1
     property int hideSlide: -1       // 날아가는 중인 줄의 원래 자리 (비워 둔다)
     property int hideLine: -1
+    property int dropGap: -1         // 줄을 슬라이드 사이(이 슬라이드 위)에 놓아 새 슬라이드로 만들 자리
+    property var warnLines: []       // PPT에서 줄바꿈되는 줄 ["슬라이드:줄", ...] (SlideList처럼 주황 글자·바탕)
 
     function clearMarks() {
         active = -1; hover = -1; trashHot = false; pressedSlide = -1
         cutSlide = -1; cutAt = -1; cutHot = false; joinAt = -1
         dropSlide = -1; dropAtStart = false; dragSlide = -1; dragLine = -1
         hideSlide = -1; hideLine = -1
+        warnLines = []
+        dropGap = -1
         flyAnim.stop(); flyer.visible = false
     }
 
@@ -72,6 +76,9 @@ Rectangle {
         slides.remove(i + 1)
     }
     function removeAt(i) { slides.remove(i) }
+    // i번째 자리에 새 슬라이드를 끼워 넣는다 (뒤 슬라이드들이 아래로 밀리는 모습이 보인다)
+    function insertAt(i, lines) { slides.insert(i, { text: lines.join("\n") }) }
+    function setLines(i, lines) { slides.setProperty(i, "text", lines.join("\n")) }
 
     // 포인터를 옮길 대상
     function slot(i) { return view.itemAtIndex(i) }
@@ -194,6 +201,16 @@ Rectangle {
                 height: slot.index > 0 ? 18 : 0
                 visible: slot.index > 0
                 readonly property bool on: root.joinAt === slot.index
+                // 새 슬라이드로 놓을 자리
+                Rectangle {
+                    visible: root.dropGap === slot.index
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 28
+                    width: parent.width - 56
+                    height: 3
+                    radius: 2
+                    color: Theme.primary
+                }
                 Shape {
                     anchors.fill: parent
                     opacity: joinGap.on ? 1 : 0
@@ -304,15 +321,25 @@ Rectangle {
                             required property string modelData
                             required property int index
                             readonly property alias cutGap: cutGap
+                            readonly property bool warn: root.warnLines.indexOf(slot.index + ":" + index) >= 0
                             width: lineCol.width
                             height: lineText.height + 6
+
+                            Rectangle {
+                                visible: lineItem.warn
+                                anchors.centerIn: parent
+                                width: Math.min(lineText.contentWidth + 20, parent.width)
+                                height: parent.height
+                                radius: 6
+                                color: Qt.rgba(1, 0.71, 0.28, 0.14)
+                            }
 
                             Text {
                                 id: lineText
                                 anchors.centerIn: parent
                                 width: parent.width
                                 text: lineItem.modelData
-                                color: "white"
+                                color: lineItem.warn ? Theme.slideWarning : "white"
                                 font.family: Theme.font
                                 font.pixelSize: 14
                                 font.weight: Font.Bold
