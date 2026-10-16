@@ -11,10 +11,11 @@ import "."
 // '⚠ 지난 파일'로 알린다. 목록은 EditorPage가 갖고 있고(backend.setAttachments로 저장), 여기서는 신호로 알리기만 한다.
 Rectangle {
     id: box
-    implicitHeight: col.implicitHeight + 16
+    readonly property bool empty: items.length === 0
+    implicitHeight: empty ? 72 : col.implicitHeight + 16
     radius: 12
     color: Theme.surface2
-    border.width: externalHover ? 2 : 0
+    border.width: externalHover && !empty ? 2 : 0
     border.color: Theme.primary
 
     property string title: ""
@@ -67,8 +68,59 @@ Rectangle {
         return where
     }
 
+    // 빈 칸: 회색 바탕 가운데에 칸 이름, 마우스를 올리면(또는 끌어 오면) 초록으로 '＋ 양식 추가' (찬양 카드와 같은 방식)
+    Rectangle {
+        id: emptyFace
+        readonly property bool lit: emptyHover.containsMouse || activeFocus || drop.containsDrag || box.externalHover
+        visible: box.empty
+        anchors.fill: parent
+        radius: box.radius
+        color: lit ? Theme.primarySoft : "transparent"
+        border.width: lit ? 2 : 0
+        border.color: Theme.primary
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: box.title + " 양식 추가"
+        Keys.onReturnPressed: box.browseRequested()
+        Keys.onEnterPressed: box.browseRequested()
+        Keys.onSpacePressed: box.browseRequested()
+        Behavior on color { ColorAnimation { duration: Theme.fast } }
+        Text {
+            anchors.centerIn: parent
+            visible: !emptyFace.lit
+            text: box.title
+            color: Theme.text2
+            font.family: Theme.font
+            font.pixelSize: 13
+            font.weight: Font.Bold
+        }
+        Row {
+            anchors.centerIn: parent
+            visible: emptyFace.lit
+            spacing: 5
+            Icon { glyph: "plus"; size: 13; color: Theme.primaryText; anchors.verticalCenter: parent.verticalCenter }
+            Text {
+                text: drop.containsDrag || box.externalHover ? "여기에 놓기" : "양식 추가"
+                color: Theme.primaryText
+                font.family: Theme.font
+                font.pixelSize: 13
+                font.weight: Font.Bold
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+        MouseArea {
+            id: emptyHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: box.browseRequested()
+        }
+        AppToolTip { visible: emptyHover.containsMouse; delay: 600; text: "PPT 파일을 끌어다 놓거나 눌러서 골라요 · 보관한 양식은 '양식' 옆 보관함에서" }
+    }
+
     ColumnLayout {
     id: col
+    visible: !box.empty
     anchors.fill: parent
     anchors.margins: 8
     spacing: 4
