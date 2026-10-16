@@ -150,12 +150,16 @@ ColumnLayout {
         list.positionViewAtIndex(focusRow, ListView.Contain)
     }
 
+    // 곡 목록은 곡 수만큼만 차지하고 '곡 추가'가 마지막 곡 바로 아래에 온다. 곡이 많아 넘치면 목록이 스크롤되고
+    // '곡 추가'는 아래에 남는다 (목록이 남는 자리를 거의 다 가져가되 내용 높이까지만: stretch + maximumHeight)
     ListView {
         id: list
         objectName: "setlistList"
         visible: panel.entries.length > 0
         Layout.fillWidth: true
         Layout.fillHeight: true
+        Layout.maximumHeight: contentHeight
+        Layout.verticalStretchFactor: 1000
         model: panel.entries
         // 키보드: Tab으로 들어와 ↑↓로 고르고 Enter·Space로 그 곡을 편집, Delete로 콘티에서 빼기, Alt+↑↓로 순서 바꾸기
         activeFocusOnTab: count > 0
@@ -349,19 +353,46 @@ ColumnLayout {
         }
     }
 
-    // 빈 콘티
+    AppButton {
+        id: addButton
+        objectName: "setlistAddButton"
+        visible: panel.entries.length > 0
+        Layout.fillWidth: true
+        text: "곡 추가"
+        glyph: "plus"
+        variant: "secondary"
+        onClicked: panel.addRequested()
+        AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K)" }
+    }
+    Item {
+        visible: panel.entries.length > 0
+        Layout.fillHeight: true
+        Layout.verticalStretchFactor: 1
+    }
+
+    // 빈 콘티: 누르면 곡 추가 (마우스를 올리면 초록으로 바뀌며 '곡 추가'가 보인다)
     Rectangle {
+        id: emptyBox
         objectName: "setlistEmpty"
+        readonly property bool active: emptyArea.containsMouse || activeFocus
         visible: panel.entries.length === 0
         Layout.fillWidth: true
         Layout.fillHeight: true
         radius: 12
-        color: "transparent"
-        border.width: 1.5
-        border.color: Theme.border
+        color: active ? Theme.primarySoft : "transparent"
+        border.width: active ? 2 : 1.5
+        border.color: active ? Theme.primary : Theme.border
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Button
+        Accessible.name: "곡 추가"
+        Keys.onReturnPressed: panel.addRequested()
+        Keys.onEnterPressed: panel.addRequested()
+        Keys.onSpacePressed: panel.addRequested()
+        Behavior on color { ColorAnimation { duration: Theme.fast } }
         Column {
             anchors.centerIn: parent
             spacing: 8
+            visible: !emptyBox.active
             Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "music"; size: 26; color: Theme.text3; opacity: 0.7 }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -373,16 +404,32 @@ ColumnLayout {
                 lineHeight: 1.4
             }
         }
-    }
-
-    AppButton {
-        id: addButton
-        Layout.fillWidth: true
-        text: "곡 추가"
-        glyph: "plus"
-        variant: panel.entries.length ? "secondary" : "primary"
-        onClicked: panel.addRequested()
-        AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K)" }
+        Column {
+            anchors.centerIn: parent
+            spacing: 6
+            visible: emptyBox.active
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 6
+                Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "plus"; size: 18; color: Theme.primaryText }
+                Text { text: "곡 추가"; color: Theme.primaryText; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: Theme.mod + "K"
+                color: Theme.primaryText
+                font.family: Theme.font
+                font.pixelSize: 12
+                opacity: 0.8
+            }
+        }
+        MouseArea {
+            id: emptyArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: panel.addRequested()
+        }
     }
 
     AttachList {
