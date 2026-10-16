@@ -157,6 +157,17 @@ ColumnLayout {
         list.positionViewAtIndex(focusRow, ListView.Contain)
     }
 
+    Text {
+        Layout.leftMargin: 2
+        Layout.topMargin: 4
+        Layout.bottomMargin: -4        // 제목과 줄 사이를 앞·뒤 PPT 구역과 같게
+        text: "곡"
+        color: Theme.text3
+        font.family: Theme.font
+        font.pixelSize: 12
+        font.weight: Font.DemiBold
+    }
+
     // 곡 목록은 곡 수만큼만 차지하고 '곡 추가'가 마지막 곡 바로 아래에 온다. 곡이 많아 넘치면 목록이 스크롤되고
     // '곡 추가'는 아래에 남는다 (목록이 남는 자리를 거의 다 가져가되 내용 높이까지만: stretch + maximumHeight)
     ListView {
@@ -359,37 +370,18 @@ ColumnLayout {
         }
     }
 
-    // 곡 추가: 앞·뒤 PPT의 놓기 칸과 같은 테두리 칸 (마우스를 올리면 초록)
-    Button {
+    // 곡 추가: 앞·뒤 PPT 구역의 넣기 칸과 같은 모양 (AddRow)
+    AddRow {
         id: addButton
         objectName: "setlistAddButton"
         visible: panel.entries.length > 0
         Layout.fillWidth: true
+        Layout.topMargin: -6           // 곡 줄과의 간격을 앞·뒤 PPT 구역(4)과 맞춘다
         implicitHeight: panel.rowHeight
-        hoverEnabled: true
-        focusPolicy: Qt.TabFocus
-        Keys.onReturnPressed: click()
-        Keys.onEnterPressed: click()
-        Accessible.name: "곡 추가"
-        HoverHandler { cursorShape: Qt.PointingHandCursor }
+        text: "곡 추가"
+        lit: panel.externalDrop >= 0
         onClicked: panel.addRequested()
-        readonly property bool lit: hovered || visualFocus || panel.externalDrop >= 0
-        contentItem: Item {
-            Row {
-                anchors.centerIn: parent
-                spacing: 5
-                Icon { glyph: "plus"; size: 14; color: addButton.lit ? Theme.primaryText : Theme.text2; anchors.verticalCenter: parent.verticalCenter }
-                Text { text: "곡 추가"; color: addButton.lit ? Theme.primaryText : Theme.text2; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
-            }
-        }
-        background: Rectangle {
-            radius: Theme.radiusSm
-            color: addButton.lit ? Theme.primarySoft : Theme.surface2Clear
-            border.width: addButton.visualFocus ? 2 : 1.5
-            border.color: addButton.lit ? Theme.primary : Theme.border
-            Behavior on color { ColorAnimation { duration: Theme.fast } }
-        }
-        AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K)" }
+        AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K) · 서랍에서 끌어다 놓아도 돼요" }
     }
     Item {
         visible: panel.entries.length > 0

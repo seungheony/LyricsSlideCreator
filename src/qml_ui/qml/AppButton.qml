@@ -25,7 +25,9 @@ Button {
     Keys.onReturnPressed: click()
     Keys.onEnterPressed: click()
 
-    readonly property color fg: variant === "primary" ? Theme.primaryText
+    property color tint: "transparent"      // 글자·아이콘 색을 직접 정할 때 (보관한 PPT의 초록 책갈피 등)
+    readonly property color fg: tint.a > 0 ? tint
+                               : variant === "primary" ? Theme.primaryText
                                : variant === "danger" ? "white"
                                : variant === "ghost" ? (hovered ? Theme.text : Theme.text2)
                                : Theme.text

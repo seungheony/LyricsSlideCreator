@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-// 보관한 PPT 관리: 앱에 보관한 앞·뒤 PPT를 보고 지운다 (＋ 메뉴의 '보관한 PPT 관리…').
+// 보관한 PPT 관리: 앱에 보관한 앞·뒤 PPT를 보고 지운다 ('PPT 넣기' 메뉴의 '보관한 PPT 관리…').
 // 휴지통은 두 번 눌러 지운다(PresetLibrary와 같음). 지우면 앞·뒤 목록에서도 빠진다(EditorPage.deleteSavedPpt).
 Popup {
     id: dialog
