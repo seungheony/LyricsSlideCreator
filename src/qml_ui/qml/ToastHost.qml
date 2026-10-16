@@ -12,7 +12,7 @@ Item {
 
     function show(message, options) {
         options = options || {}
-        label.text = message
+        label.source = message
         host.error = !!options.error
         host.actions = options.actions
                        || (options.actionLabel ? [{ label: options.actionLabel, handler: options.onAction }] : [])
@@ -38,7 +38,8 @@ Item {
     Rectangle {
         id: card
         width: content.implicitWidth + 32
-        height: 46
+        // 글이 길면 잘라 내지 않고 줄을 바꾸고, 그만큼 높아진다
+        height: Math.max(46, content.implicitHeight + 22)
         radius: 12
         color: Theme.toastBg
         opacity: 0
@@ -63,10 +64,10 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 Icon { anchors.centerIn: parent; glyph: host.error ? "x" : "check"; size: 12; color: "white" }
             }
-            Text {
+            BalancedText {
                 id: label
-                width: Math.min(implicitWidth, 380)
-                elide: Text.ElideRight
+                maxWidth: 460
+                lineHeight: 1.15
                 color: "white"
                 font.family: Theme.font
                 font.pixelSize: 14

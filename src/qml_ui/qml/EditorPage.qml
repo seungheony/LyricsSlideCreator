@@ -49,10 +49,9 @@ Item {
     // 가사를 받는 중인 곡 (받는 동안 PPT 생성을 꺼 둔다)
     readonly property var loadingIds: setlist.filter(id => sessions[id] && sessions[id].loading === true)
     readonly property bool anyLoading: loadingIds.length > 0
-    // 머리글의 콘티 요약
-    readonly property string setlistSummary: !setlist.length ? "새 콘티"
-        : "콘티 " + setlist.length + "곡" + (anyLoading ? " · 가사 받는 중 " + loadingIds.length + "곡"
-                                             : deckSize ? " · PPT " + deckSize + "장" : "")
+    // 머리글의 콘티 요약 (비어 있으면 아무것도 보이지 않는다)
+    readonly property string setlistSummary: !setlist.length ? ""
+        : "콘티 " + setlist.length + "곡" + (anyLoading ? " · 가사 받는 중 " + loadingIds.length + "곡" : "")
     // PPT로 만들지 않은 편집이 있는지 (콘티에서 뺀 곡까지 포함해서)
     readonly property bool anyDirty: dirty || Object.keys(sessions).some(id => id !== currentId && sessions[id].dirty)
 
@@ -120,9 +119,7 @@ Item {
         else if (setlist.length) pendingOpenId = setlist[0]
     }
 
-    // 머리글의 제목·가수 입력칸에 커서가 있다 (이때 ⌘Z는 그 칸의 되돌리기, Esc는 입력칸에서 빠져나오기)
-    readonly property bool headerFocused: titleField.activeFocus || artistField.activeFocus
-    readonly property bool lyricsFocused: lyrics.activeFocus || headerFocused
+    readonly property bool lyricsFocused: lyrics.activeFocus
     readonly property bool dragging: slideList.dragging
 
     function contentKey(bs) { return E.serialize(E.linesOf(bs)) }
@@ -248,8 +245,6 @@ Item {
         song = null
         art.source = ""
         backdrop.source = ""
-        titleField.text = ""
-        artistField.text = ""
         keptLongSlides = {}
         savedKey = ""
         applying = true
@@ -351,16 +346,38 @@ Item {
     }
 
     // 프리셋 저장 (PPT 생성과 따로): 이름을 물어 콘티 곡마다 지금 슬라이드를 저장한다.
-    // 멜론 곡은 검색 결과의 '프리셋' 배지로, 직접 입력한 곡은 검색 결과 맨 위에, 모두 보관함에서 다시 불러온다
+    // 검색 결과 행의 기본 프리셋 버튼(직접 입력한 곡은 검색 결과 맨 위에)과 보관함에서 다시 불러온다
+    // 편집 화면이 띄운 창 (열려 있으면 Main이 단축키를 끈다): 프리셋 저장
     readonly property bool presetSaveOpen: presetSaveDialog.opened
     function savePresets() {
         prepareEdit()
         const songs = setlistGroups().filter(s => s.groups.length)
         if (!songs.length || presetSaveDialog.opened) return
-        const now = new Date()
-        presetSaveDialog.ask(songs.map(s => "'" + (s.song.title || "제목 없음") + "'"),
-                             (now.getMonth() + 1) + "월 " + now.getDate() + "일",
+        presetSaveDialog.ask(songs.map(s => "'" + (s.song.title || "제목 없음") + "'"), todayName(),
                              (name) => page.writePresets(songs, name))
+    }
+
+    function todayName() {
+        const now = new Date()
+        return (now.getMonth() + 1) + "월 " + now.getDate() + "일"
+    }
+
+    // 창을 닫을 때: 프리셋으로 저장하지 않은 곡을 곡마다 골라 저장한다. 저장했거나 '저장하지 않고 닫기'면 done()
+    // (Esc·바깥 클릭이나 저장 실패면 닫지 않는다)
+    function askSaveBeforeClose(songs, done) {
+        presetSaveDialog.ask(songs.map(s => s.song.title || "제목 없음"), todayName(),
+                             (name, indexes) => { if (page.writePresets(indexes.map(i => songs[i]), name)) done() },
+                             { selectable: true, heading: "닫기 전에 프리셋으로 저장할까요?",
+                               confirmText: "저장하고 닫기", skipText: "저장하지 않고 닫기", onSkip: done })
+    }
+
+    // 콘티 곡 중 지금 가사가 어느 프리셋과도 같지 않은 곡 (창을 닫을 때 저장할지 묻는다)
+    function unsavedSongs() {
+        return setlistGroups().filter(s => {
+            if (!s.groups.length) return false
+            const text = E.serialize(s.groups)
+            return !JSON.parse(backend.presetsFor(s.id)).some(p => p.text === text)
+        })
     }
 
     function writePresets(songs, name) {
@@ -369,11 +386,12 @@ Item {
             manual: s.song.manual === true, text: E.serialize(s.groups) }))), name))
         if (res.error) {
             if (dialog) dialog.showError(res.error, res.detail)
-            return
+            return false
         }
         if (toastHost)
             toastHost.show((songs.length > 1 ? songs.length + "곡의 프리셋을 저장했어요" : "프리셋을 저장했어요")
                            + " · 보관함에서 볼 수 있어요", { duration: 4000 })
+        return true
     }
 
     PresetSaveDialog { id: presetSaveDialog; objectName: "presetSaveDialog" }
@@ -390,6 +408,66 @@ Item {
         setlist = E.moveItem(setlist, from, to)
     }
 
+    // ── 서랍에서 콘티로 끌어다 놓기 ── (SongDragArea가 화면 좌표로 알린다)
+    // 놓으면 누를 때와 같이 담고(멜론 곡·프리셋), 새로 담긴 곡을 놓은 자리로 옮긴다.
+    // 콘티에 이미 있는 곡의 프리셋은 그 곡의 가사를 바꾸고 순서는 그대로
+    property var songDrag: null          // { payload, label }
+    // 양식 보관함의 줄(payload.kind "form")은 찬양 전·후 칸에 놓는다 (곡은 찬양 카드)
+    property string formDropSide: ""     // 'before' | 'after' | ''
+    readonly property bool dragOverTarget: setlistPanel.externalDrop >= 0 || formDropSide !== ""
+    function beginSongDrag(payload, label, sx, sy) {
+        songDrag = { payload: payload, label: label }
+        moveSongDrag(sx, sy)
+    }
+    function moveSongDrag(sx, sy) {
+        const p = page.mapFromItem(null, sx, sy)
+        dragGhost.x = p.x + 14
+        dragGhost.y = p.y + 10
+        if (songDrag && songDrag.payload.kind === "form") {
+            const over = item => {
+                const r = item.mapFromItem(null, sx, sy)
+                return r.x >= 0 && r.y >= 0 && r.x <= item.width && r.y <= item.height
+            }
+            formDropSide = over(setlistPanel.attachBefore) ? "before" : over(setlistPanel.attachAfter) ? "after" : ""
+            return
+        }
+        const q = setlistPanel.mapFromItem(null, sx, sy)
+        const inside = q.x >= 0 && q.y >= 0 && q.x <= setlistPanel.width && q.y <= setlistPanel.height
+        setlistPanel.externalDrop = inside ? setlistPanel.gapAt(q.y) : -1
+    }
+    function endSongDrag(sx, sy) {
+        moveSongDrag(sx, sy)
+        const at = setlistPanel.externalDrop
+        const side = formDropSide
+        const drag = songDrag
+        cancelSongDrag()
+        if (drag && drag.payload.kind === "form") {
+            if (side) insertSaved(side, drag.payload.id)
+            return
+        }
+        if (at < 0 || !drag) return
+        const before = setlist.length
+        if (drag.payload.kind === "preset") songDrawer.presetChosen(drag.payload.song, drag.payload.preset)
+        else songDrawer.songClicked(drag.payload.song)
+        if (setlist.length === before + 1 && at < before) moveSong(before, at)
+    }
+    function cancelSongDrag() {
+        songDrag = null
+        formDropSide = ""
+        setlistPanel.externalDrop = -1
+    }
+
+    // ── 콘티 곡·양식을 목록 밖으로 끌어내 빼기 ── (SetlistPanel·AttachList가 화면 좌표로 알린다)
+    // 목록 밖에 있는 동안 서랍에서 끌 때와 같은 표시가 커서를 따라가고, 놓으면 빠진다는 것을 빨갛게 보인다
+    property var outDrag: null           // { label, glyph }
+    function showOutDrag(label, glyph, sx, sy) {
+        if (!outDrag || outDrag.label !== label) outDrag = { label: label, glyph: glyph }
+        const p = page.mapFromItem(null, sx, sy)
+        dragGhost.x = p.x + 14
+        dragGhost.y = p.y + 10
+    }
+    function hideOutDrag() { outDrag = null }
+
     // 콘티에서 뺀다 (편집 내용은 남아 되돌리거나 다시 넣으면 이어서 편집). 다 빼면 빈 상태와 함께 서랍을 연다
     function removeSong(idx) {
         if (idx < 0 || idx >= setlist.length) return
@@ -404,6 +482,131 @@ Item {
             toastHost.show("'" + (sessions[id].song.title || "제목 없음") + "' 곡을 콘티에서 뺐어요",
                            { actionLabel: "되돌리기", duration: 5000, onAction: () => page.restoreSong(id, idx) })
         if (!setlist.length) openDrawer()
+    }
+
+    // ── 앞·뒤에 붙일 PPT ── (콘티 패널의 AttachList. 경로 목록은 backend가 state.json에 기억한다)
+    property var attachments: ({ before: [], after: [], slides: 0, problems: 0 })
+
+    property var savedPpts: []               // 양식 보관함 (곡 찾기 서랍의 '양식 보관함' 화면)
+
+    // 목록 항목: 원본 파일 경로 또는 보관한 PPT { saved: id } (보관함에서 지웠어도 목록에 남은 복사본은 id가 있다)
+    function attachLists() {
+        const entry = i => i.id ? { saved: i.id } : i.path
+        return { before: attachments.before.map(entry), after: attachments.after.map(entry) }
+    }
+    function setAttachLists(lists) {
+        attachments = JSON.parse(backend.setAttachments(JSON.stringify(lists)))
+    }
+    // 파일이 옮겨졌거나 고쳐졌을 수 있어 앱으로 돌아올 때·PPT를 만들기 전에 다시 읽는다
+    function refreshAttachments() {
+        attachments = JSON.parse(backend.attachments())
+        savedPpts = JSON.parse(backend.savedPpts())
+    }
+    function keepAttachment(side, idx) {
+        const res = JSON.parse(backend.keepAttachment(side, idx))
+        if (res.error) { dialog.showError(res.error, res.detail || ""); return }
+        attachments = res.attachments
+        savedPpts = JSON.parse(backend.savedPpts())
+        const name = attachments[side][idx].name
+        if (toastHost) toastHost.show(res.replaced ? "보관해 둔 '" + name + "' 파일을 새 파일로 바꿨어요"
+                                                   : "'" + name + "' 파일을 양식 보관함에 넣었어요 · 빼도 '양식' 옆 보관함에서 다시 꺼내 써요")
+    }
+    // ── 양식 보관함 ── (서랍의 '양식 보관함' 화면: 넣기·이름 고치기·삭제, 파일을 보관함에만 넣기)
+    function openFormLibrary(focusId) {
+        savedPpts = JSON.parse(backend.savedPpts())
+        openDrawer("forms", { focusId: focusId || "" })
+    }
+    function insertSaved(side, id) {
+        const item = savedPpts.find(i => i.id === id)
+        addSavedAttachment(side, id)
+        if (toastHost && item) toastHost.show("'" + item.name + "' 양식을 찬양 " + (side === "before" ? "전" : "후") + "에 넣었어요")
+    }
+    function renameSavedPpt(id, name) {
+        if (!name.trim()) return
+        if (backend.renameSavedPpt(id, name)) refreshAttachments()
+    }
+    // 끌어다 놓거나 고른 파일을 보관함에만 넣는다 (찬양 전·후 목록은 그대로)
+    function keepFiles(urls) {
+        const done = [], failed = []
+        for (const url of urls) {
+            const res = JSON.parse(backend.savePptToLibrary(url.toString()))
+            if (res.error) failed.push(res)
+            else done.push(res.item)
+        }
+        refreshAttachments()
+        if (done.length) songDrawer.forms.focusId = done[done.length - 1].id
+        if (!toastHost) return
+        if (failed.length) toastHost.show(failed.length === 1 ? "'" + failed[0].name + "' 파일은 보관할 수 없어요 · " + failed[0].error
+                                                              : failed.length + "개 파일은 보관할 수 없어요 · PPT(.pptx) 파일만 넣을 수 있어요", { duration: 6000 })
+        else if (done.length) toastHost.show(done.length === 1 ? "'" + done[0].name + "' 파일을 양식 보관함에 넣었어요" : done.length + "개 파일을 양식 보관함에 넣었어요")
+    }
+    function browseForLibrary() {
+        if (attachDialog.currentFolder.toString() === "")
+            attachDialog.currentFolder = StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        attachDialog.open()
+    }
+    function addSavedAttachment(side, id) {
+        const lists = attachLists()
+        if (lists[side].some(e => e.saved === id)) return
+        lists[side].push({ saved: id })
+        setAttachLists(lists)
+    }
+    function deleteSavedPpt(id) {
+        const item = savedPpts.find(i => i.id === id)
+        if (!item) return
+        const where = setlistPanel.placedSaved[id]
+        confirmDialog.ask({
+            title: "양식 보관함에서 지울까요?",
+            message: "'" + item.name + "' 파일을 보관함에서 지워요." + (where ? " 찬양 " + (where === "앞" ? "전" : "후") + " 양식에는 그대로 남아요." : "")
+                     + " 보관함에서는 되돌릴 수 없어요.",
+            confirmText: "삭제",
+            onConfirm: () => page.doDeleteSavedPpt(id, item)
+        })
+    }
+    function doDeleteSavedPpt(id, item) {
+        attachments = JSON.parse(backend.deleteSavedPpt(id))
+        savedPpts = JSON.parse(backend.savedPpts())
+        if (toastHost && item) toastHost.show("'" + item.name + "' 파일을 양식 보관함에서 지웠어요"
+                                              + (setlistPanel.attachments.before.concat(setlistPanel.attachments.after).some(i => i.id === id)
+                                                 ? " · 찬양 전·후 양식에는 남아 있어요" : ""))
+    }
+    function addAttachments(side, urls) {
+        const lists = attachLists()
+        const skipped = []
+        let added = 0
+        for (const url of urls) {
+            const info = JSON.parse(backend.inspectAttachment(url.toString()))
+            if (!/\.pptx$/i.test(info.name) && !info.error) info.error = "PPT(.pptx) 파일만 넣을 수 있어요."
+            if (info.error) { skipped.push(info); continue }
+            if (lists[side].indexOf(info.path) >= 0) continue
+            lists[side].push(info.path)
+            added++
+        }
+        if (added) setAttachLists(lists)
+        if (skipped.length && toastHost)
+            toastHost.show(skipped.length === 1 ? "'" + skipped[0].name + "' 파일은 넣을 수 없어요 · " + skipped[0].error
+                                                : skipped.length + "개 파일은 넣을 수 없어요 · PPT(.pptx) 파일만 넣을 수 있어요",
+                           { duration: 6000 })
+    }
+    function removeAttachment(side, idx) {
+        const before = attachLists()
+        const lists = attachLists()
+        const name = attachments[side][idx].name
+        lists[side].splice(idx, 1)
+        setAttachLists(lists)
+        if (toastHost)
+            toastHost.show("'" + name + "' 파일을 뺐어요", { actionLabel: "되돌리기", duration: 5000, onAction: () => page.setAttachLists(before) })
+    }
+    function moveAttachment(side, from, to) {
+        const lists = attachLists()
+        lists[side] = E.moveItem(lists[side], from, to)
+        setAttachLists(lists)
+    }
+    Connections {
+        target: Qt.application
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationActive) page.refreshAttachments()
+        }
     }
 
     // 지금 곡을 뺀 뒤: idx 자리에서 가장 가까운, 가사가 있는 곡을 연다 (없으면 편집기를 비운다)
@@ -450,8 +653,6 @@ Item {
         // 직접 입력한 곡은 앨범아트가 없다
         art.source = newSong.manual ? "" : "image://art/" + newSong.song_id
         backdrop.source = art.source
-        titleField.text = newSong.title
-        artistField.text = newSong.artist
         longCheckTimer.stop()
         typingTimer.stop()
         dismissUndoToast()
@@ -487,14 +688,6 @@ Item {
         toastHist = mine
         toastHost.show(message, { actionLabel: "되돌리기", duration: 5000,
                                   onAction: () => { if (page.histIdx === mine) page.undo() } })
-    }
-
-    // 머리글에서 제목·가수를 고쳤다 (파일 이름·콘티 목록에 반영)
-    function setSongInfo(title, artist) {
-        if (!song) return
-        const t = title.trim(), a = artist.trim()
-        if (t === song.title && a === song.artist) return
-        song = Object.assign({}, song, { title: t, artist: a })
     }
 
     // ── 텍스트 반영 ──
@@ -545,7 +738,7 @@ Item {
 
     // 미리보기·단축키로 편집하기 전에: 조합 중인 한글을 확정하고, 미뤄 둔 목록 갱신을 반영한다
     function prepareEdit() {
-        if (lyrics.preeditText !== "" || titleField.preeditText !== "" || artistField.preeditText !== "") Qt.inputMethod.commit()
+        if (lyrics.preeditText !== "") Qt.inputMethod.commit()
         flushSync()
     }
 
@@ -600,6 +793,7 @@ Item {
     }
 
     Component.onCompleted: {
+        refreshAttachments()
         updateFitBasis()
         // 시작할 때 콘티가 비어 있으면 곡 찾기 서랍을 연다
         if (!setlist.length) Qt.callLater(openDrawer)
@@ -748,7 +942,7 @@ Item {
             const r = E.splitAsked(E.linesOf(blocks), current.keys)
             if (r.count) { commit(r.groups); total += r.count; songs++ }
         }
-        if (toastHost) toastHost.show(songs + "곡에서 " + total + "장을 2줄씩 나눴어요 · 곡마다 되돌릴 수 있어요")
+        if (toastHost) toastHost.show(songs + "곡에서 긴 슬라이드를 2줄씩 나눴어요 · 곡마다 되돌릴 수 있어요")
     }
 
     function longNames(fresh) {
@@ -779,7 +973,7 @@ Item {
     function splitLongSlides(keys) {
         prepareEdit()
         const r = E.splitAsked(E.linesOf(blocks), keys)
-        if (r.count) commit(r.groups, { message: r.count + "장을 2줄씩 나눴어요" })
+        if (r.count) commit(r.groups, { message: "긴 슬라이드를 2줄씩 나눴어요" })
     }
 
     function removeSlide(idx) {
@@ -919,9 +1113,8 @@ Item {
 
     // ── 도움말 (? 버튼) ──
     // 처음 편집 화면에 들어왔을 때: 모든 튜토리얼을 이어서 끝까지 보여준다
-    function showFirstRunTour(onFinished, onSkipped) {
-        help.firstRun(onFinished, onSkipped)
-    }
+    // 첫 실행(업데이트 후 첫 실행) 튜토리얼 단계 (Main이 본 리비전으로 거른다)
+    function firstRunSteps() { return help.firstRunSteps() }
 
     EditorHelp {
         id: help
@@ -931,7 +1124,6 @@ Item {
         lyricsBox: lyricsBox
         autoSplitRow: autoSplitRow
         slideList: slideList
-        keepTwoRow: keepTwoRow
         keepTwoBox: keepTwoBox
         historyRow: historyRow
         templateRow: templateRow
@@ -940,6 +1132,12 @@ Item {
         generateButton: generateButton
         savePresetButton: presetGroup
         setlistPanel: setlistPanel
+        wrapBadge: wrapBadge
+        editorBody: editorBody
+        slidesColumn: slidesColumn
+        slidesTitle: slidesTitle
+        editor: page
+        addSongArea: addSongArea
     }
 
     // ── 템플릿 / 생성 ──
@@ -951,6 +1149,13 @@ Item {
         if (generating || saveDialog.visible) return
         prepareEdit()
         if (!deckSize || anyLoading) return    // 버튼과 단축키는 가사가 있고 받는 중인 곡이 없을 때만 켜지지만 한 번 더 막는다
+        refreshAttachments()
+        if (attachments.problems) {
+            const bad = attachments.before.concat(attachments.after).filter(i => i.error)
+            dialog.showError("붙일 PPT에 문제가 있어요\n콘티의 앞·뒤 PPT 목록에서 빨갛게 표시된 파일을 빼거나 다시 넣어 주세요.",
+                             bad.map(i => i.path + "\n" + i.error).join("\n\n"))
+            return
+        }
         longCheckTimer.stop()
         const fresh = keepTwo && confirmDialog ? freshLongInSetlist() : []
         if (fresh.length) askLongBeforeGenerate(fresh)
@@ -1054,6 +1259,14 @@ Item {
         }
     }
 
+    FileDialog {
+        id: attachDialog
+        title: "양식 보관함에 넣을 PPT"
+        fileMode: FileDialog.OpenFiles
+        nameFilters: ["PowerPoint (*.pptx)"]
+        onAccepted: page.keepFiles(selectedFiles)
+    }
+
     // 맨 아래 깔린 빈 곳 누름 받기: 버튼·입력칸·목록이 받지 않은 누름(머리글·여백·막대 바탕 등)은 여기로 와서 선택을 푼다
     MouseArea {
         anchors.fill: parent
@@ -1106,14 +1319,16 @@ Item {
             Rectangle {
                 id: setlistColumn
                 Layout.fillHeight: true
-                Layout.preferredWidth: 230
-                Layout.minimumWidth: 230
+                Layout.preferredWidth: 280
+                Layout.minimumWidth: 280
                 color: Theme.surface
                 Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.border }
 
                 SetlistPanel {
                     id: setlistPanel
                     objectName: "setlistPanel"
+                    dragHost: page
+                    formDropSide: page.formDropSide
                     anchors.fill: parent
                     anchors.topMargin: 14
                     anchors.leftMargin: 12
@@ -1128,6 +1343,13 @@ Item {
                     onAddRequested: page.openDrawer("melon")
                     onClearRequested: page.clearSetlist()
                     onHelpRequested: help.setlistHelp()
+                    attachments: page.attachments
+                    onAttachDropped: (side, urls) => page.addAttachments(side, urls)
+                    onAttachRemove: (side, idx) => page.removeAttachment(side, idx)
+                    onAttachMove: (side, from, to) => page.moveAttachment(side, from, to)
+                    onAttachKeep: (side, idx) => page.keepAttachment(side, idx)
+                    onSongLibraryRequested: page.openDrawer("library")
+                    onFormLibraryRequested: (id) => page.openFormLibrary(id)
                 }
 
             }
@@ -1146,7 +1368,7 @@ Item {
                 // ── 곡 정보 ──
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 84
+                    Layout.preferredHeight: 64      // 콘티·앞뒤 PPT 줄(40)과 어울리게 낮게
                     color: Theme.surface
                     clip: true
 
@@ -1180,61 +1402,44 @@ Item {
                         spacing: 16
                         RoundedImage {
                             id: art
-                            Layout.preferredWidth: 64
-                            Layout.preferredHeight: 64
-                            radius: 10
+                            Layout.preferredWidth: 44
+                            Layout.preferredHeight: 44
+                            radius: 8
                             placeholder: Theme.surface2
                             // 앨범아트가 없으면(직접 입력·받지 못함) 음표
-                            Icon { anchors.centerIn: parent; glyph: "music"; size: 26; color: Theme.text3; visible: !art.ready }
+                            Icon { anchors.centerIn: parent; glyph: "music"; size: 20; color: Theme.text3; visible: !art.ready }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            // 제목·가수는 눌러서 고칠 수 있다 (PPT 파일 이름·콘티 목록에 쓰임)
-                            TextField {
-                                id: titleField
+                            // 제목·가수는 글자로만 보인다 (고치지 않는다)
+                            Text {
                                 Layout.fillWidth: true
-                                placeholderText: "제목"
-                                placeholderTextColor: Theme.text3
+                                text: page.song ? page.song.title || "제목 없음" : ""
+                                textFormat: Text.PlainText
                                 color: Theme.text
                                 font.family: Theme.font
-                                font.pixelSize: 20
+                                font.pixelSize: 18
                                 font.weight: Font.Bold
-                                selectByMouse: true
-                                leftPadding: 6; rightPadding: 6; topPadding: 2; bottomPadding: 2
-                                background: Rectangle { radius: 6; color: "transparent"; border.width: titleField.activeFocus || titleField.hovered ? 1 : 0; border.color: titleField.activeFocus ? Theme.focusBorder : Theme.border }
-                                hoverEnabled: true
-                                onTextEdited: page.setSongInfo(text, artistField.text)
-                                onEditingFinished: page.setSongInfo(text, artistField.text)
-                                onAccepted: artistField.forceActiveFocus()
-                                Accessible.name: "곡 제목"
-                                ContextMenu.menu: AppTextMenu { editor: titleField }
+                                elide: Text.ElideRight
                             }
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 0
-                                TextField {
-                                    id: artistField
-                                    Layout.preferredWidth: Math.max(60, contentWidth + 14)
-                                    Layout.maximumWidth: 360
-                                    placeholderText: "가수"
-                                    placeholderTextColor: Theme.text3
+                                Text {
+                                    visible: !!(page.song && page.song.artist)
+                                    text: page.song ? page.song.artist : ""
+                                    textFormat: Text.PlainText
                                     color: Theme.text2
                                     font.family: Theme.font
                                     font.pixelSize: 14
-                                    selectByMouse: true
-                                    leftPadding: 6; rightPadding: 6; topPadding: 1; bottomPadding: 1
-                                    background: Rectangle { radius: 6; color: "transparent"; border.width: artistField.activeFocus || artistField.hovered ? 1 : 0; border.color: artistField.activeFocus ? Theme.focusBorder : Theme.border }
-                                    hoverEnabled: true
-                                    onTextEdited: page.setSongInfo(titleField.text, text)
-                                    onEditingFinished: page.setSongInfo(titleField.text, text)
-                                    onAccepted: lyrics.forceActiveFocus()
-                                    Accessible.name: "가수"
-                                    ContextMenu.menu: AppTextMenu { editor: artistField }
+                                    elide: Text.ElideRight
+                                    Layout.maximumWidth: 360
+                                    Layout.rightMargin: 4
                                 }
                                 Text {
                                     visible: !!(page.song && page.song.album)
-                                    text: page.song && page.song.album ? "· " + page.song.album : ""
+                                    text: page.song && page.song.album ? (page.song.artist ? "· " : "") + page.song.album : ""
                                     textFormat: Text.PlainText
                                     color: Theme.text3
                                     font.family: Theme.font
@@ -1251,6 +1456,7 @@ Item {
 
                 // ── 본문: 가사 | 슬라이드 ──
                 RowLayout {
+                    id: editorBody
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.margins: 20
@@ -1426,6 +1632,7 @@ Item {
 
                     // 슬라이드
                     ColumnLayout {
+                        id: slidesColumn
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.preferredWidth: 0
@@ -1435,15 +1642,10 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 34
-                            Text { text: "슬라이드"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
+                            Text { id: slidesTitle; text: "슬라이드"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
+                            // PPT에서 줄바꿈되는 슬라이드가 있다는 표시. 누르면 그 슬라이드를 차례로 보여준다
                             Rectangle {
-                                visible: page.blocks.length > 0
-                                width: countText.implicitWidth + 16; height: 20; radius: 10
-                                color: Theme.primarySoft
-                                Text { id: countText; anchors.centerIn: parent; text: page.blocks.length + "장"; color: Theme.primaryText; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
-                            }
-                            // PPT에서 줄바꿈되는 슬라이드 수. 누르면 그 슬라이드를 차례로 보여준다
-                            Rectangle {
+                                id: wrapBadge
                                 visible: page.wrapSlides.length > 0
                                 width: wrapRow.implicitWidth + 16; height: 20; radius: 10
                                 color: wrapArea.containsMouse ? Qt.darker(Theme.warningSoft, 1.05) : Theme.warningSoft
@@ -1452,7 +1654,7 @@ Item {
                                     anchors.centerIn: parent
                                     spacing: 4
                                     Icon { glyph: "alert"; size: 12; color: Theme.warning; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { text: "줄바꿈 " + page.wrapSlides.length + "장"; color: Theme.warning; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                    Text { text: "줄바꿈 있음"; color: Theme.warning; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                                 }
                                 MouseArea {
                                     id: wrapArea
@@ -1582,25 +1784,23 @@ Item {
                     x: centerX + (rightX - centerX) * besideDrawer
                     width: Math.min(300, parent.width - 48)
                     spacing: 10
-                    Text {
-                        width: parent.width
-                        text: !page.setlist.length ? "곡을 담으면 여기서 가사를 다듬어요"
+                    BalancedText {
+                        maxWidth: parent.width
+                        source: !page.setlist.length ? "곡을 담으면 여기서 가사를 다듬어요"
                             : page.drawerOpen ? "검색창을 닫으면 담은 곡을 열어요" : "가사를 받는 중이에요"
                         color: Theme.text
                         font.family: Theme.font
                         font.pixelSize: 17
                         font.weight: Font.Bold
-                        wrapMode: Text.Wrap
                     }
-                    Text {
-                        width: parent.width
-                        text: !page.setlist.length ? "빈 줄로 슬라이드를 나누고, 줄을 끌어 옮기고, 콘티 전체를 PPT 한 파일로 만들어요"
+                    BalancedText {
+                        maxWidth: parent.width
+                        source: !page.setlist.length ? "빈 줄로 슬라이드를 나누고, 줄을 끌어 옮기고, 콘티 전체를 PPT 한 파일로 만들어요"
                             : page.drawerOpen ? "곡을 더 담거나 검색창을 닫아 주세요" : "다 받으면 바로 열어요"
                         color: Theme.text2
                         font.family: Theme.font
                         font.pixelSize: 13
                         lineHeight: 1.4
-                        wrapMode: Text.Wrap
                     }
                 }
             }
@@ -1748,9 +1948,67 @@ Item {
         MouseArea { anchors.fill: parent; enabled: songDrawer.opened; onClicked: page.closeDrawer() }
     }
 
+    // 끌고 있는 곡 (커서를 따라간다, 서랍 위에 그린다). 콘티 곡·양식을 목록 밖으로 끌어낼 때(outDrag)는 빨갛게 '놓으면 빼요'
+    Rectangle {
+        id: dragGhost
+        visible: page.songDrag !== null || page.outDrag !== null
+        z: 1000
+        width: Math.min(300, ghostRow.implicitWidth + 24)
+        height: 36
+        radius: 10
+        color: page.outDrag ? Theme.danger : Theme.toastBg
+        opacity: 0.94
+        Row {
+            id: ghostRow
+            anchors.centerIn: parent
+            spacing: 6
+            Icon {
+                glyph: page.outDrag ? page.outDrag.glyph : page.songDrag && page.songDrag.payload.kind === "form" ? "library" : "music"
+                size: 14
+                color: !page.outDrag && page.dragOverTarget ? Theme.primary : "white"
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                width: Math.min(implicitWidth, 180)
+                text: page.outDrag ? page.outDrag.label : page.songDrag ? page.songDrag.label : ""
+                textFormat: Text.PlainText
+                color: "white"
+                font.family: Theme.font
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                visible: page.outDrag !== null
+                text: "· 놓으면 빼요"
+                color: "white"
+                font.family: Theme.font
+                font.pixelSize: 12
+                font.weight: Font.Bold
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+    }
+
+    // 콘티 패널 + 검색창 자리 (튜토리얼에서 '곡 추가'를 눌러 검색창이 열리는 모습을 함께 강조)
+    Item {
+        id: addSongArea
+        x: 0
+        y: topBar.height
+        width: setlistColumn.width + songDrawer.width
+        height: bottomBar.y - y
+    }
+
     SongDrawer {
         id: songDrawer
         objectName: "songDrawer"
+        dragHost: page
+        formItems: page.savedPpts
+        onFormDelete: (id) => page.deleteSavedPpt(id)
+        onFormRename: (id, name) => page.renameSavedPpt(id, name)
+        onFormFilesDropped: (urls) => page.keepFiles(urls)
+        onFormBrowse: page.browseForLibrary()
         x: setlistColumn.width
         y: topBar.height
         width: Math.min(430, page.width - x)

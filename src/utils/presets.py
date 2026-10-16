@@ -4,10 +4,12 @@
 멜론 곡은 곡 번호(song_id)로 검색 결과와 잇는다. 앨범아트는 저장하지 않고 곡 번호로 다시 받는다.
 직접 입력한 곡(manual)은 멜론에 없으므로 앱 안에서 제목·가수·가사로 찾는다(search_manual). song_id는 'manual-'로
 시작하는 고유한 값이라(Main.qml manualId) 같은 곡을 다시 저장하면 같은 곡으로 묶인다.
-파일: 앱 데이터 폴더의 presets.json (src/utils/app_state.py) — {"version": 1, "presets": [...]}
+파일: 앱 데이터 폴더의 presets.json (src/utils/app_state.py) — {"version": 1, "presets": [...], "choices": {...}}
   프리셋: {id, song_id, name, title, artist, album, manual, image_url, text, saved_at('YYYY-MM-DDTHH:MM:SS', 이 컴퓨터 시각)}
   image_url: 멜론 앨범아트 주소 (저장할 때 알고 있으면). 보관함이 곡 상세 페이지를 거치지 않고 그림만 받는다
   name이 없는 프리셋(v1.4-beta.1)은 화면에서 저장한 날짜로 보인다
+  choices: 곡별 설정 {song_id: 프리셋 id 또는 'melon'(멜론 가사 그대로)}. 검색 결과 행·보관함 카드의 고르기 버튼으로 정하고
+  그 곡은 이 설정으로 담긴다. 정한 것이 없거나 그 프리셋을 지웠으면 가장 최근 프리셋 (with_default가 화면용으로 표시하고 맨 앞에 둔다)
 """
 import html
 import re
@@ -27,8 +29,16 @@ def load():
     return [p for p in items if isinstance(p, dict) and p.get('song_id') and isinstance(p.get('text'), str)]
 
 
-def save(presets):
-    return app_state.write_json(app_state.data_path(FILE_NAME), {'version': 1, 'presets': presets})
+def load_choices():
+    choices = app_state.read_json(app_state.data_path(FILE_NAME)).get('choices')
+    if not isinstance(choices, dict):
+        return {}
+    return {str(k): v for k, v in choices.items() if isinstance(v, str) and v}
+
+
+def save(presets, choices=None):
+    return app_state.write_json(app_state.data_path(FILE_NAME),
+                                {'version': 1, 'presets': presets, 'choices': clean_choices(presets, choices)})
 
 
 def add(presets, entries, now, name=''):
@@ -74,6 +84,56 @@ def rename(presets, preset_id, name):
         return None
     name = ' '.join((name or '').split())[:60]
     return [dict(p, name=name) if p.get('id') == preset_id else p for p in presets]
+
+
+MELON = 'melon'         # 곡별 설정: 프리셋 대신 멜론 가사 그대로
+
+
+def default_ids(presets, choices):
+    """곡 번호 → 그 곡의 설정 (프리셋 id 또는 MELON). 정한 것이 없거나 없어진 프리셋이면 가장 최근 프리셋.
+    MELON은 멜론 곡만 (직접 입력한 곡은 멜론 가사가 없다)"""
+    out = {}
+    for p in presets:
+        sid = p['song_id']
+        if sid in out:
+            continue
+        mine = [q for q in presets if q['song_id'] == sid]
+        c = (choices or {}).get(sid)
+        if c == MELON and not any(q.get('manual') for q in mine):
+            out[sid] = MELON
+        elif c and any(q['id'] == c for q in mine):
+            out[sid] = c
+        else:
+            out[sid] = p['id']
+    return out
+
+
+def with_default(presets, choices):
+    """화면용: 곡마다 설정된 프리셋에 default=True(나머지 False)를 붙이고 맨 앞으로 (나머지는 그대로 최근 것부터).
+    멜론 가사로 정한 곡은 default=True인 프리셋이 없다"""
+    ids = default_ids(presets, choices)
+    marked = [dict(p, default=ids[p['song_id']] == p['id']) for p in presets]
+    return sorted(marked, key=lambda p: not p['default'])
+
+
+def set_choice(presets, choices, song_id, value):
+    """곡의 설정을 바꾼다 (value: 그 곡의 프리셋 id 또는 MELON). 반환: 새 choices (맞지 않는 값이면 None)"""
+    mine = [p for p in presets if p['song_id'] == song_id]
+    if not mine:
+        return None
+    if value == MELON:
+        if any(p.get('manual') for p in mine):
+            return None
+    elif not any(p['id'] == value for p in mine):
+        return None
+    return dict(clean_choices(presets, choices), **{song_id: value})
+
+
+def clean_choices(presets, choices):
+    """프리셋이 없어진 곡·없어진 프리셋을 가리키는 설정을 뺀다"""
+    ids = {p['id'] for p in presets}
+    songs = {p['song_id'] for p in presets}
+    return {k: v for k, v in (choices or {}).items() if k in songs and (v == MELON or v in ids)}
 
 
 def remove(presets, preset_id):

@@ -94,24 +94,24 @@ Popup {
         Keys.onEnterPressed: dialog.finish(true)
         focus: true
 
-        Text {
-            text: dialog.title
+        BalancedText {
+            maxWidth: parent.width
+            Layout.preferredWidth: fitWidth
+            source: dialog.title
             color: Theme.text
             font.family: Theme.font
             font.pixelSize: 17
             font.weight: Font.Bold
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
         }
-        Text {
+        BalancedText {
+            maxWidth: parent.width
+            Layout.preferredWidth: fitWidth
             visible: dialog.message !== ""
-            text: dialog.message
+            source: dialog.message
             color: Theme.text2
             font.family: Theme.font
             font.pixelSize: 14
             lineHeight: 1.4
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
         }
         RowLayout {
             Layout.alignment: Qt.AlignRight

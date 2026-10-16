@@ -44,14 +44,14 @@ Popup {
             font.pixelSize: 17
             font.weight: Font.Bold
         }
-        Text {
-            Layout.fillWidth: true
-            text: "잘 안 되는 기능, 불편한 점, 있었으면 하는 기능 모두 좋아요.\n작은 것이라도 앱을 고치는 데 큰 도움이 돼요."
+        BalancedText {
+            maxWidth: parent.width
+            Layout.preferredWidth: fitWidth
+            source: "잘 안 되는 기능, 불편한 점, 있었으면 하는 기능 모두 좋아요.\n작은 것이라도 앱을 고치는 데 큰 도움이 돼요."
             color: Theme.text2
             font.family: Theme.font
             font.pixelSize: 14
             lineHeight: 1.4
-            wrapMode: Text.Wrap
         }
 
         // 안내

@@ -19,9 +19,10 @@ from PySide6.QtQuick import QQuickImageProvider
 
 from src.utils.melon_api import MelonError, MelonScraper
 from src.utils.ppt_engine import PPTBuilder
+from src.utils.ppt_merge import deck_info
 from src.utils.line_fit import LineFit
 from src.utils.helpers import resource_path
-from src.utils import app_state, presets, updater
+from src.utils import app_state, presets, saved_ppts, updater
 from src.utils.version import get_version, parse_version
 
 
@@ -81,6 +82,84 @@ def _save_error(e, path):
     else:
         msg = '파일을 저장하지 못했어요. 다른 이름이나 다른 폴더에 저장해 보세요.'
     return {'error': msg, 'detail': detail}
+
+
+ATTACH_SIDES = ('before', 'after')
+STALE_DAYS = 6      # '보관'하지 않은 붙일 PPT를 이보다 오래 고치지 않았으면 알린다 (지난주 설교 PPT를 그대로 붙이는 실수)
+
+
+def inspect_attachment(path):
+    """앞·뒤에 붙일 PPT 하나: {path, name, slides, width, height} 또는 {path, name, error}"""
+    info = {'path': path, 'name': os.path.basename(path)}
+    if path.lower().endswith('.ppt'):
+        info['error'] = '예전 형식(.ppt)이에요. PowerPoint에서 .pptx로 저장한 뒤 넣어 주세요.'
+    elif not os.path.isfile(path):
+        info['error'] = '파일을 찾을 수 없어요. 옮기거나 지웠다면 다시 넣어 주세요.'
+        info['missing'] = True
+    else:
+        try:
+            info.update(deck_info(path))
+            info['modified'] = os.path.getmtime(path)
+        except ValueError:
+            info['error'] = '열 수 없는 파일이에요. 암호가 걸려 있거나 PPT(.pptx) 파일이 아니에요.'
+    return info
+
+
+def clean_attach_lists(data):
+    """저장·전달된 목록 정리. 항목: 원본 파일 경로(문자열) 또는 보관한 PPT {'saved': id}"""
+    data = data if isinstance(data, dict) else {}
+    def ok(entry):
+        return isinstance(entry, str) or (isinstance(entry, dict) and isinstance(entry.get('saved'), str))
+    def entries(side):
+        value = data.get(side)
+        return value if isinstance(value, list) else []
+    return {side: [e if isinstance(e, str) else {'saved': e['saved']} for e in entries(side) if ok(e)]
+            for side in ATTACH_SIDES}
+
+
+def attach_path(entry):
+    """목록 항목 → 읽을 파일 경로"""
+    return entry if isinstance(entry, str) else saved_ppts.file_path(entry['saved'])
+
+
+def describe_entry(entry, saved_index):
+    if isinstance(entry, str):
+        return inspect_attachment(entry)
+    item = saved_index.get(entry['saved'])
+    if item is None:
+        return {'path': '', 'name': '보관한 PPT', 'saved': True, 'id': entry['saved'], 'missing': True,
+                'error': '보관한 PPT를 찾을 수 없어요. 목록에서 빼 주세요.'}
+    info = inspect_attachment(saved_ppts.file_path(item['id']))
+    source = item.get('source')
+    # 보관함에서 지웠지만 목록에는 남은 것(hidden)은 보관되지 않은 것으로 보인다 (id는 그대로: 목록 항목이 그 복사본을 쓴다)
+    info.update({'name': item['name'], 'saved': not item.get('hidden'), 'id': item['id'],
+                 'hasSource': bool(source) and os.path.isfile(source)})
+    if info.get('missing'):
+        info['error'] = '보관한 파일이 지워졌어요. 목록에서 빼고 다시 넣어 주세요.'
+    return info
+
+
+def describe_attachments(lists, saved_items=(), now=None):
+    """{before: [항목], after: [항목]} → 화면에 보일 정보. 슬라이드 크기는 처음 붙이는 PPT를 따르므로
+    (ppt_merge.attach_decks) 그와 크기가 다른 PPT에 sizeMismatch를 붙인다. slides: 붙일 장 수 합.
+    항목은 원본 경로 또는 보관한 PPT {'saved': id} (saved_items: saved_ppts 목록).
+    보관하지 않은 파일을 STALE_DAYS일 넘게 고치지 않았으면 stale에 고친 날('M월 D일')을 넣는다"""
+    index = {i['id']: i for i in saved_items}
+    out = {side: [describe_entry(e, index) for e in lists.get(side, [])] for side in ATTACH_SIDES}
+    items = out['before'] + out['after']
+    first = next((i for i in items if 'error' not in i), None)
+    for item in items:
+        if first and 'error' not in item and (item['width'], item['height']) != (first['width'], first['height']):
+            item['sizeMismatch'] = True
+    now = datetime.now().timestamp() if now is None else now
+    for item in items:
+        modified = item.pop('modified', None)
+        if modified is not None and 'id' not in item and now - modified > STALE_DAYS * 86400:   # 원본 경로 항목만
+            day = datetime.fromtimestamp(modified)
+            item['stale'] = f'{day.month}월 {day.day}일'
+    out['slides'] = sum(i.get('slides', 0) for i in items)
+    out['problems'] = sum(1 for i in items if 'error' in i)
+    return out
 
 
 def search_error(e):
@@ -152,6 +231,8 @@ class Backend(QObject):
         super().__init__()
         self._state = app_state.load()
         self._presets = presets.load()
+        self._choices = presets.load_choices()   # 곡별 설정 (프리셋 id 또는 'melon')
+        self._saved_ppts = saved_ppts.load()
         self._art = art_provider
         self._scraper = MelonScraper()
         self._pool = ThreadPoolExecutor(max_workers=4)        # 네트워크 작업: 앱 종료 때 기다리지 않는다
@@ -224,17 +305,35 @@ class Backend(QObject):
                            'availablePt': round(box.available_pt, 1), 'exact': box.exact})
 
     # ── 첫 실행 튜토리얼 ── (name: "search" | "editor")
+    # 본 기록: tutorials_seen(이름 목록) + tutorial_revs(이름 → 본 단계 리비전). 단계마다 rev(기본 1)가 있고,
+    # 업데이트로 단계를 새로 만들거나 바꾸면 그 단계의 rev를 올린다 → 다음 실행 때 본 리비전보다 높은 단계만 다시 보여 준다.
+    # rev 기록 없이 본 것(v1.4까지의 예전 튜토리얼)은 0으로 본다.
     # 시작할 때 한 번 읽어 메모리에 둔다. 저장에 실패해도 이번 실행에서는 다시 띄우지 않는다
     @Slot(str, result=bool)
     def tutorialSeen(self, name):
         return name in self._state.get('tutorials_seen', [])
 
-    @Slot(str)
-    def markTutorialSeen(self, name):
+    @Slot(str, result=int)
+    def tutorialRev(self, name):
+        """본 단계 리비전. 본 적 없으면 -1, 리비전 기록 없이 봤으면 0"""
+        if not self.tutorialSeen(name):
+            return -1
+        revs = self._state.get('tutorial_revs')
+        rev = revs.get(name) if isinstance(revs, dict) else None
+        return rev if isinstance(rev, int) and not isinstance(rev, bool) else 0
+
+    @Slot(str, int)
+    def markTutorialSeen(self, name, rev):
         seen = self._state.get('tutorials_seen', [])
+        revs = self._state.get('tutorial_revs')
+        revs = dict(revs) if isinstance(revs, dict) else {}
+        if name in seen and revs.get(name) == rev:
+            return
         if name not in seen:
             self._state['tutorials_seen'] = seen + [name]
-            app_state.save(self._state)
+        revs[name] = max(rev, revs.get(name, 0) if isinstance(revs.get(name), int) else 0)
+        self._state['tutorial_revs'] = revs
+        app_state.save(self._state)
 
     # ── 창 크기·위치 ── (다음 실행 때 같은 자리에 연다, src/qml_ui/app.py)
     def window_geometry(self):
@@ -259,6 +358,137 @@ class Backend(QObject):
             self._state['window'] = geo
             app_state.save(self._state)
 
+    # ── 앞·뒤에 붙일 PPT ── (state.json 'attachments': {before: [항목], after: [항목]}, src/utils/ppt_merge.py)
+    # 항목은 원본 파일 경로(PPT를 만들 때마다 새로 읽어 고친 내용이 반영된다) 또는 보관한 PPT {'saved': id}
+    def _attachment_lists(self):
+        return clean_attach_lists(self._state.get('attachments'))
+
+    def _describe(self, lists):
+        return json.dumps(describe_attachments(lists, self._saved_ppts), ensure_ascii=False)
+
+    def _store_lists(self, lists):
+        if self._state.get('attachments') != lists:
+            self._state['attachments'] = lists
+            app_state.save(self._state)
+        self._drop_unused_hidden(lists)
+
+    def _drop_unused_hidden(self, lists):
+        """보관함에서 지웠지만 목록에 남아 있던 복사본(hidden)은 목록에서도 빠지면 지운다"""
+        used = {e['saved'] for entries in lists.values() for e in entries if isinstance(e, dict)}
+        gone = [i['id'] for i in self._saved_ppts if i.get('hidden') and i['id'] not in used]
+        if not gone:
+            return
+        items = self._saved_ppts
+        for item_id in gone:
+            items = saved_ppts.remove(items, item_id)
+        if saved_ppts.save(items):
+            self._saved_ppts = items
+
+    @Slot(result=str)
+    def attachments(self):
+        return self._describe(self._attachment_lists())
+
+    @Slot(str, result=str)
+    def inspectAttachment(self, file_url):
+        """끌어다 놓거나 고른 파일 하나를 넣기 전에 확인한다 (error가 있으면 넣지 않는다)"""
+        path = QUrl(file_url).toLocalFile() or file_url
+        return json.dumps(inspect_attachment(os.path.normpath(path)), ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def setAttachments(self, lists_json):
+        """목록을 바꾸고 저장한다. lists_json: {before: [항목], after: [항목]}. 반환: attachments()와 같음"""
+        lists = clean_attach_lists(json.loads(lists_json))
+        self._store_lists(lists)
+        return self._describe(lists)
+
+    # 보관한 PPT (src/utils/saved_ppts.py): ＋ 메뉴에서 다시 불러온다
+    @Slot(result=str)
+    def savedPpts(self):
+        """[{id, name, saved_at, slides}] (최근 보관한 것이 앞, 파일이 없어진 것은 뺀다)"""
+        out = []
+        for item in self._saved_ppts:
+            if item.get('hidden'):
+                continue
+            info = inspect_attachment(saved_ppts.file_path(item['id']))
+            if 'error' not in info:
+                source = item.get('source')
+                out.append(dict(item, slides=info['slides'], hasSource=bool(source) and os.path.isfile(source)))
+        return json.dumps(out, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def savePptToLibrary(self, file_url):
+        """양식 보관함에 바로 넣는다 (찬양 전·후 목록은 그대로). 반환: {item, replaced} 또는 {error, detail}"""
+        path = os.path.normpath(QUrl(file_url).toLocalFile() or file_url)
+        info = inspect_attachment(path)
+        if not path.lower().endswith('.pptx') and 'error' not in info:
+            info['error'] = 'PPT(.pptx) 파일만 넣을 수 있어요.'
+        if 'error' in info:
+            return json.dumps({'error': info['error'], 'name': info['name']}, ensure_ascii=False)
+        try:
+            items, item, replaced = saved_ppts.add(self._saved_ppts, path, datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+        except OSError as e:
+            return json.dumps({'error': 'PPT를 보관하지 못했어요', 'name': info['name'],
+                               'detail': f'{path}\n{type(e).__name__}: {e}'}, ensure_ascii=False)
+        if not saved_ppts.save(items):
+            return json.dumps({'error': '보관함에 쓸 수 없어요', 'name': info['name']}, ensure_ascii=False)
+        self._saved_ppts = items
+        return json.dumps({'item': item, 'replaced': replaced}, ensure_ascii=False)
+
+    @Slot(str, str, result=bool)
+    def renameSavedPpt(self, item_id, name):
+        items = saved_ppts.rename(self._saved_ppts, item_id, name)
+        if items is None or not saved_ppts.save(items):
+            return False
+        self._saved_ppts = items
+        return True
+
+    @Slot(str, int, result=str)
+    def keepAttachment(self, side, index):
+        """목록의 원본 파일을 앱에 보관하고 그 자리를 보관본으로 바꾼다.
+        반환: {attachments, replaced(같은 이름의 보관본을 바꿨는지)} 또는 {error, detail}"""
+        lists = self._attachment_lists()
+        entry = lists.get(side, [])[index] if 0 <= index < len(lists.get(side, [])) else None
+        if isinstance(entry, dict):
+            # 보관함에서 지웠지만 목록에 남아 있던 것: 다시 보관함에 보이게
+            item = next((i for i in self._saved_ppts if i['id'] == entry['saved']), None)
+            if not item or not item.get('hidden'):
+                return json.dumps({'error': '이미 보관함에 있어요'}, ensure_ascii=False)
+            items = [{k: v for k, v in i.items() if k != 'hidden'} if i is item else i for i in self._saved_ppts]
+            if not saved_ppts.save(items):
+                return json.dumps({'error': '보관함에 쓸 수 없어요'}, ensure_ascii=False)
+            self._saved_ppts = items
+            return json.dumps({'attachments': describe_attachments(lists, items), 'replaced': False}, ensure_ascii=False)
+        if not isinstance(entry, str):
+            return json.dumps({'error': '보관할 파일이 없어요'}, ensure_ascii=False)
+        try:
+            items, item, replaced = saved_ppts.add(self._saved_ppts, entry, datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+        except OSError as e:
+            return json.dumps({'error': 'PPT를 보관하지 못했어요\n원본 파일이 있는지, 저장 공간이 넉넉한지 확인해 주세요.',
+                               'detail': f'{entry}\n{type(e).__name__}: {e}'}, ensure_ascii=False)
+        if not saved_ppts.save(items):
+            if not replaced:
+                saved_ppts.remove(items, item['id'])    # 목록에 남지 않은 복사본은 지운다
+            return json.dumps({'error': 'PPT를 보관하지 못했어요\n앱 데이터 폴더에 쓸 수 없어요.',
+                               'detail': app_state.data_path(saved_ppts.FILE_NAME)}, ensure_ascii=False)
+        self._saved_ppts = items
+        lists[side][index] = {'saved': item['id']}
+        self._store_lists(lists)
+        return json.dumps({'attachments': describe_attachments(lists, items), 'replaced': replaced}, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def deleteSavedPpt(self, item_id):
+        """보관함에서 지운다. 찬양 전·후 목록에 있으면 목록에는 남기고(복사본을 숨겨 두었다가 목록에서 빠질 때 지운다),
+        없으면 바로 지운다. 반환: attachments()와 같음"""
+        lists = self._attachment_lists()
+        used = any(isinstance(e, dict) and e['saved'] == item_id for entries in lists.values() for e in entries)
+        if used:
+            items = [dict(i, hidden=True) if i['id'] == item_id else i for i in self._saved_ppts]
+        else:
+            items = saved_ppts.remove(self._saved_ppts, item_id)
+        saved_ppts.save(items)
+        self._saved_ppts = items
+        return self._describe(lists)
+
     # ── 프리셋 ── (src/utils/presets.py)
     @Slot(result=str)
     def presetCounts(self):
@@ -267,13 +497,13 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def presetsFor(self, song_id):
-        """그 곡의 프리셋 (JSON 배열, 최근 저장한 것부터)"""
-        return json.dumps(presets.for_song(self._presets, song_id), ensure_ascii=False)
+        """그 곡의 프리셋 (JSON 배열, 설정된 프리셋(default: true)이 맨 앞, 나머지는 최근 저장한 것부터. 멜론 가사로 정했으면 default 없음)"""
+        return json.dumps(presets.with_default(presets.for_song(self._presets, song_id), self._choices), ensure_ascii=False)
 
     @Slot(result=str)
     def allPresets(self):
-        """보관함: 모든 프리셋 (JSON 배열, 최근 저장한 것부터)"""
-        return json.dumps(self._presets, ensure_ascii=False)
+        """보관함: 모든 프리셋 (JSON 배열, 곡마다 설정된 프리셋(default: true)이 앞, 나머지는 최근 저장한 것부터)"""
+        return json.dumps(presets.with_default(self._presets, self._choices), ensure_ascii=False)
 
     @Slot(str, str, result=str)
     def searchManualPresets(self, keyword, mode):
@@ -293,7 +523,7 @@ class Backend(QObject):
                 if det and det.get('image_url') and not e.get('manual'):
                     e['image_url'] = det['image_url']
         updated, added, same = presets.add(self._presets, entries, now, name)
-        if not presets.save(updated):
+        if not presets.save(updated, self._choices):
             return json.dumps({'error': '프리셋을 저장하지 못했어요\n저장 폴더에 쓸 수 없어요. 디스크 공간이 부족하지 않은지 확인하고 다시 시도해 주세요.',
                                'detail': f'경로: {app_state.data_path(presets.FILE_NAME)}'}, ensure_ascii=False)
         self._presets = updated
@@ -303,16 +533,26 @@ class Backend(QObject):
     @Slot(str, str, result=bool)
     def renamePreset(self, preset_id, name):
         updated = presets.rename(self._presets, preset_id, name)
-        if updated is None or not presets.save(updated):
+        if updated is None or not presets.save(updated, self._choices):
             return False
         self._presets = updated
+        self.presetsChanged.emit()
+        return True
+
+    @Slot(str, str, result=bool)
+    def setPresetChoice(self, song_id, value):
+        """곡의 설정을 바꾼다 (value: 그 곡의 프리셋 id 또는 'melon'). 그 곡은 이 설정으로 담긴다"""
+        choices = presets.set_choice(self._presets, self._choices, song_id, value)
+        if choices is None or not presets.save(self._presets, choices):
+            return False
+        self._choices = choices
         self.presetsChanged.emit()
         return True
 
     @Slot(str, result=bool)
     def deletePreset(self, preset_id):
         updated = presets.remove(self._presets, preset_id)
-        if len(updated) == len(self._presets) or not presets.save(updated):
+        if len(updated) == len(self._presets) or not presets.save(updated, self._choices):
             return False
         self._presets = updated
         self.presetsChanged.emit()
@@ -444,19 +684,30 @@ class Backend(QObject):
     @Slot(str, str, str)
     def generatePpt(self, songs_json, file_url, title=''):
         """콘티 전체를 한 PPT로 저장한다. songs_json: [{title, artist, chunks}] (곡 순서대로).
-        처음·곡 사이·끝의 빈 슬라이드는 ppt_engine이 넣는다. title: 문서 속성의 제목"""
+        처음·곡 사이·끝의 빈 슬라이드는 ppt_engine이 넣는다. 앞·뒤 PPT는 기억해 둔 목록(setAttachments)을 붙인다.
+        title: 문서 속성의 제목"""
         songs = json.loads(songs_json)
         save_path = QUrl(file_url).toLocalFile() or file_url
         if not save_path.lower().endswith('.pptx'):
             save_path += '.pptx'
         template = self._template_path
+        attach = {side: [attach_path(e) for e in entries] for side, entries in self._attachment_lists().items()}
 
         def work():
-            if not os.path.exists(template):
+            missing = [p for side in ATTACH_SIDES for p in attach[side] if not os.path.isfile(p)]
+            same = [p for side in ATTACH_SIDES for p in attach[side]
+                    if os.path.normcase(os.path.abspath(p)) == os.path.normcase(os.path.abspath(save_path))]
+            if missing:
+                result = {'error': '붙일 PPT를 찾지 못했어요\n옮기거나 지운 파일은 콘티의 앞·뒤 PPT 목록에서 빼거나 다시 넣어 주세요.',
+                          'detail': '\n'.join(missing)}
+            elif same:
+                result = {'error': '붙일 PPT에 덮어쓸 수 없어요\n다른 이름으로 저장해 주세요.', 'detail': same[0]}
+            elif not os.path.exists(template):
                 result = {'error': '템플릿 파일을 찾지 못했어요.', 'detail': f'경로: {template}'}
             else:
                 try:
-                    buffer = PPTBuilder(template).generate_setlist_to_memory(songs, title)
+                    buffer = PPTBuilder(template).generate_setlist_to_memory(
+                        songs, title, attach['before'], attach['after'])
                     if not buffer:
                         result = {'error': 'PPT를 만들지 못했어요', 'detail': '메모리에서 PPT 객체를 만들지 못했어요.'}
                     else:

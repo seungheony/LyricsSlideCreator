@@ -5,6 +5,7 @@ import "."
 
 // 편집 화면 왼쪽의 콘티(곡 목록). 곡을 누르면 그 곡을 편집하고, 끌어서 순서를 바꾸고, 휴지통으로 뺀다 (0곡까지).
 // 가사를 받는 중인 곡은 '가사 받는 중…'으로 자리만 보인다. 머리의 ⋯ 메뉴: 콘티 비우기·곡 추가.
+// 위에 양식 두 칸(찬양 전·찬양 후, AttachList)과 화살표, 아래에 곡 카드를 두어 만들어질 PPT 순서대로 보인다.
 // 목록은 EditorPage가 갖고 있고, 여기서는 신호로 알리기만 한다.
 ColumnLayout {
     id: panel
@@ -14,6 +15,20 @@ ColumnLayout {
     property string pendingId: ""     // 가사를 다 받으면 열 곡
     property alias addButton: addButton
     property alias listView: list
+    property alias attachBefore: attachBefore
+    property alias attachAfter: attachAfter
+    property alias formsRow: formsRow           // 찬양 전·후 두 칸 (튜토리얼 강조)
+    property alias menuButton: menuButton
+    property alias songCard: songCard
+    property var attachments: ({ before: [], after: [] })    // backend.attachments()
+    // 서랍에서 곡을 끌어 오는 중이면 놓을 자리(곡 사이 0~곡 수), 아니면 -1 (EditorPage.moveSongDrag)
+    property int externalDrop: -1
+    property string formDropSide: ""      // 양식 보관함에서 끌어 오는 중이면 놓을 칸 ('before' | 'after')
+    function gapAt(y) {
+        if (!entries.length) return 0
+        const ly = list.mapFromItem(panel, 0, y).y + list.contentY
+        return Math.max(0, Math.min(entries.length, Math.round(ly / step)))
+    }
 
     signal selected(string id)
     signal removeRequested(int index)
@@ -21,15 +36,33 @@ ColumnLayout {
     signal addRequested()
     signal clearRequested()
     signal helpRequested()
+    // 앞·뒤에 붙일 PPT (side: 'before' | 'after')
+    signal attachDropped(string side, var urls)
+    signal attachRemove(string side, int index)
+    signal attachMove(string side, int from, int to)
+    signal attachKeep(string side, int index)
+    // 구역 제목 옆 보관함 아이콘: 찬양 보관함 / 양식 보관함 (focusId: 강조할 양식)
+    signal songLibraryRequested()
+    signal formLibraryRequested(string focusId)
+    // 보관한 PPT id → 지금 붙어 있는 곳 ('앞' | '뒤')
+    readonly property var placedSaved: {
+        const out = {}
+        attachments.after.forEach(i => { if (i.saved) out[i.id] = "뒤" })
+        attachments.before.forEach(i => { if (i.saved) out[i.id] = "앞" })
+        return out
+    }
 
     // 누르거나 끄는 중 (EditorPage가 입력칸에서 벗어날 때의 3줄 확인을 미룬다)
     readonly property bool busy: pressedRow || dragFrom >= 0 || addButton.pressed || menuButton.pressed
+                                 || attachBefore.busy || attachAfter.busy
 
-    // ── 끌어서 순서 바꾸기 ──
+    // ── 끌어서 순서 바꾸기 · 목록 밖으로 끌어내 빼기 ──
     property bool pressedRow: false
     property int dragFrom: -1         // 끄는 곡
-    property real dragDy: 0           // 누른 곳에서 움직인 거리
-    readonly property int rowHeight: 56
+    property real dragDy: 0           // 누른 곳에서 움직인 거리 (목록 안으로 제한)
+    property bool dragOut: false      // 목록 밖에 있음: 놓으면 뺀다
+    property var dragHost: null       // EditorPage: 목록 밖에 있는 동안 커서를 따라가는 표시 (showOutDrag / hideOutDrag)
+    readonly property int rowHeight: 40     // 앞·뒤 PPT 줄·놓기 칸·곡 추가와 같은 높이
     readonly property int rowGap: 4
     readonly property int step: rowHeight + rowGap
     // 놓으면 들어갈 자리 (뺀 뒤 기준)
@@ -39,10 +72,15 @@ ColumnLayout {
     function endDrag(commit) {
         const from = dragFrom
         const to = dropIndex
+        const out = dragOut
         dragFrom = -1
         dragDy = 0
+        dragOut = false
         pressedRow = false
-        if (commit && from >= 0 && to !== from) moveRequested(from, to)
+        if (dragHost) dragHost.hideOutDrag()
+        if (!commit || from < 0) return
+        if (out) removeRequested(from)
+        else if (to !== from) moveRequested(from, to)
     }
 
     spacing: 10
@@ -51,14 +89,14 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.preferredHeight: 34
         spacing: 6
-        Text { text: "콘티"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
+        Text { text: "예배 PPT"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
         Rectangle {
             visible: panel.entries.length > 0
             width: songCount.implicitWidth + 16; height: 20; radius: 10
             color: Theme.surface2
             Text { id: songCount; anchors.centerIn: parent; text: panel.entries.length + "곡"; color: Theme.text2; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
         }
-        HelpButton { label: "콘티"; onClicked: panel.helpRequested() }
+        HelpButton { label: "예배 PPT"; onClicked: panel.helpRequested() }
         Item { Layout.fillWidth: true }
         AppButton {
             id: menuButton
@@ -102,245 +140,411 @@ ColumnLayout {
         Entry { objectName: "clearSetlistItem"; text: "콘티 비우기"; enabled: panel.entries.length > 0; onTriggered: panel.clearRequested() }
     }
 
-    // 키보드로 고른 줄 (모델이 새로 만들어져도 유지하려고 ListView의 currentIndex를 쓰지 않는다)
-    property int focusRow: -1
-    function moveFocusRow(delta) {
-        focusRow = Math.max(0, Math.min(entries.length - 1, focusRow + delta))
-        list.positionViewAtIndex(focusRow, ListView.Contain)
+    // ── 양식: 찬양 전 · 찬양 후 ── (만들어질 PPT에서 곡들의 앞·뒤에 붙는 PPT)
+    // 구역 제목: 왼쪽 이름, 오른쪽 그 구역의 보관함 (찬양 제목도 같은 모양)
+    component LibraryButton: AppButton {
+        glyph: "library"
+        variant: "ghost"
+        size: "small"
+        implicitHeight: 24
+        implicitWidth: 28
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.bottomMargin: -6
+        spacing: 4
+        Text {
+            Layout.leftMargin: 2
+            text: "양식"
+            color: Theme.text3
+            font.family: Theme.font
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+        }
+        Item { Layout.fillWidth: true }
+        LibraryButton {
+            id: formLibraryButton
+            objectName: "formLibraryButton"
+            onClicked: panel.formLibraryRequested("")
+            Accessible.name: "양식 보관함"
+            AppToolTip { visible: formLibraryButton.hovered; delay: 400; text: "양식 보관함 · 보관한 PPT를 찬양 전·후에 넣거나 지워요" }
+        }
+    }
+    RowLayout {
+        id: formsRow
+        Layout.fillWidth: true
+        spacing: 8
+        AttachList {
+            id: attachBefore
+            objectName: "attachBefore"
+            dragHost: panel.dragHost
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.preferredWidth: 1          // 두 칸을 같은 폭으로
+            title: "찬양 전"
+            externalHover: panel.formDropSide === "before"
+            items: panel.attachments.before
+            onFilesDropped: (urls) => panel.attachDropped("before", urls)
+            onBrowseRequested: panel.formLibraryRequested("")
+            onRemoveRequested: (index) => panel.attachRemove("before", index)
+            onMoveRequested: (from, to) => panel.attachMove("before", from, to)
+            onKeepRequested: (index) => panel.attachKeep("before", index)
+            onLibraryRequested: (id) => panel.formLibraryRequested(id)
+        }
+        AttachList {
+            id: attachAfter
+            objectName: "attachAfter"
+            dragHost: panel.dragHost
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.preferredWidth: 1          // 두 칸을 같은 폭으로
+            title: "찬양 후"
+            externalHover: panel.formDropSide === "after"
+            items: panel.attachments.after
+            onFilesDropped: (urls) => panel.attachDropped("after", urls)
+            onBrowseRequested: panel.formLibraryRequested("")
+            onRemoveRequested: (index) => panel.attachRemove("after", index)
+            onMoveRequested: (from, to) => panel.attachMove("after", from, to)
+            onKeepRequested: (index) => panel.attachKeep("after", index)
+            onLibraryRequested: (id) => panel.formLibraryRequested(id)
+        }
+    }
+    // 찬양 구역 제목: 양식 제목과 같은 모양 (왼쪽 이름, 오른쪽 찬양 보관함)
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.topMargin: 4
+        Layout.bottomMargin: -6
+        spacing: 4
+        Text {
+            Layout.leftMargin: 2
+            text: "찬양"
+            color: Theme.text3
+            font.family: Theme.font
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+        }
+        Item { Layout.fillWidth: true }
+        LibraryButton {
+            id: songLibraryButton
+            objectName: "songLibraryButton"
+            onClicked: panel.songLibraryRequested()
+            Accessible.name: "찬양 보관함"
+            AppToolTip { visible: songLibraryButton.hovered; delay: 400; text: "찬양 보관함 · 저장한 프리셋을 담거나 지워요" }
+        }
     }
 
-    ListView {
-        id: list
-        objectName: "setlistList"
-        visible: panel.entries.length > 0
+    // 곡 카드 (양식 칸과 같은 모양). 곡 수만큼만 차지하고 '곡 추가'가 마지막 곡 바로 아래에 온다.
+    // 곡이 많아 넘치면 목록만 스크롤되고 '곡 추가'는 카드 아래에 남는다 (stretch + maximumHeight)
+    Rectangle {
+        id: songCard
         Layout.fillWidth: true
         Layout.fillHeight: true
-        model: panel.entries
-        // 키보드: Tab으로 들어와 ↑↓로 고르고 Enter·Space로 그 곡을 편집, Delete로 콘티에서 빼기, Alt+↑↓로 순서 바꾸기
-        activeFocusOnTab: count > 0
-        keyNavigationEnabled: false
-        Accessible.role: Accessible.List
-        Accessible.name: "콘티"
-        onActiveFocusChanged: {
-            if (!activeFocus) return
-            const at = panel.entries.findIndex(e => e.id === panel.current)
-            if (panel.focusRow < 0 || panel.focusRow >= panel.entries.length) panel.focusRow = Math.max(0, at)
-        }
-        Keys.onPressed: (event) => {
-            const alt = (event.modifiers & Qt.AltModifier) !== 0
-            if (event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
-                const delta = event.key === Qt.Key_Up ? -1 : 1
-                const to = panel.focusRow + delta
-                if (alt) {
-                    if (to >= 0 && to < panel.entries.length) {
-                        panel.moveRequested(panel.focusRow, to)
-                        panel.focusRow = to
-                    }
-                } else panel.moveFocusRow(delta)
-                event.accepted = true
-            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
-                if (panel.entries[panel.focusRow]) panel.selected(panel.entries[panel.focusRow].id)
-                event.accepted = true
-            } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
-                if (panel.entries[panel.focusRow]) {
-                    panel.removeRequested(panel.focusRow)
-                    panel.focusRow = Math.min(panel.focusRow, panel.entries.length - 1)    // 빼고 난 뒤의 곡 수 기준
+        Layout.maximumHeight: panel.entries.length ? list.contentHeight + addButton.implicitHeight + songColumn.spacing + 16 : Number.POSITIVE_INFINITY
+        Layout.verticalStretchFactor: 1000
+        radius: 12
+        color: Theme.surface2
+
+        ColumnLayout {
+            id: songColumn
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: panel.rowGap
+
+            // 곡 목록은 곡 수만큼만 차지하고 '곡 추가'가 마지막 곡 바로 아래에 온다. 곡이 많아 넘치면 목록이 스크롤되고
+            // '곡 추가'는 아래에 남는다 (목록이 남는 자리를 거의 다 가져가되 내용 높이까지만: stretch + maximumHeight)
+            ListView {
+                id: list
+                objectName: "setlistList"
+                visible: panel.entries.length > 0
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: panel.entries
+                // 키보드: Tab으로 들어와 ↑↓로 고르고 Enter·Space로 그 곡을 편집, Delete로 콘티에서 빼기, Alt+↑↓로 순서 바꾸기
+                activeFocusOnTab: count > 0
+                keyNavigationEnabled: false
+                Accessible.role: Accessible.List
+                Accessible.name: "콘티"
+                onActiveFocusChanged: {
+                    if (!activeFocus) return
+                    const at = panel.entries.findIndex(e => e.id === panel.current)
+                    if (panel.focusRow < 0 || panel.focusRow >= panel.entries.length) panel.focusRow = Math.max(0, at)
                 }
-                event.accepted = true
-            }
-        }
-        spacing: panel.rowGap
-        clip: true
-        interactive: panel.dragFrom < 0
-        boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar {}
-
-        // 놓을 자리 표시 (ListView 안의 항목은 내용 좌표로 놓인다)
-        Rectangle {
-            readonly property int gap: panel.dropIndex > panel.dragFrom ? panel.dropIndex + 1 : panel.dropIndex
-            visible: panel.dragFrom >= 0 && panel.dropIndex !== panel.dragFrom
-            z: 3
-            x: 4
-            width: list.width - 8
-            height: 2
-            radius: 1
-            color: Theme.primary
-            y: gap * panel.step - panel.rowGap / 2 - 1
-        }
-
-        delegate: Item {
-            id: row
-            required property int index
-            required property var modelData
-            readonly property bool isCurrent: modelData.id === panel.current
-            readonly property bool dragged: panel.dragFrom === index
-            readonly property bool focused: list.activeFocus && panel.focusRow === index
-            width: ListView.view.width
-            height: panel.rowHeight
-            z: dragged ? 2 : 0
-
-            Rectangle {
-                id: card
-                width: parent.width
-                height: parent.height
-                y: row.dragged ? panel.dragDy : 0
-                radius: Theme.radiusSm
-                color: row.isCurrent ? Theme.primarySoft : area.containsMouse || row.dragged ? Theme.surface2 : Theme.surface2Clear
-                border.width: row.focused ? 2 : row.isCurrent || row.dragged || row.modelData.loading ? 1 : 0
-                border.color: row.focused ? Theme.primary : row.isCurrent || row.modelData.loading ? Theme.focusBorder : Theme.border
-                Accessible.role: Accessible.ListItem
-                Accessible.name: row.modelData.title + (row.modelData.loading ? ", 가사 받는 중" : ", " + row.modelData.slides + "장")
-                Accessible.selected: row.isCurrent
-                opacity: row.dragged ? 0.9 : 1
-                Behavior on color { ColorAnimation { duration: Theme.fast } }
-
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 6
-                    anchors.rightMargin: 6
-                    spacing: 6
-                    Icon {
-                        glyph: "grip"
-                        size: 14
-                        color: Theme.text3
-                        opacity: panel.entries.length > 1 && (area.containsMouse || row.dragged) ? 1 : 0.35
-                    }
-                    Text {
-                        text: row.index + 1
-                        color: row.isCurrent ? Theme.primaryText : Theme.text3
-                        font.family: Theme.font
-                        font.pixelSize: 12
-                        font.weight: Font.Bold
-                        Layout.preferredWidth: 14
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        Text {
-                            Layout.fillWidth: true
-                            text: row.modelData.title
-                            textFormat: Text.PlainText
-                            color: Theme.text
-                            font.family: Theme.font
-                            font.pixelSize: 13
-                            font.weight: row.isCurrent ? Font.Bold : Font.DemiBold
-                            elide: Text.ElideRight
+                Keys.onPressed: (event) => {
+                    const alt = (event.modifiers & Qt.AltModifier) !== 0
+                    if (event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
+                        const delta = event.key === Qt.Key_Up ? -1 : 1
+                        const to = panel.focusRow + delta
+                        if (alt) {
+                            if (to >= 0 && to < panel.entries.length) {
+                                panel.moveRequested(panel.focusRow, to)
+                                panel.focusRow = to
+                            }
+                        } else panel.moveFocusRow(delta)
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                        if (panel.entries[panel.focusRow]) panel.selected(panel.entries[panel.focusRow].id)
+                        event.accepted = true
+                    } else if (event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace) {
+                        if (panel.entries[panel.focusRow]) {
+                            panel.removeRequested(panel.focusRow)
+                            panel.focusRow = Math.min(panel.focusRow, panel.entries.length - 1)    // 빼고 난 뒤의 곡 수 기준
                         }
-                        Row {
-                            spacing: 4
-                            visible: !row.modelData.loading
+                        event.accepted = true
+                    }
+                }
+                spacing: panel.rowGap
+                clip: true
+                interactive: panel.dragFrom < 0
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar {}
+
+                // 서랍에서 끌어 온 곡을 놓을 자리
+                Rectangle {
+                    visible: panel.externalDrop >= 0
+                    z: 3
+                    x: 4
+                    width: list.width - 8
+                    height: 3
+                    radius: 1.5
+                    color: Theme.primary
+                    y: Math.max(0, Math.min(list.contentHeight - height, panel.externalDrop * panel.step - panel.rowGap / 2 - 1.5))
+                }
+
+                // 놓을 자리 표시 (ListView 안의 항목은 내용 좌표로 놓인다)
+                Rectangle {
+                    readonly property int gap: panel.dropIndex > panel.dragFrom ? panel.dropIndex + 1 : panel.dropIndex
+                    visible: panel.dragFrom >= 0 && panel.dropIndex !== panel.dragFrom && !panel.dragOut
+                    z: 3
+                    x: 4
+                    width: list.width - 8
+                    height: 2
+                    radius: 1
+                    color: Theme.primary
+                    // 맨 위·맨 아래도 목록 안에 보이게 (목록이 clip하므로 끝에서 잘리지 않게 붙인다). 밖으로 끌어냈으면 숨김
+                    y: Math.max(0, Math.min(list.contentHeight - height, gap * panel.step - panel.rowGap / 2 - 1))
+                }
+
+                delegate: Item {
+                    id: row
+                    required property int index
+                    required property var modelData
+                    readonly property bool isCurrent: modelData.id === panel.current
+                    readonly property bool dragged: panel.dragFrom === index
+                    readonly property bool focused: list.activeFocus && panel.focusRow === index
+                    width: ListView.view.width
+                    height: panel.rowHeight
+                    z: dragged ? 2 : 0
+
+                    Rectangle {
+                        id: card
+                        width: parent.width
+                        height: parent.height
+                        y: row.dragged && !panel.dragOut ? panel.dragDy : 0     // 목록 밖으로 끌어냈으면 제자리에서 빨갛게
+                        readonly property bool out: row.dragged && panel.dragOut     // 놓으면 빠진다
+                        radius: Theme.radiusSm
+                        color: out ? Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.15)
+                             : row.isCurrent ? Theme.primarySoft : area.containsMouse || row.dragged ? Theme.border : Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0)
+                        border.width: row.focused ? 2 : out || row.isCurrent || row.dragged || row.modelData.loading ? 1 : 0
+                        border.color: out ? Theme.danger : row.focused ? Theme.primary : row.isCurrent || row.modelData.loading ? Theme.focusBorder : Theme.border
+                        Accessible.role: Accessible.ListItem
+                        Accessible.name: row.modelData.title + (row.modelData.loading ? ", 가사 받는 중" : row.modelData.wraps > 0 ? ", 줄바꿈 있음" : "")
+                        Accessible.selected: row.isCurrent
+                        opacity: row.dragged ? 0.9 : 1
+                        Behavior on color { ColorAnimation { duration: Theme.fast } }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 6
+                            spacing: 6
                             Text {
-                                text: row.modelData.slides + "장"
-                                color: Theme.text3
+                                text: row.index + 1
+                                color: row.isCurrent ? Theme.primaryText : Theme.text3
                                 font.family: Theme.font
                                 font.pixelSize: 12
+                                font.weight: Font.Bold
+                                Layout.preferredWidth: 14
+                            }
+                            // 한 줄: 제목 · (오른쪽) 받는 중 / 줄바꿈 표시
+                            Text {
+                                Layout.fillWidth: true
+                                text: row.modelData.title
+                                textFormat: Text.PlainText
+                                color: Theme.text
+                                font.family: Theme.font
+                                font.pixelSize: 13
+                                font.weight: row.isCurrent ? Font.Bold : Font.DemiBold
+                                elide: Text.ElideRight
+                            }
+                            // 멜론에서 가사를 받는 중
+                            Row {
+                                visible: row.modelData.loading
+                                spacing: 4
+                                Icon {
+                                    id: loadingIcon
+                                    glyph: "loader"
+                                    size: 12
+                                    color: Theme.primaryText
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    RotationAnimation on rotation { running: row.modelData.loading; from: 0; to: 360; duration: 800; loops: Animation.Infinite; onStopped: loadingIcon.rotation = 0 }
+                                }
+                                Text {
+                                    text: panel.pendingId === row.modelData.id ? "받으면 열어요" : "받는 중"
+                                    color: Theme.primaryText
+                                    font.family: Theme.font
+                                    font.pixelSize: 11
+                                    font.weight: Font.DemiBold
+                                }
                             }
                             // 이 곡에 PPT에서 줄바꿈되는 슬라이드가 있으면
+                            Row {
+                                visible: !row.modelData.loading && row.modelData.wraps > 0 && !removeButton.visible
+                                spacing: 3
+                                Icon { glyph: "alert"; size: 12; color: Theme.warning; anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: "줄바꿈"; color: Theme.warning; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            }
+                            Item { Layout.preferredWidth: removeButton.visible ? removeButton.width : 0; Layout.preferredHeight: 1 }
+                            // 목록 밖으로 끌어냈을 때
                             Text {
-                                visible: row.modelData.wraps > 0
-                                text: "· 줄바꿈 " + row.modelData.wraps + "장"
-                                color: Theme.warning
+                                visible: card.out
+                                text: "놓으면 빼요"
+                                color: Theme.danger
                                 font.family: Theme.font
-                                font.pixelSize: 12
+                                font.pixelSize: 11
+                                font.weight: Font.Bold
                             }
                         }
-                        // 멜론에서 가사를 받는 중 (다 받으면 장 수가 보인다)
-                        Row {
-                            visible: row.modelData.loading
-                            spacing: 4
-                            Icon {
-                                id: loadingIcon
-                                glyph: "loader"
-                                size: 12
-                                color: Theme.primaryText
-                                anchors.verticalCenter: parent.verticalCenter
-                                RotationAnimation on rotation { running: row.modelData.loading; from: 0; to: 360; duration: 800; loops: Animation.Infinite; onStopped: loadingIcon.rotation = 0 }
+
+                        MouseArea {
+                            id: area
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            preventStealing: true
+                            cursorShape: panel.dragFrom >= 0 ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                            property real pressX: 0
+                            property real pressY: 0
+                            onPressed: (mouse) => { pressX = mouse.x; pressY = mouse.y; panel.pressedRow = true }
+                            onPositionChanged: (mouse) => {
+                                if (!pressed) return
+                                // card가 위아래로 따라 움직이므로 card 안의 좌표는 그대로 → 움직인 거리를 더해 간다 (옆으로는 움직이지 않고, 밖으로 나가면 빨갛게)
+                                const dy = mouse.y - pressY + card.y
+                                if (panel.dragFrom < 0 && Math.max(Math.abs(mouse.x - pressX), Math.abs(mouse.y - pressY)) > 6) panel.dragFrom = row.index
+                                if (!row.dragged) return
+                                panel.dragDy = Math.max(-row.index * panel.step,
+                                    Math.min((panel.entries.length - 1 - row.index) * panel.step, dy))
+                                // 손가락(포인터)이 곡 목록 밖으로 16px 넘게 나가면 놓았을 때 뺀다
+                                const p = mapToItem(list, mouse.x, mouse.y)
+                                panel.dragOut = p.x < -16 || p.x > list.width + 16 || p.y < -16 || p.y > list.height + 16
+                                if (!panel.dragHost) return
+                                const sp = mapToItem(null, mouse.x, mouse.y)
+                                if (panel.dragOut) panel.dragHost.showOutDrag(row.modelData.title, "music", sp.x, sp.y)
+                                else panel.dragHost.hideOutDrag()
                             }
-                            Text {
-                                text: panel.pendingId === row.modelData.id ? "가사 받는 중… 받으면 열어요" : "가사 받는 중…"
-                                color: Theme.primaryText
-                                font.family: Theme.font
-                                font.pixelSize: 12
+                            onReleased: {
+                                if (panel.dragFrom >= 0) panel.endDrag(true)
+                                else { panel.pressedRow = false; panel.selected(row.modelData.id) }
                             }
+                            onCanceled: panel.endDrag(false)
+                        }
+
+                        // 이번 예배 PPT에서 빼기: × (영구 삭제는 휴지통). 다 빼면 빈 상태와 함께 곡 찾기 서랍이 열린다
+                        AppButton {
+                            id: removeButton
+                            anchors.right: parent.right
+                            anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: panel.dragFrom < 0 && (area.containsMouse || hovered)
+                            glyph: "x"
+                            variant: "ghost"
+                            size: "small"
+                            onClicked: panel.removeRequested(row.index)
+                            Accessible.name: "'" + row.modelData.title + "' 이번 예배 PPT에서 빼기"
+                            AppToolTip { visible: removeButton.hovered; text: "이번 예배 PPT에서 빼기 · 보관함의 프리셋은 그대로예요" }
                         }
                     }
-                    Item { Layout.preferredWidth: removeButton.visible ? removeButton.width : 0; Layout.preferredHeight: 1 }
                 }
+            }
 
+            // 곡 추가: 앞·뒤 PPT 구역의 넣기 칸과 같은 모양 (AddRow)
+            AddRow {
+                id: addButton
+                objectName: "setlistAddButton"
+                visible: panel.entries.length > 0
+                Layout.fillWidth: true
+                implicitHeight: panel.rowHeight
+                text: "곡 추가"
+                lit: panel.externalDrop >= 0
+                onClicked: panel.addRequested()
+                AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K) · 검색창에서 끌어다 놓아도 돼요" }
+            }
+
+            // 빈 콘티: 누르면 곡 추가 (마우스를 올리면 초록으로 바뀌며 '곡 추가'가 보인다)
+            Rectangle {
+                id: emptyBox
+                objectName: "setlistEmpty"
+                readonly property bool active: emptyArea.containsMouse || activeFocus || panel.externalDrop >= 0
+                visible: panel.entries.length === 0
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: Theme.radiusSm
+                color: active ? Theme.primarySoft : "transparent"
+                border.width: active ? 2 : 0
+                border.color: Theme.primary
+                activeFocusOnTab: true
+                Accessible.role: Accessible.Button
+                Accessible.name: "곡 추가"
+                Keys.onReturnPressed: panel.addRequested()
+                Keys.onEnterPressed: panel.addRequested()
+                Keys.onSpacePressed: panel.addRequested()
+                Behavior on color { ColorAnimation { duration: Theme.fast } }
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 8
+                    visible: !emptyBox.active
+                    Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "music"; size: 26; color: Theme.text3; opacity: 0.7 }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        horizontalAlignment: Text.AlignHCenter
+                        text: "담은 곡이 여기에\n순서대로 쌓여요"
+                        color: Theme.text2
+                        font.family: Theme.font
+                        font.pixelSize: 13
+                        lineHeight: 1.4
+                    }
+                }
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 6
+                    visible: emptyBox.active
+                    Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: 6
+                        Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "plus"; size: 18; color: Theme.primaryText }
+                        Text { text: "곡 추가"; color: Theme.primaryText; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: Theme.mod + "K"
+                        color: Theme.primaryText
+                        font.family: Theme.font
+                        font.pixelSize: 12
+                        opacity: 0.8
+                    }
+                }
                 MouseArea {
-                    id: area
+                    id: emptyArea
                     anchors.fill: parent
                     hoverEnabled: true
-                    preventStealing: true
-                    cursorShape: panel.dragFrom >= 0 ? Qt.ClosedHandCursor : Qt.PointingHandCursor
-                    property real pressY: 0
-                    onPressed: (mouse) => { pressY = mouse.y; panel.pressedRow = true }
-                    onPositionChanged: (mouse) => {
-                        if (!pressed) return
-                        const dy = mouse.y - pressY + (row.dragged ? panel.dragDy : 0)
-                        if (panel.dragFrom < 0 && Math.abs(mouse.y - pressY) > 6 && panel.entries.length > 1) panel.dragFrom = row.index
-                        // card가 따라 움직이므로 card 안의 좌표는 그대로 → 움직인 거리를 더해 간다
-                        if (row.dragged) panel.dragDy = Math.max(-row.index * panel.step,
-                            Math.min((panel.entries.length - 1 - row.index) * panel.step, dy))
-                    }
-                    onReleased: {
-                        if (panel.dragFrom >= 0) panel.endDrag(true)
-                        else { panel.pressedRow = false; panel.selected(row.modelData.id) }
-                    }
-                    onCanceled: panel.endDrag(false)
-                }
-
-                // 콘티에서 빼기 (다 빼면 빈 상태와 함께 곡 찾기 서랍이 열린다)
-                AppButton {
-                    id: removeButton
-                    anchors.right: parent.right
-                    anchors.rightMargin: 4
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: panel.dragFrom < 0 && (area.containsMouse || hovered)
-                    glyph: "trash"
-                    variant: "ghost"
-                    size: "small"
-                    onClicked: panel.removeRequested(row.index)
-                    Accessible.name: "'" + row.modelData.title + "' 콘티에서 빼기"
-                    AppToolTip { visible: removeButton.hovered; text: "콘티에서 빼기" }
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: panel.addRequested()
                 }
             }
         }
     }
-
-    // 빈 콘티
-    Rectangle {
-        objectName: "setlistEmpty"
-        visible: panel.entries.length === 0
-        Layout.fillWidth: true
+    Item {
+        visible: panel.entries.length > 0
         Layout.fillHeight: true
-        radius: 12
-        color: "transparent"
-        border.width: 1.5
-        border.color: Theme.border
-        Column {
-            anchors.centerIn: parent
-            spacing: 8
-            Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "music"; size: 26; color: Theme.text3; opacity: 0.7 }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                horizontalAlignment: Text.AlignHCenter
-                text: "담은 곡이 여기에\n순서대로 쌓여요"
-                color: Theme.text2
-                font.family: Theme.font
-                font.pixelSize: 13
-                lineHeight: 1.4
-            }
-        }
+        Layout.verticalStretchFactor: 1
     }
 
-    AppButton {
-        id: addButton
-        Layout.fillWidth: true
-        text: "곡 추가"
-        glyph: "plus"
-        variant: panel.entries.length ? "secondary" : "primary"
-        onClicked: panel.addRequested()
-        AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K)" }
-    }
 }

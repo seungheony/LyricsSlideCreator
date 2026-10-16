@@ -9,19 +9,24 @@ import "."
 // 담는 일은 받는 쪽(Main·EditorPage)이 한다:
 //   songClicked(song): 멜론 결과 행 / presetChosen(song, preset): 보관함의 ＋·'이걸로 바꾸기'
 //   manualSubmitted(info, text): 직접 입력의 '콘티에 담기' (보낸 뒤 입력칸을 비운다)
-// show(tab, opts): 탭을 바꾸고 포커스. opts.filterSong: 보관함을 그 곡만, opts.manual: 직접 입력 칸 미리 채우기(ManualForm.prefill)
+// 같은 틀로 '양식 보관함'(tab "forms", FormLibrary)도 연다: 탭 막대 없이 머리말만 '양식 보관함'.
+// show(tab, opts): 탭을 바꾸고 포커스. opts.focusId: 양식 보관함에서 강조할 양식. opts.filterSong: 보관함을 그 곡만, opts.manual: 직접 입력 칸 미리 채우기(ManualForm.prefill)
 Rectangle {
     id: drawer
 
     property bool opened: false
     property bool emptySetlist: false     // 콘티가 비었다 (머리말을 '어떤 곡으로 시작할까요?'로)
     property var setlist: []
-    property var appliedTexts: ({})   // 콘티 곡의 지금 가사 (보관함에서 같은 프리셋의 '이걸로 바꾸기'를 끔)
+    property var dragHost: null       // 행을 콘티로 끌어다 놓기 (EditorPage)
+    property var appliedTexts: ({})   // 콘티 곡의 지금 가사 (보관함 탭에서 설정된 프리셋과 같으면 카드를 초록으로)
     property var loadingIds: []
     property var addedIds: []             // 이번에 서랍을 연 뒤 담은 곡
-    property string currentId: ""         // 편집기에 열린 곡 (보관함 맨 위에 '편집 중')
+    property string currentId: ""         // 편집기에 열린 곡 (보관함 탭 맨 위)
     property var tour: null
-    property string tab: "melon"          // "melon" | "library" | "manual"
+    property string tab: "melon"          // "melon" | "library" | "manual" | "forms"(양식 보관함)
+    readonly property bool formsMode: tab === "forms"
+    property var formItems: []            // 양식 보관함 (backend.savedPpts)
+    property alias forms: formLibrary
     property alias search: searchPanel
     property alias library: library
     property alias manual: manualForm
@@ -30,6 +35,11 @@ Rectangle {
     signal songClicked(var song)
     signal presetChosen(var song, var preset)
     signal manualSubmitted(var info, string text)
+    // 양식 보관함
+    signal formDelete(string id)
+    signal formRename(string id, string name)
+    signal formFilesDropped(var urls)
+    signal formBrowse()
 
     function focusSearch() { searchPanel.focusSearch() }
 
@@ -44,6 +54,9 @@ Rectangle {
             if (library.filterSong && !library.songs.length) { library.filterSong = ""; library.refresh() }
         } else if (tab === "manual" && opts.manual) {
             manualForm.prefill(opts.manual)
+        } else if (tab === "forms") {
+            formLibrary.renamingId = ""
+            formLibrary.focusId = opts.focusId || ""
         }
         Qt.callLater(focusTab)
     }
@@ -52,14 +65,14 @@ Rectangle {
         if (!opened) return
         if (tab === "melon") searchPanel.focusSearch()
         else if (tab === "library") { if (library.library && library.totalCount) library.focusFilter(); else drawer.forceActiveFocus() }
+        else if (tab === "forms") drawer.forceActiveFocus()
         else manualForm.focusFirst()
     }
 
-    // Esc: 서랍 안에서 먼저 처리할 것이 있으면 처리하고 true (보관함의 이름 고치기·삭제 확인 취소)
+    // Esc: 서랍 안에서 먼저 처리할 것이 있으면 처리하고 true (양식 보관함의 이름 고치기 취소)
     function handleEscape() {
-        if (tab === "library" && (library.renamingId || library.deletingId)) {
-            library.renamingId = ""
-            library.deletingId = ""
+        if (tab === "forms" && formLibrary.renamingId) {
+            formLibrary.renamingId = ""
             drawer.forceActiveFocus()
             return true
         }
@@ -100,24 +113,17 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 2
                 RowLayout {
+                    Layout.fillWidth: true
                     spacing: 4
                     Text {
-                        text: drawer.emptySetlist ? "어떤 곡으로 시작할까요?" : "곡 추가"
+                        text: drawer.formsMode ? "양식 보관함" : drawer.emptySetlist ? "어떤 곡으로 시작할까요?" : "곡 추가"
                         color: Theme.text
                         font.family: Theme.font
-                        font.pixelSize: drawer.emptySetlist ? 19 : 17
+                        font.pixelSize: drawer.emptySetlist && !drawer.formsMode ? 19 : 17
                         font.weight: Font.Bold
                     }
-                    HelpButton { objectName: "drawerHelpButton"; label: "곡 추가"; onClicked: drawer.showHelp() }
-                }
-                Text {
-                    Layout.fillWidth: true
-                    text: drawer.emptySetlist ? "멜론에서 찾거나, 저장한 프리셋을 담거나, 가사를 직접 입력해요"
-                                              : "여러 곡을 연달아 담을 수 있어요"
-                    color: Theme.text3
-                    font.family: Theme.font
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
+                    HelpButton { objectName: "drawerHelpButton"; visible: !drawer.formsMode; label: "곡 추가"; onClicked: drawer.showHelp() }
+                    Item { Layout.fillWidth: true }       // 닫기 버튼을 오른쪽 끝으로
                 }
             }
             AppButton {
@@ -127,35 +133,53 @@ Rectangle {
                 variant: "ghost"
                 size: "small"
                 onClicked: drawer.closeRequested()
-                Accessible.name: "곡 추가 닫기"
+                Accessible.name: drawer.formsMode ? "양식 보관함 닫기" : "곡 추가 닫기"
                 AppToolTip { visible: closeButton.hovered; delay: 600; text: "닫기 (Esc)" }
             }
         }
 
-        // ── 탭: 멜론 | 보관함 | 직접 입력 ──
+        // ── 탭: 멜론 | 직접 입력 | 보관함 ── (아이콘 + 초록 세그먼트, 고른 탭으로 초록 칸이 미끄러진다)
         Rectangle {
             id: tabBar
+            visible: !drawer.formsMode
+            readonly property var tabs: [{ key: "melon", label: "멜론 검색", glyph: "search" },
+                                         { key: "manual", label: "직접 입력", glyph: "pencil" },
+                                         { key: "library", label: "보관함", glyph: "library" }]
+            readonly property int current: Math.max(0, tabs.findIndex(t => t.key === drawer.tab))
+            readonly property real cellWidth: (width - 8) / tabs.length
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
             Layout.topMargin: 12
             Layout.bottomMargin: 12
-            implicitHeight: 38
-            radius: 10
+            implicitHeight: 44
+            radius: 12
             color: Theme.surface2
-            RowLayout {
+
+            Rectangle {
+                x: 4 + tabBar.current * tabBar.cellWidth
+                y: 4
+                width: tabBar.cellWidth
+                height: parent.height - 8
+                radius: 9
+                color: Theme.primarySoft
+                border.width: 1
+                border.color: Theme.focusBorder
+                Behavior on x { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+            }
+
+            Row {
                 anchors.fill: parent
-                anchors.margins: 3
-                spacing: 4
+                anchors.margins: 4
                 Repeater {
-                    model: [{ key: "melon", label: "멜론" }, { key: "library", label: "보관함" }, { key: "manual", label: "직접 입력" }]
+                    model: tabBar.tabs
                     delegate: Button {
                         id: tabButton
                         required property var modelData
                         readonly property bool on: modelData.key === drawer.tab
                         objectName: "drawerTab_" + modelData.key
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        width: tabBar.cellWidth
+                        height: parent.height
                         text: modelData.label
                         hoverEnabled: true
                         focusPolicy: Qt.TabFocus
@@ -167,20 +191,27 @@ Rectangle {
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                         // 탭을 직접 누르면 보관함은 모든 곡을 보인다 (직접 입력은 쓰던 내용 그대로)
                         onClicked: drawer.show(modelData.key)
-                        contentItem: Text {
-                            text: tabButton.text
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            color: tabButton.on || tabButton.hovered ? Theme.text : Theme.text3
-                            font.family: Theme.font
-                            font.pixelSize: 13
-                            font.weight: tabButton.on ? Font.Bold : Font.Normal
+                        readonly property color fg: on ? Theme.primaryText : hovered ? Theme.text : Theme.text2
+                        contentItem: Item {
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Icon { glyph: tabButton.modelData.glyph; size: 15; color: tabButton.fg; anchors.verticalCenter: parent.verticalCenter }
+                                Text {
+                                    text: tabButton.text
+                                    color: tabButton.fg
+                                    font.family: Theme.font
+                                    font.pixelSize: 13
+                                    font.weight: tabButton.on ? Font.Bold : Font.DemiBold
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
                         }
                         background: Rectangle {
-                            radius: 8
-                            color: tabButton.on ? Theme.surface : "transparent"
-                            border.width: tabButton.visualFocus ? 2 : tabButton.on ? 1 : 0
-                            border.color: tabButton.visualFocus ? Theme.primary : Theme.border
+                            radius: 9
+                            color: "transparent"
+                            border.width: tabButton.visualFocus ? 2 : 0
+                            border.color: Theme.primary
                         }
                     }
                 }
@@ -190,20 +221,22 @@ Rectangle {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: drawer.tab === "library" ? 1 : drawer.tab === "manual" ? 2 : 0
+            Layout.topMargin: drawer.formsMode ? 14 : 0
+            currentIndex: drawer.tab === "library" ? 1 : drawer.tab === "manual" ? 2 : drawer.tab === "forms" ? 3 : 0
 
             SearchPanel {
                 id: searchPanel
                 objectName: "searchPanel"
+                dragHost: drawer.dragHost
                 setlist: drawer.setlist
                 loadingIds: drawer.loadingIds
                 addedIds: drawer.addedIds
                 onSongClicked: (song) => drawer.songClicked(song)
-                onPresetsRequested: (song) => drawer.show("library", { filterSong: song.song_id })
+                onPresetChosen: (song, preset) => drawer.presetChosen(song, preset)
                 onManualRequested: (info) => drawer.show("manual", { manual: info })
             }
 
-            // 보관함: 모든 곡의 프리셋 (검색 결과의 '프리셋 N' 배지로 오면 그 곡만)
+            // 보관함: 모든 곡의 프리셋 (opts.filterSong을 주면 그 곡만)
             ColumnLayout {
                 spacing: 0
                 RowLayout {
@@ -235,6 +268,7 @@ Rectangle {
                 PresetLibrary {
                     id: library
                     objectName: "drawerLibrary"
+                    dragHost: drawer.dragHost
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     sideMargin: 20
@@ -243,6 +277,7 @@ Rectangle {
                     appliedTexts: drawer.appliedTexts
                     onAddRequested: (song, preset) => drawer.presetChosen(song, preset)
                     onReplaceRequested: (song, preset) => drawer.presetChosen(song, preset)
+                    onMelonRequested: (song) => drawer.songClicked(song)
                     // 한 곡 보기에서 마지막 프리셋을 지우면 모든 곡으로
                     onSongsChanged: if (!library.library && !library.songs.length) { library.filterSong = ""; library.refresh() }
                 }
@@ -268,27 +303,53 @@ Rectangle {
                     }
                 }
             }
+
+            // 양식 보관함 (예배 PPT 패널의 '양식' 제목 옆 보관함 아이콘)
+            FormLibrary {
+                id: formLibrary
+                objectName: "formLibrary"
+                items: drawer.formItems
+                dragHost: drawer.dragHost
+                onDeleteRequested: (id) => drawer.formDelete(id)
+                onRenameRequested: (id, name) => drawer.formRename(id, name)
+                onFilesDropped: (urls) => drawer.formFilesDropped(urls)
+                onBrowseRequested: drawer.formBrowse()
+            }
         }
     }
 
     // ── 도움말 (머리말의 ? 버튼, 첫 실행) ── 멜론 탭에서 보인다
+    // 첫 실행(opts.required)은 기본 흐름 1부 '곡 담기'만: 찾기 → 담기 → 닫기 (2부와 '이럴 땐'은 편집 화면 튜토리얼 EditorHelp.firstRun).
+    // '지난번 그대로 담기'(담을 버전·보관함)는 첫 실행에서는 프리셋 저장 단계에서 설명하고, ? 버튼에서만 여기 넣는다.
+    // ? 버튼은 끝에 '이럴 땐: 멜론에 없는 곡'(직접 입력 탭)도 붙인다
+    // opts.steps: 보여 줄 단계(첫 실행·업데이트 후는 Main이 helpSteps(true)를 본 리비전으로 거른 것). 없으면 ? 버튼용 전부
     function showHelp(opts) {
         if (!tour) return
         show("melon")
-        tour.start([
-            { target: searchPanel.searchBoxItem, demo: searchDemo, title: "1. 멜론에서 찾기",
-              body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>를 누르면 멜론에서 찾아와요.<br><br>"
-                  + "제목이 기억나지 않으면 <b>가사</b>를 입력해서 찾을 수도 있어요." },
-            { target: searchPanel.resultsItem, demo: resultsDemo, title: "2. ＋로 담기",
-              body: "곡을 누르면 콘티에 추가해요. 검색창은 열린 채로 <b>여러 곡을 연달아</b> 담을 수 있어요.<br><br>"
-                  + "프리셋을 저장해 둔 곡은 오른쪽에 <b>프리셋</b> 표시가 있고, 누르면 그 프리셋에 저장한 그대로 콘티에 담아요." },
-            { target: tabBar, title: "3. 보관함 · 직접 입력",
-              body: "<b>보관함</b>: 이전에 저장했던 프리셋이나 직접 입력한 곡을 모아서 보여 줘요.<br>"
-                  + "<b>직접 입력</b>: 멜론에 없는 곡은 제목과 가사를 직접 적어요." },
-            { target: closeButton, title: "4. 닫고 편집하기",
-              body: "다 담았으면 <b>✕</b>(또는 <b>Esc</b>), 바깥 영역 클릭으로 검색창을 닫고 편집을 시작해요.<br>"
-                  + "나중에 곡을 더하려면 콘티의 <b>곡 추가</b>나 <b>" + Theme.mod + "K</b>를 눌러요." }
-        ], opts)
+        tour.start(opts && opts.steps ? opts.steps : helpSteps(false), opts)
+    }
+    // 단계마다 rev(기본 1): 업데이트로 새로 만들거나 바꾼 단계는 rev를 올린다
+    function helpSteps(required) {
+        const steps = [
+            { target: searchPanel.searchBoxItem, demo: searchDemo, title: "찬양 찾기",
+              body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>를 누르면 멜론에서 찾아와요. "
+                  + "제목으로 찾지 못하면 <b>가사</b>에서 찾아 줘요." },
+            { target: searchPanel.resultsItem, demo: resultsDemo, title: "담기",
+              body: "곡을 누르면 찬양 리스트에 담겨요. 왼쪽 찬양 리스트로 <b>끌어다 놓으면</b> 원하는 자리에 넣을 수 있어요. "
+                  + "한번에 <b>여러 곡을 연달아</b> 넣을 수 있어요." },
+            { target: tabBar, title: "지난번 그대로 담기", skip: required,
+              body: "프리셋을 저장해 둔 곡은 오른쪽에 <b>담을 버전</b>(보관함 아이콘과 이름)이 보이고, 담으면 저장한 슬라이드 그대로 들어와요. "
+                  + "이름을 누르면 <b>멜론 가사 그대로</b>나 다른 프리셋으로 바꿀 수 있어요.<br>"
+                  + "<b>보관함</b> 탭에는 프리셋을 저장한 곡이 모여 있어요(가사로도 찾아요)." },
+            { target: closeButton, title: "다 담았으면 닫기",
+              body: "<b>✕</b>나 <b>Esc</b>, 바깥 영역을 누르면 검색창이 닫히고 편집을 시작해요. "
+                  + "나중에 곡을 더하려면 <b>곡 추가</b>나 <b>" + Theme.mod + "K</b>를 눌러요." }
+        ].filter(st => !st.skip)
+        if (!required)
+            steps.push({ target: tabBar, title: "이럴 땐: 멜론에 없는 곡",
+                         body: "<b>직접 입력</b> 탭에서 제목과 가사를 붙여 넣으면 담겨요. "
+                             + "프리셋으로 저장하면 검색 결과와 보관함에서 다시 찾을 수 있어요." })
+        return steps
     }
 
     // 검색창 복제본에 검색어를 한 글자씩 입력하고 Enter

@@ -3,8 +3,10 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-// 곡 찾기 서랍(SongDrawer)의 멜론 탭: 검색·결과·더 보기·가사 검색 대체·직접 입력 곡 결과·프리셋 배지.
-// 결과 행을 누르면 songClicked로 알리고, 담는 일은 Main·EditorPage가 한다 (행 오른쪽에 ＋ / 받는 중 / 담음 / 콘티에 있음)
+// 곡 찾기 서랍(SongDrawer)의 멜론 탭: 검색·결과·더 보기·가사 검색 대체·직접 입력 곡 결과.
+// 결과 행을 누르면 songClicked(멜론 가사)·presetChosen(프리셋)으로 알리고, 담는 일은 Main·EditorPage가 한다.
+// 행 오른쪽: 프리셋이 없으면 ＋, 있으면 담을 버전 버튼(PresetPicker: 지금 설정 — 멜론 가사 그대로 또는 프리셋, 누르면 바꾸기).
+// 행을 누르거나 끌어다 놓으면 그 설정대로 담는다. 콘티 상태(받는 중 / 담음 / 콘티에 있음)는 ＋ 자리에(프리셋이 있으면 버전 버튼 옆에) 보인다
 Item {
     id: page
 
@@ -25,8 +27,10 @@ Item {
     property bool loadingMore: false
     property string moreError: ""
     property string melonError: ""    // 직접 입력한 곡 결과는 있는데 멜론 검색만 실패했을 때 (목록 위에 알림)
-    // 저장한 프리셋 수 (곡 번호 → 수). 결과 행에 '프리셋 N' 배지를 띄운다
+    // 저장한 프리셋 수 (곡 번호 → 수). 있으면 결과 행에 ＋ 대신 기본 프리셋 버튼
     property var presetCounts: JSON.parse(backend.presetCounts())
+    property int presetVersion: 0      // 프리셋이 바뀔 때마다 늘린다 (행이 그 곡의 프리셋을 다시 읽는다: 기본이 바뀌어도 수는 같으므로)
+    property var dragHost: null       // 결과 행을 콘티로 끌어다 놓기 (EditorPage, SongDragArea)
     // 목록은 ListModel에 이어 붙인다 (배열을 통째로 바꾸면 다음 쪽을 붙일 때 스크롤이 맨 위로 돌아간다)
     ListModel { id: resultModel }
     function setResults(items) {
@@ -54,8 +58,8 @@ Item {
     function countText(n) { return Number(n).toLocaleString(Qt.locale("ko_KR"), "f", 0) }
 
     signal songClicked(var song)
-    // 결과 행의 '프리셋 N' 배지 (또는 그 행에서 →, 직접 입력한 곡은 행을 눌러도)
-    signal presetsRequested(var song)
+    // 프리셋으로 담기 (그 곡의 설정이 프리셋일 때 행을 누르면)
+    signal presetChosen(var song, var preset)
     // 멜론 없이 가사를 직접 입력한다 (서랍의 '직접 입력' 탭). info: { title, notice }
     signal manualRequested(var info)
 
@@ -121,6 +125,7 @@ Item {
         target: backend
         function onPresetsChanged() {
             page.presetCounts = JSON.parse(backend.presetCounts())
+            page.presetVersion++
             // 프리셋을 모두 지운 직접 입력 곡은 결과에서 뺀다
             for (let i = page.localCount - 1; i >= 0; i--) {
                 if (!page.presetCounts[page.results[i].song_id]) {
@@ -267,15 +272,15 @@ Item {
                 spacing: 10
                 visible: !page.hasResults
                 Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "search"; size: 32; color: Theme.text3; opacity: 0.6 }
-                Text {
-                    width: parent.width
+                BalancedText {
+                    maxWidth: parent.width
+                    anchors.horizontalCenter: parent.horizontalCenter
                     horizontalAlignment: Text.AlignHCenter
-                    text: "노래 제목이나 가수 이름으로 멜론에서 찾아요.\n제목·가수로 찾지 못하면 가사에서 찾아 줘요."
+                    source: "노래 제목이나 가수 이름으로 멜론에서 찾아요.\n제목·가수로 찾지 못하면 가사에서 찾아 줘요."
                     color: Theme.text3
                     font.family: Theme.font
                     font.pixelSize: 13
                     lineHeight: 1.4
-                    wrapMode: Text.Wrap
                 }
             }
 
@@ -347,10 +352,10 @@ Item {
                 Keys.onReturnPressed: openCurrent()
                 Keys.onEnterPressed: openCurrent()
                 Keys.onSpacePressed: openCurrent()
-                // →: 프리셋이 있으면 보관함 탭에서 그 곡의 프리셋을 보인다
+                // →: 프리셋이 있으면 프리셋 고르기 목록
                 Keys.onRightPressed: (event) => {
                     event.accepted = !!(currentItem && currentItem.presetCount)
-                    if (event.accepted) page.presetsRequested(currentItem.modelData)
+                    if (event.accepted) currentItem.openChoices()
                 }
 
                 // 끝 근처까지 내려오면 다음 쪽을 자동으로 받는다 (받는 중이면 loadMore가 막고, 실패하면 '다시 시도'를 누를 때까지 멈춘다)
@@ -423,22 +428,27 @@ Item {
                     required property bool manual
                     readonly property var modelData: ({ song_id: song_id, title: title, artist: artist,
                                                         album: album, adult: adult, snippet: snippet, manual: manual })
-                    // 직접 입력한 곡은 멜론 가사가 없으므로 보관함 탭에서 그 곡의 프리셋을 고른다
+                    // 그 곡의 설정대로 담는다: 프리셋이면 그 프리셋, 멜론 가사(또는 프리셋 없음)면 멜론 가사. 이미 콘티에 있으면 songClicked가 알려 준다
                     function open() {
-                        if (manual) page.presetsRequested(modelData)
+                        if (mainPreset && status === "") page.presetChosen(modelData, mainPreset)
                         else page.songClicked(modelData)
                     }
+                    function openChoices() { presetButton.openMenu() }
                     // 콘티 상태: "loading"(가사 받는 중) / "added"(이번에 담음) / "inSetlist"(전에 담은 곡) / ""(＋)
                     readonly property string status: page.loadingIds.indexOf(song_id) >= 0 ? "loading"
                         : page.addedIds.indexOf(song_id) >= 0 ? "added"
                         : page.setlist.indexOf(song_id) >= 0 ? "inSetlist" : ""
                     readonly property int presetCount: page.presetCounts[song_id] || 0
+                    // 그 곡의 프리셋 (설정된 것이 맨 앞) · 설정된 프리셋 (null이면 멜론 가사)
+                    readonly property var presets: presetCount && page.presetVersion >= 0 ? JSON.parse(backend.presetsFor(song_id)) : []
+                    readonly property var mainPreset: presets.find(p => p.default === true) || null
                     readonly property bool focused: ListView.isCurrentItem && list.activeFocus
+                    readonly property int baseHeight: modelData.snippet ? 92 : 60
 
                     width: ListView.view.width
-                    height: modelData.snippet ? 92 : 60
+                    height: baseHeight
                     radius: Theme.radiusSm
-                    readonly property bool hovered: hover.containsMouse || presetBadge.hovered || addButton.hovered
+                    readonly property bool hovered: hover.containsMouse || presetButton.hovered || presetButton.menuOpen || addButton.hovered
                     color: status === "added" || status === "loading" ? Theme.primarySoft
                          : hovered || focused ? Theme.surface2 : Theme.surface2Clear
                     border.width: focused ? 2 : 0
@@ -446,8 +456,8 @@ Item {
                     Behavior on color { ColorAnimation { duration: Theme.fast } }
                     Accessible.role: Accessible.Button
                     Accessible.name: [title, artist, album].filter(Boolean).join(", ")
-                                     + (manual ? ", 직접 입력한 곡, 프리셋 " + presetCount + "개"
-                                        : presetCount ? ", 프리셋 " + presetCount + "개 (오른쪽 화살표로 열기)" : "")
+                                     + (manual ? ", 직접 입력한 곡" : "")
+                                     + (presetCount ? ", 담을 버전 " + presetButton.label + " (오른쪽 화살표로 바꾸기)" : "")
                                      + (status === "loading" ? ", 가사 받는 중" : status === "added" ? ", 담음"
                                         : status === "inSetlist" ? ", 콘티에 있음" : "")
                     Accessible.onPressAction: open()
@@ -478,7 +488,10 @@ Item {
                     }
 
                     RowLayout {
-                        anchors.fill: parent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        height: row.baseHeight
                         anchors.leftMargin: 8
                         anchors.rightMargin: 8
                         spacing: 12
@@ -547,20 +560,18 @@ Item {
                                 elide: Text.ElideRight
                             }
                         }
-                        // 프리셋이 있는 곡: 누르면 보관함 탭에서 그 곡의 프리셋 (멜론 곡은 행을 누르면 멜론 가사로 담는다)
-                        AppButton {
-                            id: presetBadge
+                        // 프리셋이 있는 곡: 담을 버전(지금 설정) 버튼. 누르면 버튼 아래에 멜론 가사 그대로·프리셋 고르기
+                        PresetPicker {
+                            id: presetButton
+                            objectName: "presetPicker"
                             visible: row.presetCount > 0
-                            glyph: "bookmark"
-                            text: "프리셋 " + row.presetCount
-                            variant: "primary"
-                            size: "small"
-                            focusPolicy: Qt.NoFocus      // 키보드는 목록에서 →
-                            onClicked: page.presetsRequested(row.modelData)
-                            AppToolTip { visible: presetBadge.hovered; delay: 400; text: "예전에 저장한 슬라이드 그대로 열어요" }
+                            song: row.modelData
+                            presets: row.presets
+                            melon: !row.manual
                         }
                         // 콘티 상태: ＋(누르면 담음) / 받는 중 / 담음 / 콘티에 있음
                         Item {
+                            visible: row.status !== "" || row.presetCount === 0
                             Layout.preferredWidth: row.status === "" ? 36 : statusText.implicitWidth + (row.status === "inSetlist" ? 0 : 18)
                             Layout.preferredHeight: 36
                             AppButton {
@@ -612,14 +623,20 @@ Item {
                         }
                     }
 
-                    // 행 전체를 누르는 영역. 배지 버튼이 위에서 클릭을 받도록 아래에 둔다
-                    MouseArea {
+                    // 행 머리를 누르는 영역. 버튼이 위에서 클릭을 받도록 아래에 둔다.
+                    // 콘티로 끌어다 놓으면 놓은 자리에 그 곡의 설정대로 담는다
+                    SongDragArea {
                         id: hover
                         z: -1
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: row.open()
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        height: row.baseHeight
+                        dragHost: page.dragHost
+                        payload: row.mainPreset ? { kind: "preset", song: row.modelData, preset: row.mainPreset }
+                               : row.manual ? null : { kind: "song", song: row.modelData }
+                        dragLabel: row.title
+                        onTapped: row.open()
                     }
                 }
             }
