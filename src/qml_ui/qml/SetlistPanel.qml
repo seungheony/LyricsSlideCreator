@@ -18,6 +18,7 @@ ColumnLayout {
     property alias attachBefore: attachBefore
     property alias attachAfter: attachAfter
     property var attachments: ({ before: [], after: [] })    // backend.attachments()
+    property var savedPpts: []                                // 보관한 PPT (backend.savedPpts)
 
     signal selected(string id)
     signal removeRequested(int index)
@@ -30,6 +31,9 @@ ColumnLayout {
     signal attachBrowse(string side)
     signal attachRemove(string side, int index)
     signal attachMove(string side, int from, int to)
+    signal attachKeep(string side, int index)
+    signal attachSaved(string side, string id)
+    signal savedDelete(string id)
 
     // 누르거나 끄는 중 (EditorPage가 입력칸에서 벗어날 때의 3줄 확인을 미룬다)
     readonly property bool busy: pressedRow || dragFrom >= 0 || addButton.pressed || menuButton.pressed
@@ -122,6 +126,10 @@ ColumnLayout {
         onBrowseRequested: panel.attachBrowse("before")
         onRemoveRequested: (index) => panel.attachRemove("before", index)
         onMoveRequested: (from, to) => panel.attachMove("before", from, to)
+        savedItems: panel.savedPpts
+        onKeepRequested: (index) => panel.attachKeep("before", index)
+        onSavedChosen: (id) => panel.attachSaved("before", id)
+        onSavedDeleteRequested: (id) => panel.savedDelete(id)
     }
 
     // 키보드로 고른 줄 (모델이 새로 만들어져도 유지하려고 ListView의 currentIndex를 쓰지 않는다)
@@ -377,5 +385,9 @@ ColumnLayout {
         onBrowseRequested: panel.attachBrowse("after")
         onRemoveRequested: (index) => panel.attachRemove("after", index)
         onMoveRequested: (from, to) => panel.attachMove("after", from, to)
+        savedItems: panel.savedPpts
+        onKeepRequested: (index) => panel.attachKeep("after", index)
+        onSavedChosen: (id) => panel.attachSaved("after", id)
+        onSavedDeleteRequested: (id) => panel.savedDelete(id)
     }
 }

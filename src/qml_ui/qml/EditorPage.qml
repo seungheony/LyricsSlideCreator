@@ -410,8 +410,12 @@ Item {
     property var attachments: ({ before: [], after: [], slides: 0, problems: 0 })
     property string attachSide: "before"     // 파일 대화상자로 고를 목록
 
+    property var savedPpts: []               // 보관한 PPT (＋ 메뉴)
+
+    // 목록 항목: 원본 파일 경로 또는 보관한 PPT { saved: id }
     function attachLists() {
-        return { before: attachments.before.map(i => i.path), after: attachments.after.map(i => i.path) }
+        const entry = i => i.saved ? { saved: i.id } : i.path
+        return { before: attachments.before.map(entry), after: attachments.after.map(entry) }
     }
     function setAttachLists(lists) {
         attachments = JSON.parse(backend.setAttachments(JSON.stringify(lists)))
@@ -419,6 +423,28 @@ Item {
     // 파일이 옮겨졌거나 고쳐졌을 수 있어 앱으로 돌아올 때·PPT를 만들기 전에 다시 읽는다
     function refreshAttachments() {
         attachments = JSON.parse(backend.attachments())
+        savedPpts = JSON.parse(backend.savedPpts())
+    }
+    function keepAttachment(side, idx) {
+        const res = JSON.parse(backend.keepAttachment(side, idx))
+        if (res.error) { dialog.showError(res.error, res.detail || ""); return }
+        attachments = res.attachments
+        savedPpts = JSON.parse(backend.savedPpts())
+        const name = attachments[side][idx].name
+        if (toastHost) toastHost.show(res.replaced ? "보관해 둔 '" + name + "' 파일을 새 파일로 바꿨어요"
+                                                   : "'" + name + "' 파일을 앱에 보관했어요 · ＋에서 다시 불러올 수 있어요")
+    }
+    function addSavedAttachment(side, id) {
+        const lists = attachLists()
+        if (lists[side].some(e => e.saved === id)) return
+        lists[side].push({ saved: id })
+        setAttachLists(lists)
+    }
+    function deleteSavedPpt(id) {
+        const item = savedPpts.find(i => i.id === id)
+        attachments = JSON.parse(backend.deleteSavedPpt(id))
+        savedPpts = JSON.parse(backend.savedPpts())
+        if (toastHost && item) toastHost.show("보관한 '" + item.name + "' 파일을 지웠어요")
     }
     function addAttachments(side, urls) {
         const lists = attachLists()
@@ -660,7 +686,7 @@ Item {
     }
 
     Component.onCompleted: {
-        attachments = JSON.parse(backend.attachments())
+        refreshAttachments()
         updateFitBasis()
         // 시작할 때 콘티가 비어 있으면 곡 찾기 서랍을 연다
         if (!setlist.length) Qt.callLater(openDrawer)
@@ -1209,6 +1235,10 @@ Item {
                     onAttachBrowse: (side) => page.browseAttachments(side)
                     onAttachRemove: (side, idx) => page.removeAttachment(side, idx)
                     onAttachMove: (side, from, to) => page.moveAttachment(side, from, to)
+                    savedPpts: page.savedPpts
+                    onAttachKeep: (side, idx) => page.keepAttachment(side, idx)
+                    onAttachSaved: (side, id) => page.addSavedAttachment(side, id)
+                    onSavedDelete: (id) => page.deleteSavedPpt(id)
                 }
 
             }

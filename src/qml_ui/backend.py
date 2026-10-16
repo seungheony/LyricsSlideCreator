@@ -22,7 +22,7 @@ from src.utils.ppt_engine import PPTBuilder
 from src.utils.ppt_merge import deck_info
 from src.utils.line_fit import LineFit
 from src.utils.helpers import resource_path
-from src.utils import app_state, presets, updater
+from src.utils import app_state, presets, saved_ppts, updater
 from src.utils.version import get_version, parse_version
 
 
@@ -103,10 +103,43 @@ def inspect_attachment(path):
     return info
 
 
-def describe_attachments(lists):
-    """{before: [경로], after: [경로]} → 화면에 보일 정보. 슬라이드 크기는 처음 붙이는 PPT를 따르므로
-    (ppt_merge.attach_decks) 그와 크기가 다른 PPT에 sizeMismatch를 붙인다. slides: 붙일 장 수 합"""
-    out = {side: [inspect_attachment(p) for p in lists.get(side, [])] for side in ATTACH_SIDES}
+def clean_attach_lists(data):
+    """저장·전달된 목록 정리. 항목: 원본 파일 경로(문자열) 또는 보관한 PPT {'saved': id}"""
+    data = data if isinstance(data, dict) else {}
+    def ok(entry):
+        return isinstance(entry, str) or (isinstance(entry, dict) and isinstance(entry.get('saved'), str))
+    def entries(side):
+        value = data.get(side)
+        return value if isinstance(value, list) else []
+    return {side: [e if isinstance(e, str) else {'saved': e['saved']} for e in entries(side) if ok(e)]
+            for side in ATTACH_SIDES}
+
+
+def attach_path(entry):
+    """목록 항목 → 읽을 파일 경로"""
+    return entry if isinstance(entry, str) else saved_ppts.file_path(entry['saved'])
+
+
+def describe_entry(entry, saved_index):
+    if isinstance(entry, str):
+        return inspect_attachment(entry)
+    item = saved_index.get(entry['saved'])
+    if item is None:
+        return {'path': '', 'name': '보관한 PPT', 'saved': True, 'id': entry['saved'], 'missing': True,
+                'error': '보관한 PPT를 찾을 수 없어요. 목록에서 빼 주세요.'}
+    info = inspect_attachment(saved_ppts.file_path(item['id']))
+    info.update({'name': item['name'], 'saved': True, 'id': item['id']})
+    if info.get('missing'):
+        info['error'] = '보관한 파일이 지워졌어요. 목록에서 빼고 다시 넣어 주세요.'
+    return info
+
+
+def describe_attachments(lists, saved_items=()):
+    """{before: [항목], after: [항목]} → 화면에 보일 정보. 슬라이드 크기는 처음 붙이는 PPT를 따르므로
+    (ppt_merge.attach_decks) 그와 크기가 다른 PPT에 sizeMismatch를 붙인다. slides: 붙일 장 수 합.
+    항목은 원본 경로 또는 보관한 PPT {'saved': id} (saved_items: saved_ppts 목록)"""
+    index = {i['id']: i for i in saved_items}
+    out = {side: [describe_entry(e, index) for e in lists.get(side, [])] for side in ATTACH_SIDES}
     items = out['before'] + out['after']
     first = next((i for i in items if 'error' not in i), None)
     for item in items:
@@ -186,6 +219,7 @@ class Backend(QObject):
         super().__init__()
         self._state = app_state.load()
         self._presets = presets.load()
+        self._saved_ppts = saved_ppts.load()
         self._art = art_provider
         self._scraper = MelonScraper()
         self._pool = ThreadPoolExecutor(max_workers=4)        # 네트워크 작업: 앱 종료 때 기다리지 않는다
@@ -293,16 +327,22 @@ class Backend(QObject):
             self._state['window'] = geo
             app_state.save(self._state)
 
-    # ── 앞·뒤에 붙일 PPT ── (state.json 'attachments': {before: [경로], after: [경로]}, src/utils/ppt_merge.py)
-    # 경로만 기억하고 PPT를 만들 때마다 그 파일을 새로 읽는다 (설교 PPT를 고치면 다음 생성에 반영)
+    # ── 앞·뒤에 붙일 PPT ── (state.json 'attachments': {before: [항목], after: [항목]}, src/utils/ppt_merge.py)
+    # 항목은 원본 파일 경로(PPT를 만들 때마다 새로 읽어 고친 내용이 반영된다) 또는 보관한 PPT {'saved': id}
     def _attachment_lists(self):
-        saved = self._state.get('attachments')
-        saved = saved if isinstance(saved, dict) else {}
-        return {side: [p for p in saved.get(side, []) if isinstance(p, str)] for side in ATTACH_SIDES}
+        return clean_attach_lists(self._state.get('attachments'))
+
+    def _describe(self, lists):
+        return json.dumps(describe_attachments(lists, self._saved_ppts), ensure_ascii=False)
+
+    def _store_lists(self, lists):
+        if self._state.get('attachments') != lists:
+            self._state['attachments'] = lists
+            app_state.save(self._state)
 
     @Slot(result=str)
     def attachments(self):
-        return json.dumps(describe_attachments(self._attachment_lists()), ensure_ascii=False)
+        return self._describe(self._attachment_lists())
 
     @Slot(str, result=str)
     def inspectAttachment(self, file_url):
@@ -312,13 +352,55 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def setAttachments(self, lists_json):
-        """목록을 바꾸고 저장한다. lists_json: {before: [경로], after: [경로]}. 반환: attachments()와 같음"""
-        data = json.loads(lists_json)
-        lists = {side: [str(p) for p in data.get(side, [])] for side in ATTACH_SIDES}
-        if self._state.get('attachments') != lists:
-            self._state['attachments'] = lists
-            app_state.save(self._state)
-        return json.dumps(describe_attachments(lists), ensure_ascii=False)
+        """목록을 바꾸고 저장한다. lists_json: {before: [항목], after: [항목]}. 반환: attachments()와 같음"""
+        lists = clean_attach_lists(json.loads(lists_json))
+        self._store_lists(lists)
+        return self._describe(lists)
+
+    # 보관한 PPT (src/utils/saved_ppts.py): ＋ 메뉴에서 다시 불러온다
+    @Slot(result=str)
+    def savedPpts(self):
+        """[{id, name, saved_at, slides}] (최근 보관한 것이 앞, 파일이 없어진 것은 뺀다)"""
+        out = []
+        for item in self._saved_ppts:
+            info = inspect_attachment(saved_ppts.file_path(item['id']))
+            if 'error' not in info:
+                out.append(dict(item, slides=info['slides']))
+        return json.dumps(out, ensure_ascii=False)
+
+    @Slot(str, int, result=str)
+    def keepAttachment(self, side, index):
+        """목록의 원본 파일을 앱에 보관하고 그 자리를 보관본으로 바꾼다.
+        반환: {attachments, replaced(같은 이름의 보관본을 바꿨는지)} 또는 {error, detail}"""
+        lists = self._attachment_lists()
+        entry = lists.get(side, [])[index] if 0 <= index < len(lists.get(side, [])) else None
+        if not isinstance(entry, str):
+            return json.dumps({'error': '보관할 파일이 없어요'}, ensure_ascii=False)
+        try:
+            items, item, replaced = saved_ppts.add(self._saved_ppts, entry, datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+        except OSError as e:
+            return json.dumps({'error': 'PPT를 보관하지 못했어요\n원본 파일이 있는지, 저장 공간이 넉넉한지 확인해 주세요.',
+                               'detail': f'{entry}\n{type(e).__name__}: {e}'}, ensure_ascii=False)
+        if not saved_ppts.save(items):
+            if not replaced:
+                saved_ppts.remove(items, item['id'])    # 목록에 남지 않은 복사본은 지운다
+            return json.dumps({'error': 'PPT를 보관하지 못했어요\n앱 데이터 폴더에 쓸 수 없어요.',
+                               'detail': app_state.data_path(saved_ppts.FILE_NAME)}, ensure_ascii=False)
+        self._saved_ppts = items
+        lists[side][index] = {'saved': item['id']}
+        self._store_lists(lists)
+        return json.dumps({'attachments': describe_attachments(lists, items), 'replaced': replaced}, ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def deleteSavedPpt(self, item_id):
+        """보관한 PPT를 지운다. 앞·뒤 목록에 있으면 거기서도 뺀다. 반환: attachments()와 같음"""
+        items = saved_ppts.remove(self._saved_ppts, item_id)
+        saved_ppts.save(items)
+        self._saved_ppts = items
+        lists = {side: [e for e in entries if not (isinstance(e, dict) and e['saved'] == item_id)]
+                 for side, entries in self._attachment_lists().items()}
+        self._store_lists(lists)
+        return self._describe(lists)
 
     # ── 프리셋 ── (src/utils/presets.py)
     @Slot(result=str)
@@ -512,7 +594,7 @@ class Backend(QObject):
         if not save_path.lower().endswith('.pptx'):
             save_path += '.pptx'
         template = self._template_path
-        attach = self._attachment_lists()
+        attach = {side: [attach_path(e) for e in entries] for side, entries in self._attachment_lists().items()}
 
         def work():
             missing = [p for side in ATTACH_SIDES for p in attach[side] if not os.path.isfile(p)]
