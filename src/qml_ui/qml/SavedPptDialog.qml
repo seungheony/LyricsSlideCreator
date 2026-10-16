@@ -46,13 +46,13 @@ Popup {
             font.pixelSize: 17
             font.weight: Font.Bold
         }
-        Text {
-            Layout.fillWidth: true
-            text: "보관한 때의 파일 그대로 붙여요. 원본을 고쳤으면 그 파일을 다시 넣고 보관하면 바뀌어요."
+        BalancedText {
+            maxWidth: parent.width
+            Layout.preferredWidth: fitWidth
+            source: "보관한 때의 파일 그대로 붙여요. 원본을 고쳤으면 그 파일을 다시 넣고 보관하면 바뀌어요."
             color: Theme.text2
             font.family: Theme.font
             font.pixelSize: 13
-            wrapMode: Text.Wrap
             lineHeight: 1.3
         }
 

@@ -268,15 +268,15 @@ Item {
                 spacing: 10
                 visible: !page.hasResults
                 Icon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "search"; size: 32; color: Theme.text3; opacity: 0.6 }
-                Text {
-                    width: parent.width
+                BalancedText {
+                    maxWidth: parent.width
+                    anchors.horizontalCenter: parent.horizontalCenter
                     horizontalAlignment: Text.AlignHCenter
-                    text: "노래 제목이나 가수 이름으로 멜론에서 찾아요.\n제목·가수로 찾지 못하면 가사에서 찾아 줘요."
+                    source: "노래 제목이나 가수 이름으로 멜론에서 찾아요.\n제목·가수로 찾지 못하면 가사에서 찾아 줘요."
                     color: Theme.text3
                     font.family: Theme.font
                     font.pixelSize: 13
                     lineHeight: 1.4
-                    wrapMode: Text.Wrap
                 }
             }
 

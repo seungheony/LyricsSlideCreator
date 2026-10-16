@@ -226,15 +226,16 @@ Item {
                 font.weight: Font.DemiBold
                 wrapMode: Text.Wrap
             }
-            Text {
+            BalancedText {
                 visible: !lib.totalCount
-                Layout.fillWidth: true
+                maxWidth: parent.width
+                Layout.preferredWidth: fitWidth
+                Layout.alignment: Qt.AlignHCenter
                 horizontalAlignment: Text.AlignHCenter
-                text: "편집 화면 아래 '프리셋'의 '저장'으로 지금 슬라이드를 저장할 수 있어요"
+                source: "편집 화면 아래 '프리셋'의 '저장'으로 지금 슬라이드를 저장할 수 있어요"
                 color: Theme.text3
                 font.family: Theme.font
                 font.pixelSize: 13
-                wrapMode: Text.Wrap
             }
             Item { Layout.fillHeight: true }
         }

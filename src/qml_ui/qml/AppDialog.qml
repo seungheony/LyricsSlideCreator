@@ -61,24 +61,24 @@ Popup {
         focus: true
         Keys.onReturnPressed: dialog.close()
         Keys.onEnterPressed: dialog.close()
-        Text {
-            text: dialog.title
+        BalancedText {
+            maxWidth: parent.width
+            Layout.preferredWidth: fitWidth
+            source: dialog.title
             color: Theme.text
             font.family: Theme.font
             font.pixelSize: 17
             font.weight: Font.Bold
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
         }
-        Text {
+        BalancedText {
+            maxWidth: parent.width
+            Layout.preferredWidth: fitWidth
             visible: dialog.message !== ""
-            text: dialog.message
+            source: dialog.message
             color: Theme.text2
             font.family: Theme.font
             font.pixelSize: 14
             lineHeight: 1.4
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
         }
         // 오류 요약과 안내 (예외로 실패했을 때)
         Text {
@@ -94,14 +94,14 @@ Popup {
             Layout.topMargin: 4
             Layout.fillWidth: true
         }
-        Text {
+        BalancedText {
+            maxWidth: parent.width
+            Layout.preferredWidth: fitWidth
             visible: dialog.detail !== ""
-            text: "계속되면 '문제 알리기'로 알려 주세요. 오류 정보를 복사해 두니 붙여 넣기만 하면 돼요."
+            source: "계속되면 '문제 알리기'로 알려 주세요. 오류 정보를 복사해 두니 붙여 넣기만 하면 돼요."
             color: Theme.text3
             font.family: Theme.font
             font.pixelSize: 12
-            wrapMode: Text.Wrap
-            Layout.fillWidth: true
         }
         RowLayout {
             visible: dialog.detail !== ""

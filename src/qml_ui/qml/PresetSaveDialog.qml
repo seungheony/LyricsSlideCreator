@@ -54,9 +54,10 @@ Popup {
             font.pixelSize: 17
             font.weight: Font.Bold
         }
-        Text {
-            Layout.fillWidth: true
-            text: (dialog.titles.length > 1
+        BalancedText {
+            maxWidth: parent.width
+            Layout.preferredWidth: fitWidth
+            source: (dialog.titles.length > 1
                    ? dialog.titles.length + "곡의 지금 슬라이드를 곡마다 저장해요: "
                    : "지금 슬라이드를 저장해요: ")
                   + dialog.titles.join(", ")
@@ -66,7 +67,6 @@ Popup {
             font.family: Theme.font
             font.pixelSize: 14
             lineHeight: 1.4
-            wrapMode: Text.Wrap
             maximumLineCount: 5
             elide: Text.ElideRight
         }

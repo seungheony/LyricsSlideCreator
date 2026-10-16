@@ -11,15 +11,17 @@ ToolTip {
     padding: 8
     leftPadding: 12
     rightPadding: 12
-    width: Math.min(implicitWidth, 340)
+    // 글 폭에 맞추되 340까지. 넘치면 문장·구분점에서 먼저 줄을 바꾸고 줄 길이를 고르게 (BalancedText)
+    width: label.fitWidth + leftPadding + rightPadding
 
-    contentItem: Text {
-        text: tip.text
+    contentItem: BalancedText {
+        id: label
+        maxWidth: 340 - tip.leftPadding - tip.rightPadding
+        source: tip.text
         font.family: Theme.font
         font.pixelSize: 12
         lineHeight: 1.3
         color: Theme.tooltipText
-        wrapMode: Text.Wrap
     }
     background: Rectangle {
         radius: 8

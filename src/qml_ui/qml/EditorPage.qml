@@ -1729,25 +1729,23 @@ Item {
                     x: centerX + (rightX - centerX) * besideDrawer
                     width: Math.min(300, parent.width - 48)
                     spacing: 10
-                    Text {
-                        width: parent.width
-                        text: !page.setlist.length ? "곡을 담으면 여기서 가사를 다듬어요"
+                    BalancedText {
+                        maxWidth: parent.width
+                        source: !page.setlist.length ? "곡을 담으면 여기서 가사를 다듬어요"
                             : page.drawerOpen ? "검색창을 닫으면 담은 곡을 열어요" : "가사를 받는 중이에요"
                         color: Theme.text
                         font.family: Theme.font
                         font.pixelSize: 17
                         font.weight: Font.Bold
-                        wrapMode: Text.Wrap
                     }
-                    Text {
-                        width: parent.width
-                        text: !page.setlist.length ? "빈 줄로 슬라이드를 나누고, 줄을 끌어 옮기고, 콘티 전체를 PPT 한 파일로 만들어요"
+                    BalancedText {
+                        maxWidth: parent.width
+                        source: !page.setlist.length ? "빈 줄로 슬라이드를 나누고, 줄을 끌어 옮기고, 콘티 전체를 PPT 한 파일로 만들어요"
                             : page.drawerOpen ? "곡을 더 담거나 검색창을 닫아 주세요" : "다 받으면 바로 열어요"
                         color: Theme.text2
                         font.family: Theme.font
                         font.pixelSize: 13
                         lineHeight: 1.4
-                        wrapMode: Text.Wrap
                     }
                 }
             }

@@ -205,25 +205,25 @@ Popup {
                     }
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: tour.step ? tour.step.title : ""
+                BalancedText {
+                    maxWidth: parent.width
+                    Layout.preferredWidth: fitWidth
+                    source: tour.step ? tour.step.title : ""
                     color: Theme.text
                     font.family: Theme.font
                     font.pixelSize: 17
                     font.weight: Font.Bold
-                    wrapMode: Text.Wrap
                 }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: tour.step ? tour.step.body : ""
+                BalancedText {
+                    maxWidth: parent.width
+                    Layout.preferredWidth: fitWidth
+                    source: tour.step ? tour.step.body : ""
                     textFormat: Text.StyledText
                     color: Theme.text2
                     font.family: Theme.font
                     font.pixelSize: 13
                     lineHeight: 1.45
-                    wrapMode: Text.Wrap
                 }
 
                 RowLayout {
