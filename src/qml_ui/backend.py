@@ -131,8 +131,9 @@ def describe_entry(entry, saved_index):
                 'error': '보관한 PPT를 찾을 수 없어요. 목록에서 빼 주세요.'}
     info = inspect_attachment(saved_ppts.file_path(item['id']))
     source = item.get('source')
-    info.update({'name': item['name'], 'saved': True, 'id': item['id'],
-                 'hasSource': bool(source) and os.path.isfile(source)})   # 보관을 풀 수 있는지
+    # 보관함에서 지웠지만 목록에는 남은 것(hidden)은 보관되지 않은 것으로 보인다 (id는 그대로: 목록 항목이 그 복사본을 쓴다)
+    info.update({'name': item['name'], 'saved': not item.get('hidden'), 'id': item['id'],
+                 'hasSource': bool(source) and os.path.isfile(source)})
     if info.get('missing'):
         info['error'] = '보관한 파일이 지워졌어요. 목록에서 빼고 다시 넣어 주세요.'
     return info
@@ -153,7 +154,7 @@ def describe_attachments(lists, saved_items=(), now=None):
     now = datetime.now().timestamp() if now is None else now
     for item in items:
         modified = item.pop('modified', None)
-        if modified is not None and not item.get('saved') and now - modified > STALE_DAYS * 86400:
+        if modified is not None and 'id' not in item and now - modified > STALE_DAYS * 86400:   # 원본 경로 항목만
             day = datetime.fromtimestamp(modified)
             item['stale'] = f'{day.month}월 {day.day}일'
     out['slides'] = sum(i.get('slides', 0) for i in items)
@@ -350,6 +351,19 @@ class Backend(QObject):
         if self._state.get('attachments') != lists:
             self._state['attachments'] = lists
             app_state.save(self._state)
+        self._drop_unused_hidden(lists)
+
+    def _drop_unused_hidden(self, lists):
+        """보관함에서 지웠지만 목록에 남아 있던 복사본(hidden)은 목록에서도 빠지면 지운다"""
+        used = {e['saved'] for entries in lists.values() for e in entries if isinstance(e, dict)}
+        gone = [i['id'] for i in self._saved_ppts if i.get('hidden') and i['id'] not in used]
+        if not gone:
+            return
+        items = self._saved_ppts
+        for item_id in gone:
+            items = saved_ppts.remove(items, item_id)
+        if saved_ppts.save(items):
+            self._saved_ppts = items
 
     @Slot(result=str)
     def attachments(self):
@@ -374,6 +388,8 @@ class Backend(QObject):
         """[{id, name, saved_at, slides}] (최근 보관한 것이 앞, 파일이 없어진 것은 뺀다)"""
         out = []
         for item in self._saved_ppts:
+            if item.get('hidden'):
+                continue
             info = inspect_attachment(saved_ppts.file_path(item['id']))
             if 'error' not in info:
                 source = item.get('source')
@@ -413,6 +429,16 @@ class Backend(QObject):
         반환: {attachments, replaced(같은 이름의 보관본을 바꿨는지)} 또는 {error, detail}"""
         lists = self._attachment_lists()
         entry = lists.get(side, [])[index] if 0 <= index < len(lists.get(side, [])) else None
+        if isinstance(entry, dict):
+            # 보관함에서 지웠지만 목록에 남아 있던 것: 다시 보관함에 보이게
+            item = next((i for i in self._saved_ppts if i['id'] == entry['saved']), None)
+            if not item or not item.get('hidden'):
+                return json.dumps({'error': '이미 보관함에 있어요'}, ensure_ascii=False)
+            items = [{k: v for k, v in i.items() if k != 'hidden'} if i is item else i for i in self._saved_ppts]
+            if not saved_ppts.save(items):
+                return json.dumps({'error': '보관함에 쓸 수 없어요'}, ensure_ascii=False)
+            self._saved_ppts = items
+            return json.dumps({'attachments': describe_attachments(lists, items), 'replaced': False}, ensure_ascii=False)
         if not isinstance(entry, str):
             return json.dumps({'error': '보관할 파일이 없어요'}, ensure_ascii=False)
         try:
@@ -432,13 +458,16 @@ class Backend(QObject):
 
     @Slot(str, result=str)
     def deleteSavedPpt(self, item_id):
-        """보관한 PPT를 지운다. 앞·뒤 목록에 있으면 거기서도 뺀다. 반환: attachments()와 같음"""
-        items = saved_ppts.remove(self._saved_ppts, item_id)
+        """보관함에서 지운다. 찬양 전·후 목록에 있으면 목록에는 남기고(복사본을 숨겨 두었다가 목록에서 빠질 때 지운다),
+        없으면 바로 지운다. 반환: attachments()와 같음"""
+        lists = self._attachment_lists()
+        used = any(isinstance(e, dict) and e['saved'] == item_id for entries in lists.values() for e in entries)
+        if used:
+            items = [dict(i, hidden=True) if i['id'] == item_id else i for i in self._saved_ppts]
+        else:
+            items = saved_ppts.remove(self._saved_ppts, item_id)
         saved_ppts.save(items)
         self._saved_ppts = items
-        lists = {side: [e for e in entries if not (isinstance(e, dict) and e['saved'] == item_id)]
-                 for side, entries in self._attachment_lists().items()}
-        self._store_lists(lists)
         return self._describe(lists)
 
     # ── 프리셋 ── (src/utils/presets.py)

@@ -457,9 +457,9 @@ Item {
 
     property var savedPpts: []               // 양식 보관함 (곡 찾기 서랍의 '양식 보관함' 화면)
 
-    // 목록 항목: 원본 파일 경로 또는 보관한 PPT { saved: id }
+    // 목록 항목: 원본 파일 경로 또는 보관한 PPT { saved: id } (보관함에서 지웠어도 목록에 남은 복사본은 id가 있다)
     function attachLists() {
-        const entry = i => i.saved ? { saved: i.id } : i.path
+        const entry = i => i.id ? { saved: i.id } : i.path
         return { before: attachments.before.map(entry), after: attachments.after.map(entry) }
     }
     function setAttachLists(lists) {
@@ -526,8 +526,8 @@ Item {
         const where = setlistPanel.placedSaved[id]
         confirmDialog.ask({
             title: "양식 보관함에서 지울까요?",
-            message: "'" + item.name + "' 파일을 보관함에서 지워요." + (where ? " 찬양 " + (where === "앞" ? "전" : "후") + " 양식에서도 빠져요." : "")
-                     + " 지운 파일은 되돌릴 수 없어요.",
+            message: "'" + item.name + "' 파일을 보관함에서 지워요." + (where ? " 찬양 " + (where === "앞" ? "전" : "후") + " 양식에는 그대로 남아요." : "")
+                     + " 보관함에서는 되돌릴 수 없어요.",
             confirmText: "영구 삭제",
             onConfirm: () => page.doDeleteSavedPpt(id, item)
         })
@@ -535,7 +535,9 @@ Item {
     function doDeleteSavedPpt(id, item) {
         attachments = JSON.parse(backend.deleteSavedPpt(id))
         savedPpts = JSON.parse(backend.savedPpts())
-        if (toastHost && item) toastHost.show("보관한 '" + item.name + "' 파일을 지웠어요")
+        if (toastHost && item) toastHost.show("'" + item.name + "' 파일을 양식 보관함에서 지웠어요"
+                                              + (setlistPanel.attachments.before.concat(setlistPanel.attachments.after).some(i => i.id === id)
+                                                 ? " · 찬양 전·후 양식에는 남아 있어요" : ""))
     }
     function addAttachments(side, urls) {
         const lists = attachLists()

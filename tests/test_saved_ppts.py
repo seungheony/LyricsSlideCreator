@@ -99,6 +99,26 @@ class SavedPptsTest(unittest.TestCase):
         bad = json.loads(backend.savePptToLibrary(os.path.join(self.dir, 'x.txt')))
         self.assertIn('error', bad)
 
+    def test_delete_from_library_keeps_list(self):
+        from src.qml_ui.backend import AlbumArtProvider, Backend
+        backend = Backend(AlbumArtProvider())
+        backend.setAttachments(json.dumps({'before': [self.src], 'after': []}))
+        backend.keepAttachment('before', 0)
+        item_id = json.loads(backend.savedPpts())[0]['id']
+        info = json.loads(backend.deleteSavedPpt(item_id))
+        self.assertEqual(len(info['before']), 1)                       # 목록에는 남는다
+        self.assertFalse(info['before'][0]['saved'])
+        self.assertEqual(info['before'][0]['id'], item_id)
+        self.assertEqual(json.loads(backend.savedPpts()), [])           # 보관함에서는 빠진다
+        os.remove(self.src)                                             # 원본이 없어도 복사본으로 쓴다
+        self.assertEqual(json.loads(backend.attachments())['problems'], 0)
+        backend.keepAttachment('before', 0)                             # 다시 보관하면 되살아난다
+        self.assertEqual([i['id'] for i in json.loads(backend.savedPpts())], [item_id])
+        backend.deleteSavedPpt(item_id)
+        backend.setAttachments(json.dumps({'before': [], 'after': []}))  # 목록에서도 빼면 복사본을 지운다
+        self.assertFalse(os.path.exists(saved_ppts.file_path(item_id)))
+        self.assertEqual(saved_ppts.load(), [])
+
     def test_clean_lists(self):
         self.assertEqual(clean_attach_lists({'before': ['/a.pptx', {'saved': 'x', 'junk': 1}, 3, {'saved': 4}],
                                              'after': None}),

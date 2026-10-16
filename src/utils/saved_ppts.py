@@ -3,7 +3,8 @@
 보관한 때의 파일 그대로 쓴다(원본을 고쳐도 따라가지 않음). 같은 이름의 파일을 다시 보관하면 그 보관본을 새 파일로 바꾼다.
 파일: 앱 데이터 폴더(src/utils/app_state.py)의
   saved_ppts.json — {"version": 1, "items": [{id, name, source, saved_at}]} (최근 보관한 것이 앞)
-    source: 보관한 원본 파일 경로 (보관을 풀면 이 파일로 돌아간다)
+    source: 보관한 원본 파일 경로
+    hidden: 보관함에서 지웠지만 찬양 전·후 목록에 남아 그 복사본을 쓰는 것 (목록에서 빠지면 지운다, backend)
   saved_ppt/<id>.pptx — 복사한 파일
 """
 import os
