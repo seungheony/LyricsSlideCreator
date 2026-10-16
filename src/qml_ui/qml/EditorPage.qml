@@ -479,7 +479,7 @@ Item {
         if (toastHost) toastHost.show(res.replaced ? "보관해 둔 '" + name + "' 파일을 새 파일로 바꿨어요"
                                                    : "'" + name + "' 파일을 양식 보관함에 넣었어요 · 빼도 '양식' 옆 보관함에서 다시 꺼내 써요")
     }
-    // ── 양식 보관함 ── (서랍의 '양식 보관함' 화면: 넣기·이름 고치기·영구 삭제, 파일을 보관함에만 넣기)
+    // ── 양식 보관함 ── (서랍의 '양식 보관함' 화면: 넣기·이름 고치기·삭제, 파일을 보관함에만 넣기)
     function openFormLibrary(focusId) {
         savedPpts = JSON.parse(backend.savedPpts())
         openDrawer("forms", { focusId: focusId || "" })
@@ -528,7 +528,7 @@ Item {
             title: "양식 보관함에서 지울까요?",
             message: "'" + item.name + "' 파일을 보관함에서 지워요." + (where ? " 찬양 " + (where === "앞" ? "전" : "후") + " 양식에는 그대로 남아요." : "")
                      + " 보관함에서는 되돌릴 수 없어요.",
-            confirmText: "영구 삭제",
+            confirmText: "삭제",
             onConfirm: () => page.doDeleteSavedPpt(id, item)
         })
     }

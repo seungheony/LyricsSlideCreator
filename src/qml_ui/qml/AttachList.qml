@@ -249,7 +249,7 @@ Rectangle {
                                 AppButton {
                                     id: removeButton
                                     visible: box.dragFrom < 0 && (row.hot || row.activeFocus || activeFocus || keepButton.activeFocus)
-                                    glyph: "x"                    // 이번 예배 PPT에서 빼기 (영구 삭제는 휴지통)
+                                    glyph: "x"                    // 이번 예배 PPT에서 빼기 (삭제는 휴지통)
                                     variant: "ghost"
                                     size: "small"
                                     implicitHeight: 24

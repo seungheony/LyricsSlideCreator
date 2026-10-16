@@ -5,7 +5,7 @@ import "."
 
 // 양식 보관함: 곡 찾기 서랍의 '양식 보관함' 화면 (예배 PPT 패널의 '양식' 제목 옆 보관함 아이콘으로 연다).
 // 보관한 PPT(saved_ppts)를 왼쪽 찬양 전·후 칸으로 끌어다 놓아 넣고(SongDragArea → EditorPage), 이름을 고치고,
-// 영구 삭제한다(빨간 휴지통 → 확인창). 위 칸에 PPT 파일을 끌어다 놓거나 눌러서 고르면 보관함에만 넣는다.
+// 삭제한다(빨간 휴지통 → 확인창). 위 칸에 PPT 파일을 끌어다 놓거나 눌러서 고르면 보관함에만 넣는다.
 // 줄: 이름 · 연필 · 휴지통 (늘 보인다).
 ColumnLayout {
     id: lib
@@ -208,8 +208,8 @@ ColumnLayout {
                         destructive: true
                         size: "small"
                         onClicked: lib.deleteRequested(row.modelData.id)
-                        Accessible.name: "보관함에서 영구 삭제: " + row.modelData.name
-                        AppToolTip { visible: deleteButton.hovered; delay: 400; text: "보관함에서 영구 삭제" }
+                        Accessible.name: "보관함에서 삭제: " + row.modelData.name
+                        AppToolTip { visible: deleteButton.hovered; delay: 400; text: "보관함에서 삭제" }
                     }
                 }
             }
