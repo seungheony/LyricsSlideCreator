@@ -6,6 +6,8 @@ import re
 import datetime
 import unicodedata
 
+from src.utils.ppt_merge import attach_decks
+
 
 def find_lyrics_shape(slide):
     """가사를 넣을 글상자: '가사'라고 적힌 첫 글상자(글자가 있는 것). 없으면 None.
@@ -111,11 +113,12 @@ class PPTBuilder:
             if rel.reltype.endswith('/metadata/thumbnail'):
                 package.drop_rel(rId)
 
-    def generate_setlist_to_memory(self, songs, title=''):
-        """콘티 전체를 한 PPT로: 처음·곡 사이·끝에 빈 슬라이드 (setlist_chunks)"""
-        return self.generate_slides_to_memory(setlist_chunks(songs), title)
+    def generate_setlist_to_memory(self, songs, title='', before=(), after=()):
+        """콘티 전체를 한 PPT로: 처음·곡 사이·끝에 빈 슬라이드 (setlist_chunks).
+        before·after: 가사 앞·뒤에 붙일 PPT 파일 경로 (ppt_merge)"""
+        return self.generate_slides_to_memory(setlist_chunks(songs), title, before, after)
 
-    def generate_slides_to_memory(self, lyrics_data, title=''):
+    def generate_slides_to_memory(self, lyrics_data, title='', before=(), after=()):
         """lyrics_data: 슬라이드별 가사. None이면 가사 상자를 비운 빈 슬라이드"""
         if not self.prs or not self.prs.slides: return None
         self.set_properties(title)
@@ -139,7 +142,8 @@ class PPTBuilder:
             self.replace_text_in_slide(new_slide, chunk)
 
         self.delete_template_slide(0)
-        
+        attach_decks(self.prs, before, after)
+
         ppt_buffer = io.BytesIO()
         self.prs.save(ppt_buffer)
         ppt_buffer.seek(0)

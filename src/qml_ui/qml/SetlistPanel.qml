@@ -5,6 +5,7 @@ import "."
 
 // 편집 화면 왼쪽의 콘티(곡 목록). 곡을 누르면 그 곡을 편집하고, 끌어서 순서를 바꾸고, 휴지통으로 뺀다 (0곡까지).
 // 가사를 받는 중인 곡은 '가사 받는 중…'으로 자리만 보인다. 머리의 ⋯ 메뉴: 콘티 비우기·곡 추가.
+// 곡 목록 위·아래에 PPT 앞·뒤에 붙일 PPT 목록(AttachList)을 두어 만들어질 PPT 순서대로 보인다.
 // 목록은 EditorPage가 갖고 있고, 여기서는 신호로 알리기만 한다.
 ColumnLayout {
     id: panel
@@ -14,6 +15,9 @@ ColumnLayout {
     property string pendingId: ""     // 가사를 다 받으면 열 곡
     property alias addButton: addButton
     property alias listView: list
+    property alias attachBefore: attachBefore
+    property alias attachAfter: attachAfter
+    property var attachments: ({ before: [], after: [] })    // backend.attachments()
 
     signal selected(string id)
     signal removeRequested(int index)
@@ -21,9 +25,15 @@ ColumnLayout {
     signal addRequested()
     signal clearRequested()
     signal helpRequested()
+    // 앞·뒤에 붙일 PPT (side: 'before' | 'after')
+    signal attachDropped(string side, var urls)
+    signal attachBrowse(string side)
+    signal attachRemove(string side, int index)
+    signal attachMove(string side, int from, int to)
 
     // 누르거나 끄는 중 (EditorPage가 입력칸에서 벗어날 때의 3줄 확인을 미룬다)
     readonly property bool busy: pressedRow || dragFrom >= 0 || addButton.pressed || menuButton.pressed
+                                 || attachBefore.busy || attachAfter.busy
 
     // ── 끌어서 순서 바꾸기 ──
     property bool pressedRow: false
@@ -100,6 +110,18 @@ ColumnLayout {
         }
         Entry { text: "곡 추가"; hint: Theme.mod + "K"; onTriggered: panel.addRequested() }
         Entry { objectName: "clearSetlistItem"; text: "콘티 비우기"; enabled: panel.entries.length > 0; onTriggered: panel.clearRequested() }
+    }
+
+    AttachList {
+        id: attachBefore
+        objectName: "attachBefore"
+        Layout.fillWidth: true
+        title: "앞에 붙일 PPT"
+        items: panel.attachments.before
+        onFilesDropped: (urls) => panel.attachDropped("before", urls)
+        onBrowseRequested: panel.attachBrowse("before")
+        onRemoveRequested: (index) => panel.attachRemove("before", index)
+        onMoveRequested: (from, to) => panel.attachMove("before", from, to)
     }
 
     // 키보드로 고른 줄 (모델이 새로 만들어져도 유지하려고 ListView의 currentIndex를 쓰지 않는다)
@@ -342,5 +364,18 @@ ColumnLayout {
         variant: panel.entries.length ? "secondary" : "primary"
         onClicked: panel.addRequested()
         AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K)" }
+    }
+
+    AttachList {
+        id: attachAfter
+        objectName: "attachAfter"
+        Layout.fillWidth: true
+        Layout.topMargin: 4
+        title: "뒤에 붙일 PPT"
+        items: panel.attachments.after
+        onFilesDropped: (urls) => panel.attachDropped("after", urls)
+        onBrowseRequested: panel.attachBrowse("after")
+        onRemoveRequested: (index) => panel.attachRemove("after", index)
+        onMoveRequested: (from, to) => panel.attachMove("after", from, to)
     }
 }

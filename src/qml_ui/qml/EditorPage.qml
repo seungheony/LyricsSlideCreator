@@ -52,7 +52,7 @@ Item {
     // 머리글의 콘티 요약
     readonly property string setlistSummary: !setlist.length ? "새 콘티"
         : "콘티 " + setlist.length + "곡" + (anyLoading ? " · 가사 받는 중 " + loadingIds.length + "곡"
-                                             : deckSize ? " · PPT " + deckSize + "장" : "")
+                                             : deckSize ? " · PPT " + (deckSize + attachments.slides) + "장" : "")
     // PPT로 만들지 않은 편집이 있는지 (콘티에서 뺀 곡까지 포함해서)
     readonly property bool anyDirty: dirty || Object.keys(sessions).some(id => id !== currentId && sessions[id].dirty)
 
@@ -406,6 +406,66 @@ Item {
         if (!setlist.length) openDrawer()
     }
 
+    // ── 앞·뒤에 붙일 PPT ── (콘티 패널의 AttachList. 경로 목록은 backend가 state.json에 기억한다)
+    property var attachments: ({ before: [], after: [], slides: 0, problems: 0 })
+    property string attachSide: "before"     // 파일 대화상자로 고를 목록
+
+    function attachLists() {
+        return { before: attachments.before.map(i => i.path), after: attachments.after.map(i => i.path) }
+    }
+    function setAttachLists(lists) {
+        attachments = JSON.parse(backend.setAttachments(JSON.stringify(lists)))
+    }
+    // 파일이 옮겨졌거나 고쳐졌을 수 있어 앱으로 돌아올 때·PPT를 만들기 전에 다시 읽는다
+    function refreshAttachments() {
+        attachments = JSON.parse(backend.attachments())
+    }
+    function addAttachments(side, urls) {
+        const lists = attachLists()
+        const skipped = []
+        let added = 0
+        for (const url of urls) {
+            const info = JSON.parse(backend.inspectAttachment(url.toString()))
+            if (!/\.pptx$/i.test(info.name) && !info.error) info.error = "PPT(.pptx) 파일만 넣을 수 있어요."
+            if (info.error) { skipped.push(info); continue }
+            if (lists[side].indexOf(info.path) >= 0) continue
+            lists[side].push(info.path)
+            added++
+        }
+        if (added) setAttachLists(lists)
+        if (skipped.length && toastHost)
+            toastHost.show(skipped.length === 1 ? "'" + skipped[0].name + "' 파일은 넣을 수 없어요 · " + skipped[0].error
+                                                : skipped.length + "개 파일은 넣을 수 없어요 · PPT(.pptx) 파일만 넣을 수 있어요",
+                           { duration: 6000 })
+    }
+    function removeAttachment(side, idx) {
+        const before = attachLists()
+        const lists = attachLists()
+        const name = attachments[side][idx].name
+        lists[side].splice(idx, 1)
+        setAttachLists(lists)
+        if (toastHost)
+            toastHost.show("'" + name + "' 파일을 뺐어요", { actionLabel: "되돌리기", duration: 5000, onAction: () => page.setAttachLists(before) })
+    }
+    function moveAttachment(side, from, to) {
+        const lists = attachLists()
+        lists[side] = E.moveItem(lists[side], from, to)
+        setAttachLists(lists)
+    }
+    function browseAttachments(side) {
+        attachSide = side
+        if (attachDialog.currentFolder.toString() === "")
+            attachDialog.currentFolder = StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        attachDialog.open()
+    }
+
+    Connections {
+        target: Qt.application
+        function onStateChanged() {
+            if (Qt.application.state === Qt.ApplicationActive) page.refreshAttachments()
+        }
+    }
+
     // 지금 곡을 뺀 뒤: idx 자리에서 가장 가까운, 가사가 있는 곡을 연다 (없으면 편집기를 비운다)
     function openNear(idx) {
         for (let d = 0; d < setlist.length; d++) {
@@ -600,6 +660,7 @@ Item {
     }
 
     Component.onCompleted: {
+        attachments = JSON.parse(backend.attachments())
         updateFitBasis()
         // 시작할 때 콘티가 비어 있으면 곡 찾기 서랍을 연다
         if (!setlist.length) Qt.callLater(openDrawer)
@@ -951,6 +1012,13 @@ Item {
         if (generating || saveDialog.visible) return
         prepareEdit()
         if (!deckSize || anyLoading) return    // 버튼과 단축키는 가사가 있고 받는 중인 곡이 없을 때만 켜지지만 한 번 더 막는다
+        refreshAttachments()
+        if (attachments.problems) {
+            const bad = attachments.before.concat(attachments.after).filter(i => i.error)
+            dialog.showError("붙일 PPT에 문제가 있어요\n콘티의 앞·뒤 PPT 목록에서 빨갛게 표시된 파일을 빼거나 다시 넣어 주세요.",
+                             bad.map(i => i.path + "\n" + i.error).join("\n\n"))
+            return
+        }
         longCheckTimer.stop()
         const fresh = keepTwo && confirmDialog ? freshLongInSetlist() : []
         if (fresh.length) askLongBeforeGenerate(fresh)
@@ -1054,6 +1122,14 @@ Item {
         }
     }
 
+    FileDialog {
+        id: attachDialog
+        title: page.attachSide === "before" ? "앞에 붙일 PPT" : "뒤에 붙일 PPT"
+        fileMode: FileDialog.OpenFiles
+        nameFilters: ["PowerPoint (*.pptx)"]
+        onAccepted: page.addAttachments(page.attachSide, selectedFiles)
+    }
+
     // 맨 아래 깔린 빈 곳 누름 받기: 버튼·입력칸·목록이 받지 않은 누름(머리글·여백·막대 바탕 등)은 여기로 와서 선택을 푼다
     MouseArea {
         anchors.fill: parent
@@ -1128,6 +1204,11 @@ Item {
                     onAddRequested: page.openDrawer("melon")
                     onClearRequested: page.clearSetlist()
                     onHelpRequested: help.setlistHelp()
+                    attachments: page.attachments
+                    onAttachDropped: (side, urls) => page.addAttachments(side, urls)
+                    onAttachBrowse: (side) => page.browseAttachments(side)
+                    onAttachRemove: (side, idx) => page.removeAttachment(side, idx)
+                    onAttachMove: (side, from, to) => page.moveAttachment(side, from, to)
                 }
 
             }

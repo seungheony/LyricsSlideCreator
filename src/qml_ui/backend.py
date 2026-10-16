@@ -19,6 +19,7 @@ from PySide6.QtQuick import QQuickImageProvider
 
 from src.utils.melon_api import MelonError, MelonScraper
 from src.utils.ppt_engine import PPTBuilder
+from src.utils.ppt_merge import deck_info
 from src.utils.line_fit import LineFit
 from src.utils.helpers import resource_path
 from src.utils import app_state, presets, updater
@@ -81,6 +82,39 @@ def _save_error(e, path):
     else:
         msg = '파일을 저장하지 못했어요. 다른 이름이나 다른 폴더에 저장해 보세요.'
     return {'error': msg, 'detail': detail}
+
+
+ATTACH_SIDES = ('before', 'after')
+
+
+def inspect_attachment(path):
+    """앞·뒤에 붙일 PPT 하나: {path, name, slides, width, height} 또는 {path, name, error}"""
+    info = {'path': path, 'name': os.path.basename(path)}
+    if path.lower().endswith('.ppt'):
+        info['error'] = '예전 형식(.ppt)이에요. PowerPoint에서 .pptx로 저장한 뒤 넣어 주세요.'
+    elif not os.path.isfile(path):
+        info['error'] = '파일을 찾을 수 없어요. 옮기거나 지웠다면 다시 넣어 주세요.'
+        info['missing'] = True
+    else:
+        try:
+            info.update(deck_info(path))
+        except ValueError:
+            info['error'] = '열 수 없는 파일이에요. 암호가 걸려 있거나 PPT(.pptx) 파일이 아니에요.'
+    return info
+
+
+def describe_attachments(lists):
+    """{before: [경로], after: [경로]} → 화면에 보일 정보. 슬라이드 크기는 처음 붙이는 PPT를 따르므로
+    (ppt_merge.attach_decks) 그와 크기가 다른 PPT에 sizeMismatch를 붙인다. slides: 붙일 장 수 합"""
+    out = {side: [inspect_attachment(p) for p in lists.get(side, [])] for side in ATTACH_SIDES}
+    items = out['before'] + out['after']
+    first = next((i for i in items if 'error' not in i), None)
+    for item in items:
+        if first and 'error' not in item and (item['width'], item['height']) != (first['width'], first['height']):
+            item['sizeMismatch'] = True
+    out['slides'] = sum(i.get('slides', 0) for i in items)
+    out['problems'] = sum(1 for i in items if 'error' in i)
+    return out
 
 
 def search_error(e):
@@ -258,6 +292,33 @@ class Backend(QObject):
         if self._state.get('window') != geo:
             self._state['window'] = geo
             app_state.save(self._state)
+
+    # ── 앞·뒤에 붙일 PPT ── (state.json 'attachments': {before: [경로], after: [경로]}, src/utils/ppt_merge.py)
+    # 경로만 기억하고 PPT를 만들 때마다 그 파일을 새로 읽는다 (설교 PPT를 고치면 다음 생성에 반영)
+    def _attachment_lists(self):
+        saved = self._state.get('attachments')
+        saved = saved if isinstance(saved, dict) else {}
+        return {side: [p for p in saved.get(side, []) if isinstance(p, str)] for side in ATTACH_SIDES}
+
+    @Slot(result=str)
+    def attachments(self):
+        return json.dumps(describe_attachments(self._attachment_lists()), ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def inspectAttachment(self, file_url):
+        """끌어다 놓거나 고른 파일 하나를 넣기 전에 확인한다 (error가 있으면 넣지 않는다)"""
+        path = QUrl(file_url).toLocalFile() or file_url
+        return json.dumps(inspect_attachment(os.path.normpath(path)), ensure_ascii=False)
+
+    @Slot(str, result=str)
+    def setAttachments(self, lists_json):
+        """목록을 바꾸고 저장한다. lists_json: {before: [경로], after: [경로]}. 반환: attachments()와 같음"""
+        data = json.loads(lists_json)
+        lists = {side: [str(p) for p in data.get(side, [])] for side in ATTACH_SIDES}
+        if self._state.get('attachments') != lists:
+            self._state['attachments'] = lists
+            app_state.save(self._state)
+        return json.dumps(describe_attachments(lists), ensure_ascii=False)
 
     # ── 프리셋 ── (src/utils/presets.py)
     @Slot(result=str)
@@ -444,19 +505,30 @@ class Backend(QObject):
     @Slot(str, str, str)
     def generatePpt(self, songs_json, file_url, title=''):
         """콘티 전체를 한 PPT로 저장한다. songs_json: [{title, artist, chunks}] (곡 순서대로).
-        처음·곡 사이·끝의 빈 슬라이드는 ppt_engine이 넣는다. title: 문서 속성의 제목"""
+        처음·곡 사이·끝의 빈 슬라이드는 ppt_engine이 넣는다. 앞·뒤 PPT는 기억해 둔 목록(setAttachments)을 붙인다.
+        title: 문서 속성의 제목"""
         songs = json.loads(songs_json)
         save_path = QUrl(file_url).toLocalFile() or file_url
         if not save_path.lower().endswith('.pptx'):
             save_path += '.pptx'
         template = self._template_path
+        attach = self._attachment_lists()
 
         def work():
-            if not os.path.exists(template):
+            missing = [p for side in ATTACH_SIDES for p in attach[side] if not os.path.isfile(p)]
+            same = [p for side in ATTACH_SIDES for p in attach[side]
+                    if os.path.normcase(os.path.abspath(p)) == os.path.normcase(os.path.abspath(save_path))]
+            if missing:
+                result = {'error': '붙일 PPT를 찾지 못했어요\n옮기거나 지운 파일은 콘티의 앞·뒤 PPT 목록에서 빼거나 다시 넣어 주세요.',
+                          'detail': '\n'.join(missing)}
+            elif same:
+                result = {'error': '붙일 PPT에 덮어쓸 수 없어요\n다른 이름으로 저장해 주세요.', 'detail': same[0]}
+            elif not os.path.exists(template):
                 result = {'error': '템플릿 파일을 찾지 못했어요.', 'detail': f'경로: {template}'}
             else:
                 try:
-                    buffer = PPTBuilder(template).generate_setlist_to_memory(songs, title)
+                    buffer = PPTBuilder(template).generate_setlist_to_memory(
+                        songs, title, attach['before'], attach['after'])
                     if not buffer:
                         result = {'error': 'PPT를 만들지 못했어요', 'detail': '메모리에서 PPT 객체를 만들지 못했어요.'}
                     else:

@@ -41,7 +41,8 @@ QtObject {
     function lyrics() { tour.start(lyricsSteps()) }
     function slides() { tour.start(slidesSteps()) }
     function generate() { tour.start(generateSteps()) }
-    function setlistHelp() { tour.start(setlistSteps()) }
+    // 앞·뒤에 붙일 PPT는 콘티 ? 버튼에서만 보여 준다 (첫 실행 튜토리얼 단계 수는 그대로)
+    function setlistHelp() { tour.start(setlistSteps().concat(attachSteps())) }
     function firstRun(onFinished, onSkipped) {
         tour.start(setlistSteps().concat(lyricsSteps(), slidesSteps(), generateSteps()),
                    { required: true, onFinished: onFinished, onSkipped: onSkipped })
@@ -89,6 +90,16 @@ QtObject {
                   + "곡을 담아요.<br>"
                   + "곡을 누르면 그 곡의 가사를 편집하고, 끌어서 <b>순서</b>를 바꿀 수 있어요. "
                   + "위의 <b>⋯</b> 메뉴의 <b>콘티 비우기</b>로 처음부터 다시 담을 수 있어요(되돌릴 수 있어요)." }
+        ]
+    }
+
+    function attachSteps() {
+        return [
+            { target: setlistPanel.attachBefore, title: "앞·뒤에 붙일 PPT",
+              body: "'예배 준비중'처럼 가사 <b>앞</b>에 넣을 PPT와, 설교·광고처럼 <b>뒤</b>에 넣을 PPT를 정할 수 있어요. "
+                  + "PPT 파일을 칸에 <b>끌어다 놓거나</b> <b>＋</b>로 골라요. 여러 개를 넣고 끌어서 순서를 바꿀 수 있어요.<br>"
+                  + "PPT를 만들 때마다 그 파일을 새로 읽어서 붙이고, 넣은 파일은 다음에 앱을 켜도 그대로 있어요. "
+                  + "가사 슬라이드는 처음 붙이는 PPT의 슬라이드 크기에 맞춰져요." }
         ]
     }
 
