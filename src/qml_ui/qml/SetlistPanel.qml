@@ -25,7 +25,6 @@ ColumnLayout {
         const ly = list.mapFromItem(panel, 0, y).y + list.contentY
         return Math.max(0, Math.min(entries.length, Math.round(ly / step)))
     }
-    property var savedPpts: []                                // 보관한 PPT (backend.savedPpts)
 
     signal selected(string id)
     signal removeRequested(int index)
@@ -39,9 +38,9 @@ ColumnLayout {
     signal attachRemove(string side, int index)
     signal attachMove(string side, int from, int to)
     signal attachKeep(string side, int index)
-    signal attachUnkeep(string side, int index)
-    signal attachSaved(string side, string id)
-    signal manageSaved()
+    // 구역 제목 옆 보관함 아이콘: 찬양 보관함(저장한 곡) / 양식 보관함 (focusId: 강조할 양식)
+    signal songLibraryRequested()
+    signal formLibraryRequested(string focusId)
     // 보관한 PPT id → 지금 붙어 있는 곳 ('앞' | '뒤')
     readonly property var placedSaved: {
         const out = {}
@@ -132,14 +131,34 @@ ColumnLayout {
     }
 
     // ── 양식: 찬양 전 · 찬양 후 ── (만들어질 PPT에서 곡들의 앞·뒤에 붙는 PPT. 아래 화살표가 '찬양 전 → 찬양 → 찬양 후')
-    Text {
-        Layout.leftMargin: 2
-        Layout.bottomMargin: -4
-        text: "양식"
-        color: Theme.text3
-        font.family: Theme.font
-        font.pixelSize: 12
-        font.weight: Font.DemiBold
+    // 구역 제목: 왼쪽 이름, 오른쪽 그 구역의 보관함 (찬양 제목도 같은 모양)
+    component LibraryButton: AppButton {
+        glyph: "library"
+        variant: "ghost"
+        size: "small"
+        implicitHeight: 24
+        implicitWidth: 28
+    }
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.bottomMargin: -6
+        spacing: 4
+        Text {
+            Layout.leftMargin: 2
+            text: "양식"
+            color: Theme.text3
+            font.family: Theme.font
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+        }
+        Item { Layout.fillWidth: true }
+        LibraryButton {
+            id: formLibraryButton
+            objectName: "formLibraryButton"
+            onClicked: panel.formLibraryRequested("")
+            Accessible.name: "양식 보관함"
+            AppToolTip { visible: formLibraryButton.hovered; delay: 400; text: "양식 보관함 · 보관한 PPT를 찬양 전·후에 넣거나 지워요" }
+        }
     }
     RowLayout {
         Layout.fillWidth: true
@@ -156,13 +175,8 @@ ColumnLayout {
             onBrowseRequested: panel.attachBrowse("before")
             onRemoveRequested: (index) => panel.attachRemove("before", index)
             onMoveRequested: (from, to) => panel.attachMove("before", from, to)
-            savedItems: panel.savedPpts
-            sideName: "앞"
-            placed: panel.placedSaved
             onKeepRequested: (index) => panel.attachKeep("before", index)
-            onUnkeepRequested: (index) => panel.attachUnkeep("before", index)
-            onSavedChosen: (id) => panel.attachSaved("before", id)
-            onManageRequested: panel.manageSaved()
+            onLibraryRequested: (id) => panel.formLibraryRequested(id)
         }
         AttachList {
             id: attachAfter
@@ -176,13 +190,8 @@ ColumnLayout {
             onBrowseRequested: panel.attachBrowse("after")
             onRemoveRequested: (index) => panel.attachRemove("after", index)
             onMoveRequested: (from, to) => panel.attachMove("after", from, to)
-            savedItems: panel.savedPpts
-            sideName: "뒤"
-            placed: panel.placedSaved
             onKeepRequested: (index) => panel.attachKeep("after", index)
-            onUnkeepRequested: (index) => panel.attachUnkeep("after", index)
-            onSavedChosen: (id) => panel.attachSaved("after", id)
-            onManageRequested: panel.manageSaved()
+            onLibraryRequested: (id) => panel.formLibraryRequested(id)
         }
     }
     // 찬양 구역 제목 + 흐름 화살표: 찬양 전 칸에서 내려와 '찬양' 제목을 지나 찬양 후 칸으로 올라간다
@@ -192,6 +201,15 @@ ColumnLayout {
         Layout.topMargin: -10
         Layout.bottomMargin: -4
         implicitHeight: 30
+        LibraryButton {
+            id: songLibraryButton
+            objectName: "songLibraryButton"
+            anchors.right: parent.right
+            y: songsTitle.y + songsTitle.height / 2 - height / 2
+            onClicked: panel.songLibraryRequested()
+            Accessible.name: "찬양 보관함"
+            AppToolTip { visible: songLibraryButton.hovered; delay: 400; text: "찬양 보관함 · 저장한 곡의 프리셋을 담거나 지워요" }
+        }
         Text {
             id: songsTitle
             x: 2

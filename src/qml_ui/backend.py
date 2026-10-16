@@ -380,6 +380,33 @@ class Backend(QObject):
                 out.append(dict(item, slides=info['slides'], hasSource=bool(source) and os.path.isfile(source)))
         return json.dumps(out, ensure_ascii=False)
 
+    @Slot(str, result=str)
+    def savePptToLibrary(self, file_url):
+        """양식 보관함에 바로 넣는다 (찬양 전·후 목록은 그대로). 반환: {item, replaced} 또는 {error, detail}"""
+        path = os.path.normpath(QUrl(file_url).toLocalFile() or file_url)
+        info = inspect_attachment(path)
+        if not path.lower().endswith('.pptx') and 'error' not in info:
+            info['error'] = 'PPT(.pptx) 파일만 넣을 수 있어요.'
+        if 'error' in info:
+            return json.dumps({'error': info['error'], 'name': info['name']}, ensure_ascii=False)
+        try:
+            items, item, replaced = saved_ppts.add(self._saved_ppts, path, datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
+        except OSError as e:
+            return json.dumps({'error': 'PPT를 보관하지 못했어요', 'name': info['name'],
+                               'detail': f'{path}\n{type(e).__name__}: {e}'}, ensure_ascii=False)
+        if not saved_ppts.save(items):
+            return json.dumps({'error': '보관함에 쓸 수 없어요', 'name': info['name']}, ensure_ascii=False)
+        self._saved_ppts = items
+        return json.dumps({'item': item, 'replaced': replaced}, ensure_ascii=False)
+
+    @Slot(str, str, result=bool)
+    def renameSavedPpt(self, item_id, name):
+        items = saved_ppts.rename(self._saved_ppts, item_id, name)
+        if items is None or not saved_ppts.save(items):
+            return False
+        self._saved_ppts = items
+        return True
+
     @Slot(str, int, result=str)
     def keepAttachment(self, side, index):
         """목록의 원본 파일을 앱에 보관하고 그 자리를 보관본으로 바꾼다.
@@ -402,24 +429,6 @@ class Backend(QObject):
         lists[side][index] = {'saved': item['id']}
         self._store_lists(lists)
         return json.dumps({'attachments': describe_attachments(lists, items), 'replaced': replaced}, ensure_ascii=False)
-
-    @Slot(str, int, result=str)
-    def unkeepAttachment(self, side, index):
-        """보관을 푼다: 원본 파일로 되돌리고(두 목록 모두) 보관본을 지운다. 원본이 없으면 그대로 두고 error.
-        반환: {attachments, name} 또는 {error}"""
-        lists = self._attachment_lists()
-        entry = lists.get(side, [])[index] if 0 <= index < len(lists.get(side, [])) else None
-        item = next((i for i in self._saved_ppts if isinstance(entry, dict) and i['id'] == entry['saved']), None)
-        source = (item or {}).get('source')
-        if not item or not source or not os.path.isfile(source):
-            return json.dumps({'error': '원본 파일이 없어서 보관을 풀 수 없어요'}, ensure_ascii=False)
-        lists = {s: [source if isinstance(e, dict) and e['saved'] == item['id'] else e for e in entries]
-                 for s, entries in lists.items()}
-        self._saved_ppts = saved_ppts.remove(self._saved_ppts, item['id'])
-        saved_ppts.save(self._saved_ppts)
-        self._store_lists(lists)
-        return json.dumps({'attachments': describe_attachments(lists, self._saved_ppts), 'name': item['name']},
-                          ensure_ascii=False)
 
     @Slot(str, result=str)
     def deleteSavedPpt(self, item_id):

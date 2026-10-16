@@ -1,4 +1,5 @@
 """보관한 PPT(saved_ppts)와 앞·뒤 목록에서 보관본을 쓰는 규칙(backend)을 시험한다."""
+import json
 import os
 import shutil
 import tempfile
@@ -78,6 +79,25 @@ class SavedPptsTest(unittest.TestCase):
         self.assertNotIn('modified', info['after'][0])
         os.remove(self.src)
         self.assertFalse(describe_attachments(lists, items)['before'][0]['hasSource'])
+
+    def test_rename(self):
+        items, item, _ = saved_ppts.add([], self.src, 'a')
+        renamed = saved_ppts.rename(items, item['id'], '  설교   양식 ')
+        self.assertEqual(renamed[0]['name'], '설교 양식')
+        self.assertIsNone(saved_ppts.rename(items, item['id'], '   '))
+        self.assertIsNone(saved_ppts.rename(items, 'nope', 'x'))
+
+    def test_backend_library_only(self):
+        from src.qml_ui.backend import AlbumArtProvider, Backend
+        backend = Backend(AlbumArtProvider())
+        res = json.loads(backend.savePptToLibrary(self.src))
+        self.assertIn('item', res)
+        self.assertEqual(json.loads(backend.attachments())['before'], [])      # 목록에는 넣지 않는다
+        self.assertEqual([i['name'] for i in json.loads(backend.savedPpts())], ['예배 준비중.pptx'])
+        self.assertTrue(backend.renameSavedPpt(res['item']['id'], '예배 준비'))
+        self.assertEqual(json.loads(backend.savedPpts())[0]['name'], '예배 준비')
+        bad = json.loads(backend.savePptToLibrary(os.path.join(self.dir, 'x.txt')))
+        self.assertIn('error', bad)
 
     def test_clean_lists(self):
         self.assertEqual(clean_attach_lists({'before': ['/a.pptx', {'saved': 'x', 'junk': 1}, 3, {'saved': 4}],

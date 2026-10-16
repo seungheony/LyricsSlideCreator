@@ -9,7 +9,8 @@ import "."
 // 담는 일은 받는 쪽(Main·EditorPage)이 한다:
 //   songClicked(song): 멜론 결과 행 / presetChosen(song, preset): 보관함의 ＋·'이걸로 바꾸기'
 //   manualSubmitted(info, text): 직접 입력의 '콘티에 담기' (보낸 뒤 입력칸을 비운다)
-// show(tab, opts): 탭을 바꾸고 포커스. opts.filterSong: 보관함을 그 곡만, opts.manual: 직접 입력 칸 미리 채우기(ManualForm.prefill)
+// 같은 틀로 '양식 보관함'(tab "forms", FormLibrary)도 연다: 탭 막대 없이 머리말만 '양식 보관함'.
+// show(tab, opts): 탭을 바꾸고 포커스. opts.focusId: 양식 보관함에서 강조할 양식. opts.filterSong: 보관함을 그 곡만, opts.manual: 직접 입력 칸 미리 채우기(ManualForm.prefill)
 Rectangle {
     id: drawer
 
@@ -22,7 +23,11 @@ Rectangle {
     property var addedIds: []             // 이번에 서랍을 연 뒤 담은 곡
     property string currentId: ""         // 편집기에 열린 곡 (저장한 곡 탭 맨 위에 '편집 중')
     property var tour: null
-    property string tab: "melon"          // "melon" | "library" | "manual"
+    property string tab: "melon"          // "melon" | "library" | "manual" | "forms"(양식 보관함)
+    readonly property bool formsMode: tab === "forms"
+    property var formItems: []            // 양식 보관함 (backend.savedPpts)
+    property var formPlaced: ({})         // 보관한 양식 id → '앞' | '뒤'
+    property alias forms: formLibrary
     property alias search: searchPanel
     property alias library: library
     property alias manual: manualForm
@@ -31,6 +36,12 @@ Rectangle {
     signal songClicked(var song)
     signal presetChosen(var song, var preset)
     signal manualSubmitted(var info, string text)
+    // 양식 보관함
+    signal formInsert(string id, string side)
+    signal formDelete(string id)
+    signal formRename(string id, string name)
+    signal formFilesDropped(var urls)
+    signal formBrowse()
 
     function focusSearch() { searchPanel.focusSearch() }
 
@@ -45,6 +56,9 @@ Rectangle {
             if (library.filterSong && !library.songs.length) { library.filterSong = ""; library.refresh() }
         } else if (tab === "manual" && opts.manual) {
             manualForm.prefill(opts.manual)
+        } else if (tab === "forms") {
+            formLibrary.renamingId = ""
+            formLibrary.focusId = opts.focusId || ""
         }
         Qt.callLater(focusTab)
     }
@@ -53,11 +67,17 @@ Rectangle {
         if (!opened) return
         if (tab === "melon") searchPanel.focusSearch()
         else if (tab === "library") { if (library.library && library.totalCount) library.focusFilter(); else drawer.forceActiveFocus() }
+        else if (tab === "forms") drawer.forceActiveFocus()
         else manualForm.focusFirst()
     }
 
     // Esc: 서랍 안에서 먼저 처리할 것이 있으면 처리하고 true (보관함의 이름 고치기·삭제 확인 취소)
     function handleEscape() {
+        if (tab === "forms" && formLibrary.renamingId) {
+            formLibrary.renamingId = ""
+            drawer.forceActiveFocus()
+            return true
+        }
         if (tab === "library" && (library.renamingId || library.deletingId)) {
             library.renamingId = ""
             library.deletingId = ""
@@ -104,13 +124,13 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 4
                     Text {
-                        text: drawer.emptySetlist ? "어떤 곡으로 시작할까요?" : "곡 추가"
+                        text: drawer.formsMode ? "양식 보관함" : drawer.emptySetlist ? "어떤 곡으로 시작할까요?" : "곡 추가"
                         color: Theme.text
                         font.family: Theme.font
-                        font.pixelSize: drawer.emptySetlist ? 19 : 17
+                        font.pixelSize: drawer.emptySetlist && !drawer.formsMode ? 19 : 17
                         font.weight: Font.Bold
                     }
-                    HelpButton { objectName: "drawerHelpButton"; label: "곡 추가"; onClicked: drawer.showHelp() }
+                    HelpButton { objectName: "drawerHelpButton"; visible: !drawer.formsMode; label: "곡 추가"; onClicked: drawer.showHelp() }
                     Item { Layout.fillWidth: true }       // 닫기 버튼을 오른쪽 끝으로
                 }
             }
@@ -121,7 +141,7 @@ Rectangle {
                 variant: "ghost"
                 size: "small"
                 onClicked: drawer.closeRequested()
-                Accessible.name: "곡 추가 닫기"
+                Accessible.name: drawer.formsMode ? "양식 보관함 닫기" : "곡 추가 닫기"
                 AppToolTip { visible: closeButton.hovered; delay: 600; text: "닫기 (Esc)" }
             }
         }
@@ -129,6 +149,7 @@ Rectangle {
         // ── 탭: 멜론 | 직접 입력 | 저장한 곡 ── (아이콘 + 초록 세그먼트, 고른 탭으로 초록 칸이 미끄러진다)
         Rectangle {
             id: tabBar
+            visible: !drawer.formsMode
             readonly property var tabs: [{ key: "melon", label: "멜론 검색", glyph: "search" },
                                          { key: "manual", label: "직접 입력", glyph: "pencil" },
                                          { key: "library", label: "저장한 곡", glyph: "library" }]
@@ -208,7 +229,8 @@ Rectangle {
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: drawer.tab === "library" ? 1 : drawer.tab === "manual" ? 2 : 0
+            Layout.topMargin: drawer.formsMode ? 14 : 0
+            currentIndex: drawer.tab === "library" ? 1 : drawer.tab === "manual" ? 2 : drawer.tab === "forms" ? 3 : 0
 
             SearchPanel {
                 id: searchPanel
@@ -287,6 +309,19 @@ Rectangle {
                         manualForm.focusFirst()
                     }
                 }
+            }
+
+            // 양식 보관함 (예배 PPT 패널의 '양식' 제목 옆 보관함 아이콘)
+            FormLibrary {
+                id: formLibrary
+                objectName: "formLibrary"
+                items: drawer.formItems
+                placed: drawer.formPlaced
+                onInsertRequested: (id, side) => drawer.formInsert(id, side)
+                onDeleteRequested: (id) => drawer.formDelete(id)
+                onRenameRequested: (id, name) => drawer.formRename(id, name)
+                onFilesDropped: (urls) => drawer.formFilesDropped(urls)
+                onBrowseRequested: drawer.formBrowse()
             }
         }
     }

@@ -347,8 +347,8 @@ Item {
 
     // 프리셋 저장 (PPT 생성과 따로): 이름을 물어 콘티 곡마다 지금 슬라이드를 저장한다.
     // 멜론 곡은 검색 결과의 '프리셋' 배지로, 직접 입력한 곡은 검색 결과 맨 위에, 모두 보관함에서 다시 불러온다
-    // 편집 화면이 띄운 창 (열려 있으면 Main이 단축키를 끈다): 프리셋 저장, 보관한 PPT 관리
-    readonly property bool presetSaveOpen: presetSaveDialog.opened || savedPptDialog.opened
+    // 편집 화면이 띄운 창 (열려 있으면 Main이 단축키를 끈다): 프리셋 저장
+    readonly property bool presetSaveOpen: presetSaveDialog.opened
     function savePresets() {
         prepareEdit()
         const songs = setlistGroups().filter(s => s.groups.length)
@@ -373,13 +373,6 @@ Item {
     }
 
     PresetSaveDialog { id: presetSaveDialog; objectName: "presetSaveDialog" }
-    SavedPptDialog {
-        id: savedPptDialog
-        objectName: "savedPptDialog"
-        items: page.savedPpts
-        placed: setlistPanel.placedSaved
-        onDeleteRequested: (id) => page.deleteSavedPpt(id)
-    }
 
     // 콘티에서 곡을 고른다. 가사를 받는 중인 곡은 다 받은 뒤 연다
     function selectSong(id) {
@@ -445,7 +438,7 @@ Item {
     property var attachments: ({ before: [], after: [], slides: 0, problems: 0 })
     property string attachSide: "before"     // 파일 대화상자로 고를 목록
 
-    property var savedPpts: []               // 보관한 PPT ('양식 추가' 메뉴)
+    property var savedPpts: []               // 양식 보관함 (곡 찾기 서랍의 '양식 보관함' 화면)
 
     // 목록 항목: 원본 파일 경로 또는 보관한 PPT { saved: id }
     function attachLists() {
@@ -467,29 +460,42 @@ Item {
         savedPpts = JSON.parse(backend.savedPpts())
         const name = attachments[side][idx].name
         if (toastHost) toastHost.show(res.replaced ? "보관해 둔 '" + name + "' 파일을 새 파일로 바꿨어요"
-                                                   : "'" + name + "' 파일을 보관했어요 · 빼도 '양식 추가'에서 다시 불러와요")
+                                                   : "'" + name + "' 파일을 양식 보관함에 넣었어요 · 빼도 '양식' 옆 보관함에서 다시 꺼내 써요")
     }
-    // 보관을 풀면 보관함에서 지워지므로 한 번 더 묻는다
-    function unkeepAttachment(side, idx) {
-        const item = attachments[side][idx]
-        if (!item) return
-        confirmDialog.ask({
-            title: "보관함에서 지울까요?",
-            message: "'" + item.name + "' 파일을 보관함에서 지워요. 이 양식은 원본 파일을 그때그때 읽고, 원본을 지우면 다시 불러올 수 없어요.",
-            confirmText: "보관함에서 지우기",
-            onConfirm: () => page.doUnkeepAttachment(side, idx)
-        })
-    }
-    function doUnkeepAttachment(side, idx) {
-        const res = JSON.parse(backend.unkeepAttachment(side, idx))
-        if (res.error) { if (toastHost) toastHost.show(res.error); return }
-        attachments = res.attachments
+    // ── 양식 보관함 ── (서랍의 '양식 보관함' 화면: 넣기·이름 고치기·영구 삭제, 파일을 보관함에만 넣기)
+    function openFormLibrary(focusId) {
         savedPpts = JSON.parse(backend.savedPpts())
-        if (toastHost) toastHost.show("'" + res.name + "' 파일 보관을 풀었어요 · 원본 파일을 그때그때 읽어요")
+        openDrawer("forms", { focusId: focusId || "" })
     }
-    function openSavedPpts() {
-        savedPpts = JSON.parse(backend.savedPpts())
-        savedPptDialog.open()
+    function insertSaved(side, id) {
+        const item = savedPpts.find(i => i.id === id)
+        addSavedAttachment(side, id)
+        if (toastHost && item) toastHost.show("'" + item.name + "' 양식을 찬양 " + (side === "before" ? "전" : "후") + "에 넣었어요")
+    }
+    function renameSavedPpt(id, name) {
+        if (!name.trim()) return
+        if (backend.renameSavedPpt(id, name)) refreshAttachments()
+    }
+    // 끌어다 놓거나 고른 파일을 보관함에만 넣는다 (찬양 전·후 목록은 그대로)
+    function keepFiles(urls) {
+        const done = [], failed = []
+        for (const url of urls) {
+            const res = JSON.parse(backend.savePptToLibrary(url.toString()))
+            if (res.error) failed.push(res)
+            else done.push(res.item)
+        }
+        refreshAttachments()
+        if (done.length) songDrawer.forms.focusId = done[done.length - 1].id
+        if (!toastHost) return
+        if (failed.length) toastHost.show(failed.length === 1 ? "'" + failed[0].name + "' 파일은 보관할 수 없어요 · " + failed[0].error
+                                                              : failed.length + "개 파일은 보관할 수 없어요 · PPT(.pptx) 파일만 넣을 수 있어요", { duration: 6000 })
+        else if (done.length) toastHost.show(done.length === 1 ? "'" + done[0].name + "' 파일을 양식 보관함에 넣었어요" : done.length + "개 파일을 양식 보관함에 넣었어요")
+    }
+    function browseForLibrary() {
+        attachSide = "library"
+        if (attachDialog.currentFolder.toString() === "")
+            attachDialog.currentFolder = StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        attachDialog.open()
     }
     function addSavedAttachment(side, id) {
         const lists = attachLists()
@@ -502,7 +508,7 @@ Item {
         if (!item) return
         const where = setlistPanel.placedSaved[id]
         confirmDialog.ask({
-            title: "보관함에서 지울까요?",
+            title: "양식 보관함에서 지울까요?",
             message: "'" + item.name + "' 파일을 보관함에서 지워요." + (where ? " 찬양 " + (where === "앞" ? "전" : "후") + " 양식에서도 빠져요." : "")
                      + " 지운 파일은 되돌릴 수 없어요.",
             confirmText: "영구 삭제",
@@ -907,7 +913,7 @@ Item {
         if (!keepTwo || !confirmDialog || !page.enabled || lyrics.activeFocus) return
         if (Qt.application.state !== Qt.ApplicationActive || !page.Window.active) return   // 다른 앱·창으로 전환
         // 다른 창이 떠 있거나(튜토리얼은 닫힌 뒤에 묻는다, 아래 Connections), PPT 생성·뒤로를 누르는 중이면 묻지 않는다
-        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible || savedPptDialog.visible) return
+        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible) return
         if (songDrawer.opened || !song) return    // 곡 찾기 서랍으로 옮겨 갔다 (페이지 전환과 같음)
         if (generating || generateButton.pressed || loadPresetButton.pressed || savePresetButton.pressed || setlistPanel.busy) return
         prepareEdit()
@@ -1208,10 +1214,10 @@ Item {
 
     FileDialog {
         id: attachDialog
-        title: page.attachSide === "before" ? "찬양 전 양식" : "찬양 후 양식"
+        title: page.attachSide === "library" ? "양식 보관함에 넣을 PPT" : page.attachSide === "before" ? "찬양 전 양식" : "찬양 후 양식"
         fileMode: FileDialog.OpenFiles
         nameFilters: ["PowerPoint (*.pptx)"]
-        onAccepted: page.addAttachments(page.attachSide, selectedFiles)
+        onAccepted: page.attachSide === "library" ? page.keepFiles(selectedFiles) : page.addAttachments(page.attachSide, selectedFiles)
     }
 
     // 맨 아래 깔린 빈 곳 누름 받기: 버튼·입력칸·목록이 받지 않은 누름(머리글·여백·막대 바탕 등)은 여기로 와서 선택을 푼다
@@ -1293,11 +1299,9 @@ Item {
                     onAttachBrowse: (side) => page.browseAttachments(side)
                     onAttachRemove: (side, idx) => page.removeAttachment(side, idx)
                     onAttachMove: (side, from, to) => page.moveAttachment(side, from, to)
-                    savedPpts: page.savedPpts
                     onAttachKeep: (side, idx) => page.keepAttachment(side, idx)
-                    onAttachSaved: (side, id) => page.addSavedAttachment(side, id)
-                    onAttachUnkeep: (side, idx) => page.unkeepAttachment(side, idx)
-                    onManageSaved: page.openSavedPpts()
+                    onSongLibraryRequested: page.openDrawer("library")
+                    onFormLibraryRequested: (id) => page.openFormLibrary(id)
                 }
 
             }
@@ -1926,6 +1930,13 @@ Item {
         id: songDrawer
         objectName: "songDrawer"
         dragHost: page
+        formItems: page.savedPpts
+        formPlaced: setlistPanel.placedSaved
+        onFormInsert: (id, side) => page.insertSaved(side, id)
+        onFormDelete: (id) => page.deleteSavedPpt(id)
+        onFormRename: (id, name) => page.renameSavedPpt(id, name)
+        onFormFilesDropped: (urls) => page.keepFiles(urls)
+        onFormBrowse: page.browseForLibrary()
         x: setlistColumn.width
         y: topBar.height
         width: Math.min(430, page.width - x)

@@ -53,6 +53,14 @@ def add(items, path, now):
     return [item] + [i for i in items if i is not old], item, old is not None
 
 
+def rename(items, item_id, name):
+    """이름을 바꾼다 (화면에 보이는 이름만, 파일은 그대로). 반환: 새 목록 (그런 항목이 없거나 이름이 비면 None)"""
+    name = ' '.join((name or '').split())[:80]
+    if not name or not any(i['id'] == item_id for i in items):
+        return None
+    return [dict(i, name=name) if i['id'] == item_id else i for i in items]
+
+
 def remove(items, item_id):
     """보관본을 지운다. 반환: 새 목록"""
     try:
