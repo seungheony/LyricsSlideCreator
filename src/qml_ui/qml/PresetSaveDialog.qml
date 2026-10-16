@@ -60,7 +60,7 @@ Popup {
                    ? dialog.titles.length + "곡의 지금 슬라이드를 곡마다 저장해요: "
                    : "지금 슬라이드를 저장해요: ")
                   + dialog.titles.join(", ")
-                  + "\n다음에 검색 결과나 보관함에서 그대로 불러올 수 있어요."
+                  + "\n다음에 검색 결과나 저장한 곡에서 그대로 불러올 수 있어요."
             textFormat: Text.PlainText
             color: Theme.text2
             font.family: Theme.font

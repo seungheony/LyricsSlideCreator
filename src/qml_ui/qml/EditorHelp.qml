@@ -121,7 +121,7 @@ QtObject {
                   + Theme.mod + "Enter</b>" },
             { target: savePresetButton, title: "프리셋",
               body: "<b>저장</b>: 곡마다 편집한 구성에 이름을 붙여 저장해요. <br>"
-                  + "<b>불러오기</b>: 곡 검색창에서 <b>보관함</b>을 열어요. 프리셋을 콘티에 불러올 수 있어요. <br><br>"
+                  + "<b>불러오기</b>: 곡 추가 서랍의 <b>저장한 곡</b>을 열어요. 프리셋을 콘티에 불러올 수 있어요. <br><br>"
                   + Theme.mod + "S</b>" }
         ]
     }

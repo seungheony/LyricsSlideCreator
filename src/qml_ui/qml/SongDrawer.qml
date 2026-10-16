@@ -16,10 +16,10 @@ Rectangle {
     property bool opened: false
     property bool emptySetlist: false     // 콘티가 비었다 (머리말을 '어떤 곡으로 시작할까요?'로)
     property var setlist: []
-    property var appliedTexts: ({})   // 콘티 곡의 지금 가사 (보관함에서 같은 프리셋의 '이걸로 바꾸기'를 끔)
+    property var appliedTexts: ({})   // 콘티 곡의 지금 가사 (저장한 곡 탭에서 같은 프리셋의 '이걸로 바꾸기'를 끔)
     property var loadingIds: []
     property var addedIds: []             // 이번에 서랍을 연 뒤 담은 곡
-    property string currentId: ""         // 편집기에 열린 곡 (보관함 맨 위에 '편집 중')
+    property string currentId: ""         // 편집기에 열린 곡 (저장한 곡 탭 맨 위에 '편집 중')
     property var tour: null
     property string tab: "melon"          // "melon" | "library" | "manual"
     property alias search: searchPanel
@@ -132,80 +132,72 @@ Rectangle {
             }
         }
 
-        // ── 탭: 멜론 | 보관함 | 직접 입력 ── (아이콘 + 초록 세그먼트, 고른 탭으로 초록 칸이 미끄러진다)
-        Rectangle {
+        // ── 탭: 멜론에서 찾기 | 직접 입력 | 저장한 곡 ── (설명이 붙은 카드 탭: 탭마다 하는 일을 한 줄로 알린다)
+        RowLayout {
             id: tabBar
-            readonly property var tabs: [{ key: "melon", label: "멜론", glyph: "search" },
-                                         { key: "library", label: "보관함", glyph: "library" },
-                                         { key: "manual", label: "직접 입력", glyph: "pencil" }]
-            readonly property int current: Math.max(0, tabs.findIndex(t => t.key === drawer.tab))
-            readonly property real cellWidth: (width - 8) / tabs.length
+            readonly property var tabs: [
+                { key: "melon", label: "멜론에서 찾기", sub: "제목·가수·가사로 찾아요", glyph: "search" },
+                { key: "manual", label: "직접 입력", sub: "멜론에 없는 곡의 가사를 넣어요", glyph: "pencil" },
+                { key: "library", label: "저장한 곡", sub: "저장한 프리셋과 직접 입력한 곡을 모아 둬요", glyph: "library" }]
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
             Layout.topMargin: 12
             Layout.bottomMargin: 12
-            implicitHeight: 44
-            radius: 12
-            color: Theme.surface2
-
-            Rectangle {
-                x: 4 + tabBar.current * tabBar.cellWidth
-                y: 4
-                width: tabBar.cellWidth
-                height: parent.height - 8
-                radius: 9
-                color: Theme.primarySoft
-                border.width: 1
-                border.color: Theme.focusBorder
-                Behavior on x { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-            }
-
-            Row {
-                anchors.fill: parent
-                anchors.margins: 4
-                Repeater {
-                    model: tabBar.tabs
-                    delegate: Button {
-                        id: tabButton
-                        required property var modelData
-                        readonly property bool on: modelData.key === drawer.tab
-                        objectName: "drawerTab_" + modelData.key
-                        width: tabBar.cellWidth
-                        height: parent.height
-                        text: modelData.label
-                        hoverEnabled: true
-                        focusPolicy: Qt.TabFocus
-                        Keys.onReturnPressed: click()
-                        Keys.onEnterPressed: click()
-                        Accessible.role: Accessible.PageTab
-                        Accessible.name: modelData.label
-                        Accessible.selected: on
-                        HoverHandler { cursorShape: Qt.PointingHandCursor }
-                        // 탭을 직접 누르면 보관함은 모든 곡을 보인다 (직접 입력은 쓰던 내용 그대로)
-                        onClicked: drawer.show(modelData.key)
-                        readonly property color fg: on ? Theme.primaryText : hovered ? Theme.text : Theme.text2
-                        contentItem: Item {
-                            Row {
-                                anchors.centerIn: parent
-                                spacing: 6
-                                Icon { glyph: tabButton.modelData.glyph; size: 15; color: tabButton.fg; anchors.verticalCenter: parent.verticalCenter }
-                                Text {
-                                    text: tabButton.text
-                                    color: tabButton.fg
-                                    font.family: Theme.font
-                                    font.pixelSize: 13
-                                    font.weight: tabButton.on ? Font.Bold : Font.DemiBold
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                            }
+            spacing: 8
+            Repeater {
+                model: tabBar.tabs
+                delegate: Button {
+                    id: tabButton
+                    required property var modelData
+                    readonly property bool on: modelData.key === drawer.tab
+                    readonly property color fg: on ? Theme.primaryText : Theme.text
+                    objectName: "drawerTab_" + modelData.key
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1          // 세 칸을 같은 폭으로
+                    Layout.preferredHeight: 92
+                    text: modelData.label
+                    hoverEnabled: true
+                    focusPolicy: Qt.TabFocus
+                    padding: 12
+                    Keys.onReturnPressed: click()
+                    Keys.onEnterPressed: click()
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: modelData.label + ", " + modelData.sub
+                    Accessible.selected: on
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    // 탭을 직접 누르면 저장한 곡은 모든 곡을 보인다 (직접 입력은 쓰던 내용 그대로)
+                    onClicked: drawer.show(modelData.key)
+                    contentItem: Column {
+                        spacing: 5
+                        Icon { glyph: tabButton.modelData.glyph; size: 17; color: tabButton.fg }
+                        Text {
+                            width: parent.width
+                            text: tabButton.text
+                            color: tabButton.fg
+                            font.family: Theme.font
+                            font.pixelSize: 13
+                            font.weight: Font.Bold
+                            elide: Text.ElideRight
                         }
-                        background: Rectangle {
-                            radius: 9
-                            color: "transparent"
-                            border.width: tabButton.visualFocus ? 2 : 0
-                            border.color: Theme.primary
+                        Text {
+                            width: parent.width
+                            text: tabButton.modelData.sub
+                            color: tabButton.on ? Theme.primaryText : Theme.text3
+                            font.family: Theme.font
+                            font.pixelSize: 11
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 2
+                            elide: Text.ElideRight
+                            lineHeight: 1.15
                         }
+                    }
+                    background: Rectangle {
+                        radius: 12
+                        color: tabButton.on ? Theme.primarySoft : tabButton.hovered ? Theme.border : Theme.surface2
+                        border.width: tabButton.visualFocus ? 2 : tabButton.on ? 1.5 : 0
+                        border.color: tabButton.visualFocus ? Theme.primary : Theme.focusBorder
+                        Behavior on color { ColorAnimation { duration: Theme.fast } }
                     }
                 }
             }
@@ -306,9 +298,9 @@ Rectangle {
             { target: searchPanel.resultsItem, demo: resultsDemo, title: "2. ＋로 담기",
               body: "곡을 누르면 콘티에 추가해요. 검색창은 열린 채로 <b>여러 곡을 연달아</b> 담을 수 있어요.<br><br>"
                   + "프리셋을 저장해 둔 곡은 오른쪽에 <b>프리셋</b> 표시가 있고, 누르면 그 프리셋에 저장한 그대로 콘티에 담아요." },
-            { target: tabBar, title: "3. 보관함 · 직접 입력",
-              body: "<b>보관함</b>: 이전에 저장했던 프리셋이나 직접 입력한 곡을 모아서 보여 줘요.<br>"
-                  + "<b>직접 입력</b>: 멜론에 없는 곡은 제목과 가사를 직접 적어요." },
+            { target: tabBar, title: "3. 직접 입력 · 저장한 곡",
+              body: "<b>직접 입력</b>: 멜론에 없는 곡은 제목과 가사를 직접 적어요.<br>"
+                  + "<b>저장한 곡</b>: 이전에 저장했던 프리셋이나 직접 입력한 곡을 모아서 보여 줘요." },
             { target: closeButton, title: "4. 닫고 편집하기",
               body: "다 담았으면 <b>✕</b>(또는 <b>Esc</b>), 바깥 영역 클릭으로 검색창을 닫고 편집을 시작해요.<br>"
                   + "나중에 곡을 더하려면 콘티의 <b>곡 추가</b>나 <b>" + Theme.mod + "K</b>를 눌러요." }

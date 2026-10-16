@@ -189,7 +189,7 @@ Item {
                     onTextChanged: { lib.expandedId = ""; lib.refresh() }
                     Keys.onReturnPressed: lib.loadFirst()
                     Keys.onEnterPressed: lib.loadFirst()
-                    Accessible.name: "보관함에서 찾기"
+                    Accessible.name: "저장한 곡에서 찾기"
                     ContextMenu.menu: AppTextMenu { editor: filter }
                 }
                 AppButton {

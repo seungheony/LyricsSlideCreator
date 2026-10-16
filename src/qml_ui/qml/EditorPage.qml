@@ -369,7 +369,7 @@ Item {
         }
         if (toastHost)
             toastHost.show((songs.length > 1 ? songs.length + "곡의 프리셋을 저장했어요" : "프리셋을 저장했어요")
-                           + " · 보관함에서 볼 수 있어요", { duration: 4000 })
+                           + " · 저장한 곡에서 볼 수 있어요", { duration: 4000 })
     }
 
     PresetSaveDialog { id: presetSaveDialog; objectName: "presetSaveDialog" }
@@ -1778,7 +1778,7 @@ Item {
                             variant: "ghost"
                             implicitHeight: 38
                             onClicked: page.openDrawer("library")
-                            AppToolTip { visible: loadPresetButton.hovered; delay: 400; text: "보관함에서 프리셋을 골라 콘티에 더해요. 콘티에 있는 곡이면 가사를 그 프리셋으로 바꿔요" }
+                            AppToolTip { visible: loadPresetButton.hovered; delay: 400; text: "저장한 곡에서 프리셋을 골라 콘티에 더해요. 콘티에 있는 곡이면 가사를 그 프리셋으로 바꿔요" }
                         }
                         Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 20; color: Theme.border }
                         AppButton {
@@ -1793,7 +1793,7 @@ Item {
                             AppToolTip {
                                 visible: savePresetButton.hovered
                                 delay: 400
-                                text: "곡마다 지금 슬라이드를 이름을 붙여 저장해요 (" + Theme.mod + "S). 다음에 검색 결과나 보관함에서 그대로 불러올 수 있어요"
+                                text: "곡마다 지금 슬라이드를 이름을 붙여 저장해요 (" + Theme.mod + "S). 다음에 검색 결과나 저장한 곡에서 그대로 불러올 수 있어요"
                             }
                         }
                     }
