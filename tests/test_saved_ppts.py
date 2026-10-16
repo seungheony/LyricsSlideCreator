@@ -64,6 +64,21 @@ class SavedPptsTest(unittest.TestCase):
         self.assertEqual(info['problems'], 1)
         self.assertTrue(info['after'][0]['missing'])
 
+    def test_source_and_stale(self):
+        items, item, _ = saved_ppts.add([], self.src, 'a')
+        self.assertEqual(item['source'], self.src)
+        lists = {'before': [{'saved': item['id']}], 'after': [self.src]}
+        now = os.path.getmtime(self.src)
+        info = describe_attachments(lists, items, now=now + 3 * 86400)
+        self.assertTrue(info['before'][0]['hasSource'])
+        self.assertNotIn('stale', info['after'][0])
+        info = describe_attachments(lists, items, now=now + 7 * 86400)
+        self.assertIn('월', info['after'][0]['stale'])          # 보관하지 않은 파일만 알린다
+        self.assertNotIn('stale', info['before'][0])
+        self.assertNotIn('modified', info['after'][0])
+        os.remove(self.src)
+        self.assertFalse(describe_attachments(lists, items)['before'][0]['hasSource'])
+
     def test_clean_lists(self):
         self.assertEqual(clean_attach_lists({'before': ['/a.pptx', {'saved': 'x', 'junk': 1}, 3, {'saved': 4}],
                                              'after': None}),

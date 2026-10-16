@@ -2,7 +2,8 @@
 
 보관한 때의 파일 그대로 쓴다(원본을 고쳐도 따라가지 않음). 같은 이름의 파일을 다시 보관하면 그 보관본을 새 파일로 바꾼다.
 파일: 앱 데이터 폴더(src/utils/app_state.py)의
-  saved_ppts.json — {"version": 1, "items": [{id, name, saved_at}]} (최근 보관한 것이 앞)
+  saved_ppts.json — {"version": 1, "items": [{id, name, source, saved_at}]} (최근 보관한 것이 앞)
+    source: 보관한 원본 파일 경로 (보관을 풀면 이 파일로 돌아간다)
   saved_ppt/<id>.pptx — 복사한 파일
 """
 import os
@@ -36,7 +37,7 @@ def add(items, path, now):
     복사하지 못하면 OSError"""
     name = os.path.basename(path)
     old = next((i for i in items if i['name'] == name), None)
-    item = {'id': old['id'] if old else uuid.uuid4().hex[:12], 'name': name, 'saved_at': now}
+    item = {'id': old['id'] if old else uuid.uuid4().hex[:12], 'name': name, 'source': path, 'saved_at': now}
     target = file_path(item['id'])
     os.makedirs(os.path.dirname(target), exist_ok=True)
     tmp = target + '.tmp'

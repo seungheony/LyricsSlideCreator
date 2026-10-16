@@ -32,8 +32,16 @@ ColumnLayout {
     signal attachRemove(string side, int index)
     signal attachMove(string side, int from, int to)
     signal attachKeep(string side, int index)
+    signal attachUnkeep(string side, int index)
     signal attachSaved(string side, string id)
-    signal savedDelete(string id)
+    signal manageSaved()
+    // 보관한 PPT id → 지금 붙어 있는 곳 ('앞' | '뒤')
+    readonly property var placedSaved: {
+        const out = {}
+        attachments.after.forEach(i => { if (i.saved) out[i.id] = "뒤" })
+        attachments.before.forEach(i => { if (i.saved) out[i.id] = "앞" })
+        return out
+    }
 
     // 누르거나 끄는 중 (EditorPage가 입력칸에서 벗어날 때의 3줄 확인을 미룬다)
     readonly property bool busy: pressedRow || dragFrom >= 0 || addButton.pressed || menuButton.pressed
@@ -127,9 +135,12 @@ ColumnLayout {
         onRemoveRequested: (index) => panel.attachRemove("before", index)
         onMoveRequested: (from, to) => panel.attachMove("before", from, to)
         savedItems: panel.savedPpts
+        sideName: "앞"
+        placed: panel.placedSaved
         onKeepRequested: (index) => panel.attachKeep("before", index)
+        onUnkeepRequested: (index) => panel.attachUnkeep("before", index)
         onSavedChosen: (id) => panel.attachSaved("before", id)
-        onSavedDeleteRequested: (id) => panel.savedDelete(id)
+        onManageRequested: panel.manageSaved()
     }
 
     // 키보드로 고른 줄 (모델이 새로 만들어져도 유지하려고 ListView의 currentIndex를 쓰지 않는다)
@@ -386,8 +397,11 @@ ColumnLayout {
         onRemoveRequested: (index) => panel.attachRemove("after", index)
         onMoveRequested: (from, to) => panel.attachMove("after", from, to)
         savedItems: panel.savedPpts
+        sideName: "뒤"
+        placed: panel.placedSaved
         onKeepRequested: (index) => panel.attachKeep("after", index)
+        onUnkeepRequested: (index) => panel.attachUnkeep("after", index)
         onSavedChosen: (id) => panel.attachSaved("after", id)
-        onSavedDeleteRequested: (id) => panel.savedDelete(id)
+        onManageRequested: panel.manageSaved()
     }
 }

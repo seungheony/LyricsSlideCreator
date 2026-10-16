@@ -85,6 +85,7 @@ def _save_error(e, path):
 
 
 ATTACH_SIDES = ('before', 'after')
+STALE_DAYS = 6      # '보관'하지 않은 붙일 PPT를 이보다 오래 고치지 않았으면 알린다 (지난주 설교 PPT를 그대로 붙이는 실수)
 
 
 def inspect_attachment(path):
@@ -98,6 +99,7 @@ def inspect_attachment(path):
     else:
         try:
             info.update(deck_info(path))
+            info['modified'] = os.path.getmtime(path)
         except ValueError:
             info['error'] = '열 수 없는 파일이에요. 암호가 걸려 있거나 PPT(.pptx) 파일이 아니에요.'
     return info
@@ -128,16 +130,19 @@ def describe_entry(entry, saved_index):
         return {'path': '', 'name': '보관한 PPT', 'saved': True, 'id': entry['saved'], 'missing': True,
                 'error': '보관한 PPT를 찾을 수 없어요. 목록에서 빼 주세요.'}
     info = inspect_attachment(saved_ppts.file_path(item['id']))
-    info.update({'name': item['name'], 'saved': True, 'id': item['id']})
+    source = item.get('source')
+    info.update({'name': item['name'], 'saved': True, 'id': item['id'],
+                 'hasSource': bool(source) and os.path.isfile(source)})   # 보관을 풀 수 있는지
     if info.get('missing'):
         info['error'] = '보관한 파일이 지워졌어요. 목록에서 빼고 다시 넣어 주세요.'
     return info
 
 
-def describe_attachments(lists, saved_items=()):
+def describe_attachments(lists, saved_items=(), now=None):
     """{before: [항목], after: [항목]} → 화면에 보일 정보. 슬라이드 크기는 처음 붙이는 PPT를 따르므로
     (ppt_merge.attach_decks) 그와 크기가 다른 PPT에 sizeMismatch를 붙인다. slides: 붙일 장 수 합.
-    항목은 원본 경로 또는 보관한 PPT {'saved': id} (saved_items: saved_ppts 목록)"""
+    항목은 원본 경로 또는 보관한 PPT {'saved': id} (saved_items: saved_ppts 목록).
+    보관하지 않은 파일을 STALE_DAYS일 넘게 고치지 않았으면 stale에 고친 날('M월 D일')을 넣는다"""
     index = {i['id']: i for i in saved_items}
     out = {side: [describe_entry(e, index) for e in lists.get(side, [])] for side in ATTACH_SIDES}
     items = out['before'] + out['after']
@@ -145,6 +150,12 @@ def describe_attachments(lists, saved_items=()):
     for item in items:
         if first and 'error' not in item and (item['width'], item['height']) != (first['width'], first['height']):
             item['sizeMismatch'] = True
+    now = datetime.now().timestamp() if now is None else now
+    for item in items:
+        modified = item.pop('modified', None)
+        if modified is not None and not item.get('saved') and now - modified > STALE_DAYS * 86400:
+            day = datetime.fromtimestamp(modified)
+            item['stale'] = f'{day.month}월 {day.day}일'
     out['slides'] = sum(i.get('slides', 0) for i in items)
     out['problems'] = sum(1 for i in items if 'error' in i)
     return out
@@ -365,7 +376,8 @@ class Backend(QObject):
         for item in self._saved_ppts:
             info = inspect_attachment(saved_ppts.file_path(item['id']))
             if 'error' not in info:
-                out.append(dict(item, slides=info['slides']))
+                source = item.get('source')
+                out.append(dict(item, slides=info['slides'], hasSource=bool(source) and os.path.isfile(source)))
         return json.dumps(out, ensure_ascii=False)
 
     @Slot(str, int, result=str)
@@ -390,6 +402,24 @@ class Backend(QObject):
         lists[side][index] = {'saved': item['id']}
         self._store_lists(lists)
         return json.dumps({'attachments': describe_attachments(lists, items), 'replaced': replaced}, ensure_ascii=False)
+
+    @Slot(str, int, result=str)
+    def unkeepAttachment(self, side, index):
+        """보관을 푼다: 원본 파일로 되돌리고(두 목록 모두) 보관본을 지운다. 원본이 없으면 그대로 두고 error.
+        반환: {attachments, name} 또는 {error}"""
+        lists = self._attachment_lists()
+        entry = lists.get(side, [])[index] if 0 <= index < len(lists.get(side, [])) else None
+        item = next((i for i in self._saved_ppts if isinstance(entry, dict) and i['id'] == entry['saved']), None)
+        source = (item or {}).get('source')
+        if not item or not source or not os.path.isfile(source):
+            return json.dumps({'error': '원본 파일이 없어서 보관을 풀 수 없어요'}, ensure_ascii=False)
+        lists = {s: [source if isinstance(e, dict) and e['saved'] == item['id'] else e for e in entries]
+                 for s, entries in lists.items()}
+        self._saved_ppts = saved_ppts.remove(self._saved_ppts, item['id'])
+        saved_ppts.save(self._saved_ppts)
+        self._store_lists(lists)
+        return json.dumps({'attachments': describe_attachments(lists, self._saved_ppts), 'name': item['name']},
+                          ensure_ascii=False)
 
     @Slot(str, result=str)
     def deleteSavedPpt(self, item_id):

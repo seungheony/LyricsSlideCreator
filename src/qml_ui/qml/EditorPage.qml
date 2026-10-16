@@ -352,7 +352,8 @@ Item {
 
     // 프리셋 저장 (PPT 생성과 따로): 이름을 물어 콘티 곡마다 지금 슬라이드를 저장한다.
     // 멜론 곡은 검색 결과의 '프리셋' 배지로, 직접 입력한 곡은 검색 결과 맨 위에, 모두 보관함에서 다시 불러온다
-    readonly property bool presetSaveOpen: presetSaveDialog.opened
+    // 편집 화면이 띄운 창 (열려 있으면 Main이 단축키를 끈다): 프리셋 저장, 보관한 PPT 관리
+    readonly property bool presetSaveOpen: presetSaveDialog.opened || savedPptDialog.opened
     function savePresets() {
         prepareEdit()
         const songs = setlistGroups().filter(s => s.groups.length)
@@ -377,6 +378,13 @@ Item {
     }
 
     PresetSaveDialog { id: presetSaveDialog; objectName: "presetSaveDialog" }
+    SavedPptDialog {
+        id: savedPptDialog
+        objectName: "savedPptDialog"
+        items: page.savedPpts
+        placed: setlistPanel.placedSaved
+        onDeleteRequested: (id) => page.deleteSavedPpt(id)
+    }
 
     // 콘티에서 곡을 고른다. 가사를 받는 중인 곡은 다 받은 뒤 연다
     function selectSong(id) {
@@ -432,7 +440,18 @@ Item {
         savedPpts = JSON.parse(backend.savedPpts())
         const name = attachments[side][idx].name
         if (toastHost) toastHost.show(res.replaced ? "보관해 둔 '" + name + "' 파일을 새 파일로 바꿨어요"
-                                                   : "'" + name + "' 파일을 앱에 보관했어요 · ＋에서 다시 불러올 수 있어요")
+                                                   : "'" + name + "' 파일을 보관했어요 · 목록에서 빼도 ＋에서 다시 불러와요")
+    }
+    function unkeepAttachment(side, idx) {
+        const res = JSON.parse(backend.unkeepAttachment(side, idx))
+        if (res.error) { if (toastHost) toastHost.show(res.error); return }
+        attachments = res.attachments
+        savedPpts = JSON.parse(backend.savedPpts())
+        if (toastHost) toastHost.show("'" + res.name + "' 파일 보관을 풀었어요 · 원본 파일을 그때그때 읽어요")
+    }
+    function openSavedPpts() {
+        savedPpts = JSON.parse(backend.savedPpts())
+        savedPptDialog.open()
     }
     function addSavedAttachment(side, id) {
         const lists = attachLists()
@@ -849,7 +868,7 @@ Item {
         if (!keepTwo || !confirmDialog || !page.enabled || lyrics.activeFocus) return
         if (Qt.application.state !== Qt.ApplicationActive || !page.Window.active) return   // 다른 앱·창으로 전환
         // 다른 창이 떠 있거나(튜토리얼은 닫힌 뒤에 묻는다, 아래 Connections), PPT 생성·뒤로를 누르는 중이면 묻지 않는다
-        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible) return
+        if (confirmDialog.visible || (tour && tour.visible) || (dialog && dialog.visible) || saveDialog.visible || presetSaveDialog.visible || savedPptDialog.visible) return
         if (songDrawer.opened || !song) return    // 곡 찾기 서랍으로 옮겨 갔다 (페이지 전환과 같음)
         if (generating || generateButton.pressed || loadPresetButton.pressed || savePresetButton.pressed || setlistPanel.busy) return
         prepareEdit()
@@ -1238,7 +1257,8 @@ Item {
                     savedPpts: page.savedPpts
                     onAttachKeep: (side, idx) => page.keepAttachment(side, idx)
                     onAttachSaved: (side, id) => page.addSavedAttachment(side, id)
-                    onSavedDelete: (id) => page.deleteSavedPpt(id)
+                    onAttachUnkeep: (side, idx) => page.unkeepAttachment(side, idx)
+                    onManageSaved: page.openSavedPpts()
                 }
 
             }
