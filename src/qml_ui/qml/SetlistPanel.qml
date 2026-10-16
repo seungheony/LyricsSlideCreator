@@ -234,7 +234,7 @@ ColumnLayout {
                 border.width: row.focused ? 2 : row.isCurrent || row.dragged || row.modelData.loading ? 1 : 0
                 border.color: row.focused ? Theme.primary : row.isCurrent || row.modelData.loading ? Theme.focusBorder : Theme.border
                 Accessible.role: Accessible.ListItem
-                Accessible.name: row.modelData.title + (row.modelData.loading ? ", 가사 받는 중" : ", " + row.modelData.slides + "장")
+                Accessible.name: row.modelData.title + (row.modelData.loading ? ", 가사 받는 중" : row.modelData.wraps > 0 ? ", 줄바꿈 있음" : "")
                 Accessible.selected: row.isCurrent
                 opacity: row.dragged ? 0.9 : 1
                 Behavior on color { ColorAnimation { duration: Theme.fast } }
@@ -271,25 +271,15 @@ ColumnLayout {
                             font.weight: row.isCurrent ? Font.Bold : Font.DemiBold
                             elide: Text.ElideRight
                         }
-                        Row {
-                            spacing: 4
-                            visible: !row.modelData.loading
-                            Text {
-                                text: row.modelData.slides + "장"
-                                color: Theme.text3
-                                font.family: Theme.font
-                                font.pixelSize: 12
-                            }
-                            // 이 곡에 PPT에서 줄바꿈되는 슬라이드가 있으면
-                            Text {
-                                visible: row.modelData.wraps > 0
-                                text: "· 줄바꿈 " + row.modelData.wraps + "장"
-                                color: Theme.warning
-                                font.family: Theme.font
-                                font.pixelSize: 12
-                            }
+                        // 이 곡에 PPT에서 줄바꿈되는 슬라이드가 있으면
+                        Text {
+                            visible: !row.modelData.loading && row.modelData.wraps > 0
+                            text: "줄바꿈 있음"
+                            color: Theme.warning
+                            font.family: Theme.font
+                            font.pixelSize: 12
                         }
-                        // 멜론에서 가사를 받는 중 (다 받으면 장 수가 보인다)
+                        // 멜론에서 가사를 받는 중
                         Row {
                             visible: row.modelData.loading
                             spacing: 4

@@ -57,7 +57,7 @@ ColumnLayout {
 
     function subtitle(item) {
         if (item.error) return item.missing ? "파일을 찾을 수 없어요" : "넣을 수 없는 파일이에요"
-        return item.slides + "장" + (item.sizeMismatch ? " · 슬라이드 크기가 달라요" : item.stale ? " · " + item.stale + "에 고친 파일" : "")
+        return item.sizeMismatch ? "슬라이드 크기가 달라요" : item.stale ? item.stale + "에 고친 파일" : ""
     }
 
     function tooltip(item) {
@@ -130,7 +130,8 @@ ColumnLayout {
                         elide: Text.ElideMiddle
                     }
                     Text {
-                        text: savedEntry.where ? savedEntry.where + "에 있음" : savedEntry.modelData.slides + "장"
+                        visible: savedEntry.where !== ""
+                        text: savedEntry.where + "에 있음"
                         color: savedEntry.where ? Theme.primaryText : Theme.text3
                         font.family: Theme.font
                         font.pixelSize: savedEntry.where ? 11 : 12
@@ -281,6 +282,7 @@ ColumnLayout {
                             }
                             Text {
                                 Layout.fillWidth: true
+                                visible: text !== ""
                                 text: box.subtitle(row.modelData)
                                 color: row.problem ? Theme.danger : row.modelData.sizeMismatch || row.modelData.stale ? Theme.warning : Theme.text3
                                 font.family: Theme.font

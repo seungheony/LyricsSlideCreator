@@ -110,7 +110,7 @@ Popup {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: entry.modelData.slides + "장 · " + dialog.savedDate(entry.modelData.saved_at)
+                            text: dialog.savedDate(entry.modelData.saved_at)
                                   + (entry.where ? " · " + entry.where + "에 붙임" : "")
                             color: Theme.text3
                             font.family: Theme.font

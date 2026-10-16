@@ -51,8 +51,7 @@ Item {
     readonly property bool anyLoading: loadingIds.length > 0
     // 머리글의 콘티 요약
     readonly property string setlistSummary: !setlist.length ? "새 콘티"
-        : "콘티 " + setlist.length + "곡" + (anyLoading ? " · 가사 받는 중 " + loadingIds.length + "곡"
-                                             : deckSize ? " · PPT " + (deckSize + attachments.slides) + "장" : "")
+        : "콘티 " + setlist.length + "곡" + (anyLoading ? " · 가사 받는 중 " + loadingIds.length + "곡" : "")
     // PPT로 만들지 않은 편집이 있는지 (콘티에서 뺀 곡까지 포함해서)
     readonly property bool anyDirty: dirty || Object.keys(sessions).some(id => id !== currentId && sessions[id].dirty)
 
@@ -840,7 +839,7 @@ Item {
             const r = E.splitAsked(E.linesOf(blocks), current.keys)
             if (r.count) { commit(r.groups); total += r.count; songs++ }
         }
-        if (toastHost) toastHost.show(songs + "곡에서 " + total + "장을 2줄씩 나눴어요 · 곡마다 되돌릴 수 있어요")
+        if (toastHost) toastHost.show(songs + "곡에서 긴 슬라이드를 2줄씩 나눴어요 · 곡마다 되돌릴 수 있어요")
     }
 
     function longNames(fresh) {
@@ -871,7 +870,7 @@ Item {
     function splitLongSlides(keys) {
         prepareEdit()
         const r = E.splitAsked(E.linesOf(blocks), keys)
-        if (r.count) commit(r.groups, { message: r.count + "장을 2줄씩 나눴어요" })
+        if (r.count) commit(r.groups, { message: "긴 슬라이드를 2줄씩 나눴어요" })
     }
 
     function removeSlide(idx) {
@@ -1536,13 +1535,7 @@ Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 34
                             Text { text: "슬라이드"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Bold }
-                            Rectangle {
-                                visible: page.blocks.length > 0
-                                width: countText.implicitWidth + 16; height: 20; radius: 10
-                                color: Theme.primarySoft
-                                Text { id: countText; anchors.centerIn: parent; text: page.blocks.length + "장"; color: Theme.primaryText; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
-                            }
-                            // PPT에서 줄바꿈되는 슬라이드 수. 누르면 그 슬라이드를 차례로 보여준다
+                            // PPT에서 줄바꿈되는 슬라이드가 있다는 표시. 누르면 그 슬라이드를 차례로 보여준다
                             Rectangle {
                                 visible: page.wrapSlides.length > 0
                                 width: wrapRow.implicitWidth + 16; height: 20; radius: 10
@@ -1552,7 +1545,7 @@ Item {
                                     anchors.centerIn: parent
                                     spacing: 4
                                     Icon { glyph: "alert"; size: 12; color: Theme.warning; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { text: "줄바꿈 " + page.wrapSlides.length + "장"; color: Theme.warning; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                    Text { text: "줄바꿈 있음"; color: Theme.warning; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold }
                                 }
                                 MouseArea {
                                     id: wrapArea

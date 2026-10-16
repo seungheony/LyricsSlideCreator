@@ -183,15 +183,6 @@ Item {
             }
         }
 
-        Text {
-            objectName: "manualSlideCount"
-            text: form.slideCount === 0 ? "슬라이드 없음" : "슬라이드 " + form.slideCount + "장"
-            color: form.slideCount === 0 ? Theme.text3 : Theme.text
-            font.family: Theme.font
-            font.pixelSize: 13
-            font.weight: Font.DemiBold
-        }
-
         AppButton {
             id: submitButton
             objectName: "manualSubmit"

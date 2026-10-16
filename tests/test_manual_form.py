@@ -43,7 +43,6 @@ class ManualForm(unittest.TestCase):
         self.child('manualLyrics').setProperty('text', text)
         self.assertEqual(self.form.property('slideCount'), 4)    # 담으면 2줄씩 나뉘는 기준
         self.assertTrue(self.child('manualSubmit').property('enabled'))
-        self.assertIn('4장', self.child('manualSlideCount').property('text'))
 
         self.call('submit')
         self.assertEqual(len(self.got), 1)

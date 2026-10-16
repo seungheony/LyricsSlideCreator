@@ -387,7 +387,7 @@ Item {
                                         Keys.onReturnPressed: lib.toggle(item.modelData)
                                         Keys.onEnterPressed: lib.toggle(item.modelData)
                                         Accessible.role: Accessible.Button
-                                        Accessible.name: item.label + ", " + item.groups.length + "장, " + (item.applied ? "지금 적용 중, " : "") + (item.expanded ? "슬라이드 접기" : "슬라이드 펼쳐 보기")
+                                        Accessible.name: item.label + ", " + (item.applied ? "지금 적용 중, " : "") + (item.expanded ? "슬라이드 접기" : "슬라이드 펼쳐 보기")
                                         Accessible.onPressAction: lib.toggle(item.modelData)
                                         RowLayout {
                                             anchors.fill: parent
@@ -411,7 +411,8 @@ Item {
                                             }
                                             Text {
                                                 Layout.fillWidth: true
-                                                text: (item.named ? lib.dateText(item.modelData.saved_at, true) + " · " : "") + item.groups.length + "장"
+                                                visible: item.named
+                                                text: item.named ? lib.dateText(item.modelData.saved_at, true) : ""
                                                 color: Theme.text3
                                                 font.family: Theme.font
                                                 font.pixelSize: 12
