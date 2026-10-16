@@ -321,7 +321,8 @@ ColumnLayout {
                     height: 2
                     radius: 1
                     color: Theme.primary
-                    y: gap * panel.step - panel.rowGap / 2 - 1
+                    // 맨 위·맨 아래도 목록 안에 보이게 (목록이 clip하므로 끝에서 잘리지 않게 붙인다)
+                    y: Math.max(0, Math.min(list.contentHeight - height, gap * panel.step - panel.rowGap / 2 - 1))
                 }
 
                 delegate: Item {
@@ -352,15 +353,9 @@ ColumnLayout {
 
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 6
+                            anchors.leftMargin: 10
                             anchors.rightMargin: 6
                             spacing: 6
-                            Icon {
-                                glyph: "grip"
-                                size: 14
-                                color: Theme.text3
-                                opacity: panel.entries.length > 1 && (area.containsMouse || row.dragged) ? 1 : 0.35
-                            }
                             Text {
                                 text: row.index + 1
                                 color: row.isCurrent ? Theme.primaryText : Theme.text3
