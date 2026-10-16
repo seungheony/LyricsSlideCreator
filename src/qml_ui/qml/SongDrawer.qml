@@ -155,7 +155,7 @@ Rectangle {
                     objectName: "drawerTab_" + modelData.key
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1          // 세 칸을 같은 폭으로
-                    Layout.preferredHeight: 92
+                    Layout.preferredHeight: 76
                     text: modelData.label
                     hoverEnabled: true
                     focusPolicy: Qt.TabFocus
@@ -169,16 +169,22 @@ Rectangle {
                     // 탭을 직접 누르면 저장한 곡은 모든 곡을 보인다 (직접 입력은 쓰던 내용 그대로)
                     onClicked: drawer.show(modelData.key)
                     contentItem: Column {
-                        spacing: 5
-                        Icon { glyph: tabButton.modelData.glyph; size: 17; color: tabButton.fg }
-                        Text {
+                        spacing: 6
+                        // 아이콘 옆에 탭 이름, 그 아래 설명
+                        Row {
                             width: parent.width
-                            text: tabButton.text
-                            color: tabButton.fg
-                            font.family: Theme.font
-                            font.pixelSize: 13
-                            font.weight: Font.Bold
-                            elide: Text.ElideRight
+                            spacing: 5
+                            Icon { id: tabIcon; glyph: tabButton.modelData.glyph; size: 15; color: tabButton.fg; anchors.verticalCenter: parent.verticalCenter }
+                            Text {
+                                width: parent.width - tabIcon.width - parent.spacing
+                                text: tabButton.text
+                                color: tabButton.fg
+                                font.family: Theme.font
+                                font.pixelSize: 13
+                                font.weight: Font.Bold
+                                elide: Text.ElideRight
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                         }
                         Text {
                             width: parent.width
