@@ -132,30 +132,47 @@ Rectangle {
             }
         }
 
-        // ── 탭: 멜론 | 보관함 | 직접 입력 ──
+        // ── 탭: 멜론 | 보관함 | 직접 입력 ── (아이콘 + 초록 세그먼트, 고른 탭으로 초록 칸이 미끄러진다)
         Rectangle {
             id: tabBar
+            readonly property var tabs: [{ key: "melon", label: "멜론", glyph: "search" },
+                                         { key: "library", label: "보관함", glyph: "library" },
+                                         { key: "manual", label: "직접 입력", glyph: "pencil" }]
+            readonly property int current: Math.max(0, tabs.findIndex(t => t.key === drawer.tab))
+            readonly property real cellWidth: (width - 8) / tabs.length
             Layout.fillWidth: true
             Layout.leftMargin: 20
             Layout.rightMargin: 20
             Layout.topMargin: 12
             Layout.bottomMargin: 12
-            implicitHeight: 38
-            radius: 10
+            implicitHeight: 44
+            radius: 12
             color: Theme.surface2
-            RowLayout {
+
+            Rectangle {
+                x: 4 + tabBar.current * tabBar.cellWidth
+                y: 4
+                width: tabBar.cellWidth
+                height: parent.height - 8
+                radius: 9
+                color: Theme.primarySoft
+                border.width: 1
+                border.color: Theme.focusBorder
+                Behavior on x { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+            }
+
+            Row {
                 anchors.fill: parent
-                anchors.margins: 3
-                spacing: 4
+                anchors.margins: 4
                 Repeater {
-                    model: [{ key: "melon", label: "멜론" }, { key: "library", label: "보관함" }, { key: "manual", label: "직접 입력" }]
+                    model: tabBar.tabs
                     delegate: Button {
                         id: tabButton
                         required property var modelData
                         readonly property bool on: modelData.key === drawer.tab
                         objectName: "drawerTab_" + modelData.key
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        width: tabBar.cellWidth
+                        height: parent.height
                         text: modelData.label
                         hoverEnabled: true
                         focusPolicy: Qt.TabFocus
@@ -167,20 +184,27 @@ Rectangle {
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                         // 탭을 직접 누르면 보관함은 모든 곡을 보인다 (직접 입력은 쓰던 내용 그대로)
                         onClicked: drawer.show(modelData.key)
-                        contentItem: Text {
-                            text: tabButton.text
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            color: tabButton.on || tabButton.hovered ? Theme.text : Theme.text3
-                            font.family: Theme.font
-                            font.pixelSize: 13
-                            font.weight: tabButton.on ? Font.Bold : Font.Normal
+                        readonly property color fg: on ? Theme.primaryText : hovered ? Theme.text : Theme.text2
+                        contentItem: Item {
+                            Row {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Icon { glyph: tabButton.modelData.glyph; size: 15; color: tabButton.fg; anchors.verticalCenter: parent.verticalCenter }
+                                Text {
+                                    text: tabButton.text
+                                    color: tabButton.fg
+                                    font.family: Theme.font
+                                    font.pixelSize: 13
+                                    font.weight: tabButton.on ? Font.Bold : Font.DemiBold
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
                         }
                         background: Rectangle {
-                            radius: 8
-                            color: tabButton.on ? Theme.surface : "transparent"
-                            border.width: tabButton.visualFocus ? 2 : tabButton.on ? 1 : 0
-                            border.color: tabButton.visualFocus ? Theme.primary : Theme.border
+                            radius: 9
+                            color: "transparent"
+                            border.width: tabButton.visualFocus ? 2 : 0
+                            border.color: Theme.primary
                         }
                     }
                 }
