@@ -26,6 +26,7 @@ Item {
     property string renamingId: ""      // 이름을 고치는 중인 프리셋
     property string deletingId: ""      // 삭제를 한 번 더 확인하는 중인 프리셋
     readonly property int previewHeight: 180    // 펼친 슬라이드 목록의 최대 높이 (넘으면 그 안에서 스크롤)
+    property var dragHost: null       // 프리셋 줄을 콘티로 끌어다 놓기 (EditorPage, SongDragArea)
     signal addRequested(var song, var preset)
     signal replaceRequested(var song, var preset)
 
@@ -419,10 +420,13 @@ Item {
                                                 elide: Text.ElideRight
                                             }
                                         }
-                                        MouseArea {
+                                        // 누르면 펼치기, 콘티로 끌어다 놓으면 이 프리셋으로 담기(콘티에 있는 곡이면 바꾸기)
+                                        SongDragArea {
                                             anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: lib.toggle(item.modelData)
+                                            dragHost: lib.dragHost
+                                            payload: ({ kind: "preset", song: lib.songOf(card.modelData), preset: item.modelData })
+                                            dragLabel: card.modelData.title + " · " + item.label
+                                            onTapped: lib.toggle(item.modelData)
                                         }
                                         Rectangle {
                                             anchors.fill: parent

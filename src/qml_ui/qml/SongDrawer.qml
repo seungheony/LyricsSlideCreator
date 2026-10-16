@@ -16,6 +16,7 @@ Rectangle {
     property bool opened: false
     property bool emptySetlist: false     // 콘티가 비었다 (머리말을 '어떤 곡으로 시작할까요?'로)
     property var setlist: []
+    property var dragHost: null       // 행을 콘티로 끌어다 놓기 (EditorPage)
     property var appliedTexts: ({})   // 콘티 곡의 지금 가사 (저장한 곡 탭에서 같은 프리셋의 '이걸로 바꾸기'를 끔)
     property var loadingIds: []
     property var addedIds: []             // 이번에 서랍을 연 뒤 담은 곡
@@ -128,7 +129,7 @@ Rectangle {
         // ── 탭: 멜론 | 직접 입력 | 저장한 곡 ── (아이콘 + 초록 세그먼트, 고른 탭으로 초록 칸이 미끄러진다)
         Rectangle {
             id: tabBar
-            readonly property var tabs: [{ key: "melon", label: "멜론", glyph: "search" },
+            readonly property var tabs: [{ key: "melon", label: "멜론 검색", glyph: "search" },
                                          { key: "manual", label: "직접 입력", glyph: "pencil" },
                                          { key: "library", label: "저장한 곡", glyph: "library" }]
             readonly property int current: Math.max(0, tabs.findIndex(t => t.key === drawer.tab))
@@ -212,6 +213,7 @@ Rectangle {
             SearchPanel {
                 id: searchPanel
                 objectName: "searchPanel"
+                dragHost: drawer.dragHost
                 setlist: drawer.setlist
                 loadingIds: drawer.loadingIds
                 addedIds: drawer.addedIds
@@ -252,6 +254,7 @@ Rectangle {
                 PresetLibrary {
                     id: library
                     objectName: "drawerLibrary"
+                    dragHost: drawer.dragHost
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     sideMargin: 20
@@ -297,7 +300,8 @@ Rectangle {
               body: "노래 제목이나 가수 이름을 입력하고 <b>Enter</b>를 누르면 멜론에서 찾아와요.<br><br>"
                   + "제목이 기억나지 않으면 <b>가사</b>를 입력해서 찾을 수도 있어요." },
             { target: searchPanel.resultsItem, demo: resultsDemo, title: "2. ＋로 담기",
-              body: "곡을 누르면 콘티에 추가해요. 검색창은 열린 채로 <b>여러 곡을 연달아</b> 담을 수 있어요.<br><br>"
+              body: "곡을 누르면 콘티 끝에 추가해요. 왼쪽 콘티로 <b>끌어다 놓으면</b> 원하는 자리에 넣어요. "
+                  + "검색창은 열린 채로 <b>여러 곡을 연달아</b> 담을 수 있어요.<br><br>"
                   + "프리셋을 저장해 둔 곡은 오른쪽에 <b>프리셋</b> 표시가 있고, 누르면 그 프리셋에 저장한 그대로 콘티에 담아요." },
             { target: tabBar, title: "3. 직접 입력 · 저장한 곡",
               body: "<b>직접 입력</b>: 멜론에 없는 곡은 제목과 가사를 직접 적어요.<br>"

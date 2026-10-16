@@ -18,6 +18,13 @@ ColumnLayout {
     property alias attachBefore: attachBefore
     property alias attachAfter: attachAfter
     property var attachments: ({ before: [], after: [] })    // backend.attachments()
+    // 서랍에서 곡을 끌어 오는 중이면 놓을 자리(곡 사이 0~곡 수), 아니면 -1 (EditorPage.moveSongDrag)
+    property int externalDrop: -1
+    function gapAt(y) {
+        if (!entries.length) return 0
+        const ly = y - list.y + list.contentY
+        return Math.max(0, Math.min(entries.length, Math.round(ly / step)))
+    }
     property var savedPpts: []                                // 보관한 PPT (backend.savedPpts)
 
     signal selected(string id)
@@ -200,6 +207,18 @@ ColumnLayout {
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
 
+        // 서랍에서 끌어 온 곡을 놓을 자리
+        Rectangle {
+            visible: panel.externalDrop >= 0
+            z: 3
+            x: 4
+            width: list.width - 8
+            height: 3
+            radius: 1.5
+            color: Theme.primary
+            y: Math.max(0, Math.min(list.contentHeight - height, panel.externalDrop * panel.step - panel.rowGap / 2 - 1.5))
+        }
+
         // 놓을 자리 표시 (ListView 안의 항목은 내용 좌표로 놓인다)
         Rectangle {
             readonly property int gap: panel.dropIndex > panel.dragFrom ? panel.dropIndex + 1 : panel.dropIndex
@@ -364,7 +383,7 @@ ColumnLayout {
     Rectangle {
         id: emptyBox
         objectName: "setlistEmpty"
-        readonly property bool active: emptyArea.containsMouse || activeFocus
+        readonly property bool active: emptyArea.containsMouse || activeFocus || panel.externalDrop >= 0
         visible: panel.entries.length === 0
         Layout.fillWidth: true
         Layout.fillHeight: true

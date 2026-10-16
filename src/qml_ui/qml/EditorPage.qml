@@ -393,6 +393,38 @@ Item {
         setlist = E.moveItem(setlist, from, to)
     }
 
+    // ── 서랍에서 콘티로 끌어다 놓기 ── (SongDragArea가 화면 좌표로 알린다)
+    // 놓으면 누를 때와 같이 담고(멜론 곡·프리셋), 새로 담긴 곡을 놓은 자리로 옮긴다.
+    // 콘티에 이미 있는 곡의 프리셋은 그 곡의 가사를 바꾸고 순서는 그대로
+    property var songDrag: null          // { payload, label }
+    function beginSongDrag(payload, label, sx, sy) {
+        songDrag = { payload: payload, label: label }
+        moveSongDrag(sx, sy)
+    }
+    function moveSongDrag(sx, sy) {
+        const p = page.mapFromItem(null, sx, sy)
+        dragGhost.x = p.x + 14
+        dragGhost.y = p.y + 10
+        const q = setlistPanel.mapFromItem(null, sx, sy)
+        const inside = q.x >= 0 && q.y >= 0 && q.x <= setlistPanel.width && q.y <= setlistPanel.height
+        setlistPanel.externalDrop = inside ? setlistPanel.gapAt(q.y) : -1
+    }
+    function endSongDrag(sx, sy) {
+        moveSongDrag(sx, sy)
+        const at = setlistPanel.externalDrop
+        const drag = songDrag
+        cancelSongDrag()
+        if (at < 0 || !drag) return
+        const before = setlist.length
+        if (drag.payload.kind === "preset") songDrawer.presetChosen(drag.payload.song, drag.payload.preset)
+        else songDrawer.songClicked(drag.payload.song)
+        if (setlist.length === before + 1 && at < before) moveSong(before, at)
+    }
+    function cancelSongDrag() {
+        songDrag = null
+        setlistPanel.externalDrop = -1
+    }
+
     // 콘티에서 뺀다 (편집 내용은 남아 되돌리거나 다시 넣으면 이어서 편집). 다 빼면 빈 상태와 함께 서랍을 연다
     function removeSong(idx) {
         if (idx < 0 || idx >= setlist.length) return
@@ -1841,9 +1873,39 @@ Item {
         MouseArea { anchors.fill: parent; enabled: songDrawer.opened; onClicked: page.closeDrawer() }
     }
 
+    // 끌고 있는 곡 (커서를 따라간다, 서랍 위에 그린다)
+    Rectangle {
+        id: dragGhost
+        visible: page.songDrag !== null
+        z: 1000
+        width: Math.min(260, ghostRow.implicitWidth + 24)
+        height: 36
+        radius: 10
+        color: Theme.toastBg
+        opacity: 0.94
+        Row {
+            id: ghostRow
+            anchors.centerIn: parent
+            spacing: 6
+            Icon { glyph: "music"; size: 14; color: setlistPanel.externalDrop >= 0 ? Theme.primary : "white"; anchors.verticalCenter: parent.verticalCenter }
+            Text {
+                width: Math.min(implicitWidth, 214)
+                text: page.songDrag ? page.songDrag.label : ""
+                textFormat: Text.PlainText
+                color: "white"
+                font.family: Theme.font
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+    }
+
     SongDrawer {
         id: songDrawer
         objectName: "songDrawer"
+        dragHost: page
         x: setlistColumn.width
         y: topBar.height
         width: Math.min(430, page.width - x)

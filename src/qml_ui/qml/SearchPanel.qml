@@ -27,6 +27,7 @@ Item {
     property string melonError: ""    // 직접 입력한 곡 결과는 있는데 멜론 검색만 실패했을 때 (목록 위에 알림)
     // 저장한 프리셋 수 (곡 번호 → 수). 결과 행에 '프리셋 N' 배지를 띄운다
     property var presetCounts: JSON.parse(backend.presetCounts())
+    property var dragHost: null       // 결과 행을 콘티로 끌어다 놓기 (EditorPage, SongDragArea)
     // 목록은 ListModel에 이어 붙인다 (배열을 통째로 바꾸면 다음 쪽을 붙일 때 스크롤이 맨 위로 돌아간다)
     ListModel { id: resultModel }
     function setResults(items) {
@@ -612,14 +613,16 @@ Item {
                         }
                     }
 
-                    // 행 전체를 누르는 영역. 배지 버튼이 위에서 클릭을 받도록 아래에 둔다
-                    MouseArea {
+                    // 행 전체를 누르는 영역. 배지 버튼이 위에서 클릭을 받도록 아래에 둔다.
+                    // 콘티로 끌어다 놓으면 놓은 자리에 담는다 (직접 입력한 곡은 프리셋을 골라야 해서 끌지 않는다)
+                    SongDragArea {
                         id: hover
                         z: -1
                         anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: row.open()
+                        dragHost: page.dragHost
+                        payload: row.manual ? null : { kind: "song", song: row.modelData }
+                        dragLabel: row.title
+                        onTapped: row.open()
                     }
                 }
             }
