@@ -1294,7 +1294,7 @@ Item {
                 // ── 곡 정보 ──
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 84
+                    Layout.preferredHeight: 64      // 콘티·앞뒤 PPT 줄(40)과 어울리게 낮게
                     color: Theme.surface
                     clip: true
 
@@ -1328,12 +1328,12 @@ Item {
                         spacing: 16
                         RoundedImage {
                             id: art
-                            Layout.preferredWidth: 64
-                            Layout.preferredHeight: 64
-                            radius: 10
+                            Layout.preferredWidth: 44
+                            Layout.preferredHeight: 44
+                            radius: 8
                             placeholder: Theme.surface2
                             // 앨범아트가 없으면(직접 입력·받지 못함) 음표
-                            Icon { anchors.centerIn: parent; glyph: "music"; size: 26; color: Theme.text3; visible: !art.ready }
+                            Icon { anchors.centerIn: parent; glyph: "music"; size: 20; color: Theme.text3; visible: !art.ready }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -1345,7 +1345,7 @@ Item {
                                 textFormat: Text.PlainText
                                 color: Theme.text
                                 font.family: Theme.font
-                                font.pixelSize: 20
+                                font.pixelSize: 18
                                 font.weight: Font.Bold
                                 elide: Text.ElideRight
                             }

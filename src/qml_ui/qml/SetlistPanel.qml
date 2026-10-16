@@ -58,7 +58,7 @@ ColumnLayout {
     property bool pressedRow: false
     property int dragFrom: -1         // 끄는 곡
     property real dragDy: 0           // 누른 곳에서 움직인 거리
-    readonly property int rowHeight: 56
+    readonly property int rowHeight: 40     // 앞·뒤 PPT 줄·놓기 칸·곡 추가와 같은 높이
     readonly property int rowGap: 4
     readonly property int step: rowHeight + rowGap
     // 놓으면 들어갈 자리 (뺀 뒤 기준)
@@ -277,46 +277,43 @@ ColumnLayout {
                         font.weight: Font.Bold
                         Layout.preferredWidth: 14
                     }
-                    ColumnLayout {
+                    // 한 줄: 제목 · (오른쪽) 받는 중 / 줄바꿈 표시
+                    Text {
                         Layout.fillWidth: true
-                        spacing: 2
+                        text: row.modelData.title
+                        textFormat: Text.PlainText
+                        color: Theme.text
+                        font.family: Theme.font
+                        font.pixelSize: 13
+                        font.weight: row.isCurrent ? Font.Bold : Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                    // 멜론에서 가사를 받는 중
+                    Row {
+                        visible: row.modelData.loading
+                        spacing: 4
+                        Icon {
+                            id: loadingIcon
+                            glyph: "loader"
+                            size: 12
+                            color: Theme.primaryText
+                            anchors.verticalCenter: parent.verticalCenter
+                            RotationAnimation on rotation { running: row.modelData.loading; from: 0; to: 360; duration: 800; loops: Animation.Infinite; onStopped: loadingIcon.rotation = 0 }
+                        }
                         Text {
-                            Layout.fillWidth: true
-                            text: row.modelData.title
-                            textFormat: Text.PlainText
-                            color: Theme.text
+                            text: panel.pendingId === row.modelData.id ? "받으면 열어요" : "받는 중"
+                            color: Theme.primaryText
                             font.family: Theme.font
-                            font.pixelSize: 13
-                            font.weight: row.isCurrent ? Font.Bold : Font.DemiBold
-                            elide: Text.ElideRight
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
                         }
-                        // 이 곡에 PPT에서 줄바꿈되는 슬라이드가 있으면
-                        Text {
-                            visible: !row.modelData.loading && row.modelData.wraps > 0
-                            text: "줄바꿈 있음"
-                            color: Theme.warning
-                            font.family: Theme.font
-                            font.pixelSize: 12
-                        }
-                        // 멜론에서 가사를 받는 중
-                        Row {
-                            visible: row.modelData.loading
-                            spacing: 4
-                            Icon {
-                                id: loadingIcon
-                                glyph: "loader"
-                                size: 12
-                                color: Theme.primaryText
-                                anchors.verticalCenter: parent.verticalCenter
-                                RotationAnimation on rotation { running: row.modelData.loading; from: 0; to: 360; duration: 800; loops: Animation.Infinite; onStopped: loadingIcon.rotation = 0 }
-                            }
-                            Text {
-                                text: panel.pendingId === row.modelData.id ? "가사 받는 중… 받으면 열어요" : "가사 받는 중…"
-                                color: Theme.primaryText
-                                font.family: Theme.font
-                                font.pixelSize: 12
-                            }
-                        }
+                    }
+                    // 이 곡에 PPT에서 줄바꿈되는 슬라이드가 있으면
+                    Row {
+                        visible: !row.modelData.loading && row.modelData.wraps > 0 && !removeButton.visible
+                        spacing: 3
+                        Icon { glyph: "alert"; size: 12; color: Theme.warning; anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: "줄바꿈"; color: Theme.warning; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold }
                     }
                     Item { Layout.preferredWidth: removeButton.visible ? removeButton.width : 0; Layout.preferredHeight: 1 }
                 }
@@ -362,15 +359,36 @@ ColumnLayout {
         }
     }
 
-    AppButton {
+    // 곡 추가: 앞·뒤 PPT의 놓기 칸과 같은 테두리 칸 (마우스를 올리면 초록)
+    Button {
         id: addButton
         objectName: "setlistAddButton"
         visible: panel.entries.length > 0
         Layout.fillWidth: true
-        text: "곡 추가"
-        glyph: "plus"
-        variant: "secondary"
+        implicitHeight: panel.rowHeight
+        hoverEnabled: true
+        focusPolicy: Qt.TabFocus
+        Keys.onReturnPressed: click()
+        Keys.onEnterPressed: click()
+        Accessible.name: "곡 추가"
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
         onClicked: panel.addRequested()
+        readonly property bool lit: hovered || visualFocus || panel.externalDrop >= 0
+        contentItem: Item {
+            Row {
+                anchors.centerIn: parent
+                spacing: 5
+                Icon { glyph: "plus"; size: 14; color: addButton.lit ? Theme.primaryText : Theme.text2; anchors.verticalCenter: parent.verticalCenter }
+                Text { text: "곡 추가"; color: addButton.lit ? Theme.primaryText : Theme.text2; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
+            }
+        }
+        background: Rectangle {
+            radius: Theme.radiusSm
+            color: addButton.lit ? Theme.primarySoft : Theme.surface2Clear
+            border.width: addButton.visualFocus ? 2 : 1.5
+            border.color: addButton.lit ? Theme.primary : Theme.border
+            Behavior on color { ColorAnimation { duration: Theme.fast } }
+        }
         AppToolTip { visible: addButton.hovered; delay: 600; text: "곡 추가 (" + Theme.mod + "K)" }
     }
     Item {
@@ -387,7 +405,7 @@ ColumnLayout {
         visible: panel.entries.length === 0
         Layout.fillWidth: true
         Layout.fillHeight: true
-        radius: 12
+        radius: Theme.radiusSm
         color: active ? Theme.primarySoft : "transparent"
         border.width: active ? 2 : 1.5
         border.color: active ? Theme.primary : Theme.border

@@ -40,7 +40,7 @@ ColumnLayout {
     property bool pressedRow: false
     property int dragFrom: -1
     property real dragDy: 0
-    readonly property int rowHeight: 42
+    readonly property int rowHeight: 40     // 콘티 곡 줄과 같은 높이
     readonly property int rowGap: 4
     readonly property int step: rowHeight + rowGap
     readonly property int dropIndex: dragFrom < 0 ? -1
@@ -168,28 +168,32 @@ ColumnLayout {
 
     Item {
         Layout.fillWidth: true
-        implicitHeight: box.items.length ? box.items.length * box.step - box.rowGap : 40
+        implicitHeight: box.items.length ? box.items.length * box.step - box.rowGap : box.rowHeight
 
         // 빈 목록: 끌어다 놓을 자리
         Rectangle {
             anchors.fill: parent
             visible: box.items.length === 0
             radius: Theme.radiusSm
-            color: drop.containsDrag ? Theme.primarySoft : Theme.surface2Clear
+            readonly property bool lit: drop.containsDrag || emptyHover.containsMouse
+            color: lit ? Theme.primarySoft : Theme.surface2Clear
             border.width: 1.5
-            border.color: drop.containsDrag ? Theme.primary : Theme.border
+            border.color: lit ? Theme.primary : Theme.border
+            Behavior on color { ColorAnimation { duration: Theme.fast } }
             Text {
                 anchors.centerIn: parent
                 width: parent.width - 16
                 horizontalAlignment: Text.AlignHCenter
                 text: drop.containsDrag ? "여기에 놓기" : "PPT 파일을 끌어다 놓기"
-                color: drop.containsDrag ? Theme.primaryText : Theme.text3
+                color: parent.lit ? Theme.primaryText : Theme.text2
                 font.family: Theme.font
-                font.pixelSize: 12
+                font.pixelSize: 13; font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
             MouseArea {
+                id: emptyHover
                 anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: box.openAdd()
             }
@@ -276,7 +280,7 @@ ColumnLayout {
                                 textFormat: Text.PlainText
                                 color: row.problem ? Theme.text3 : Theme.text
                                 font.family: Theme.font
-                                font.pixelSize: 12
+                                font.pixelSize: 13
                                 font.weight: Font.DemiBold
                                 elide: Text.ElideMiddle
                             }
