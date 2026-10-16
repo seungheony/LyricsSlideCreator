@@ -3,14 +3,17 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 
-// 콘티 패널의 '앞에 붙일 PPT' / '뒤에 붙일 PPT' 구역. 곡 구역과 같은 문법으로 그린다:
-// 작은 구역 제목 → 테두리 없는 40px 한 줄들(손잡이 · 아이콘 · 이름 · 오른쪽 상태) → 끝의 '＋ PPT 넣기' 칸(AddRow).
+// 예배 PPT 패널의 양식 칸 하나('찬양 전' / '찬양 후'). 곡 카드와 같은 카드 모양:
+// 칸 제목 → 파일 줄(30px: 이름 · ⚠ · 책갈피 · 휴지통) → 끝의 '＋ 양식 추가' 칸(AddRow).
 // PPT 파일을 구역에 끌어다 놓거나 넣기 칸으로 골라 넣고, 끌어서 순서를 바꾸고, 휴지통으로 뺀다.
 // 오른쪽 책갈피로 앱에 보관하면(saved_ppts, 보관한 것은 초록 책갈피가 늘 보임) 목록에서 빼도 넣기 메뉴의
 // '보관한 PPT'에서 다시 불러온다. 보관하지 않은 파일은 PPT를 만들 때마다 원본을 읽고, 오래 고치지 않았으면(stale)
 // '⚠ 지난 파일'로 알린다. 목록은 EditorPage가 갖고 있고(backend.setAttachments로 저장), 여기서는 신호로 알리기만 한다.
-ColumnLayout {
+Rectangle {
     id: box
+    implicitHeight: col.implicitHeight + 16
+    radius: 12
+    color: Theme.surface2
 
     property string title: ""
     property var items: []            // [{ path, name, slides, error, missing, sizeMismatch, stale, saved, id, hasSource }] (backend.describe_attachments)
@@ -41,8 +44,8 @@ ColumnLayout {
     property bool pressedRow: false
     property int dragFrom: -1
     property real dragDy: 0
-    readonly property int rowHeight: 40     // 콘티 곡 줄과 같은 높이
-    readonly property int rowGap: 4
+    readonly property int rowHeight: 30
+    readonly property int rowGap: 3
     readonly property int step: rowHeight + rowGap
     readonly property int dropIndex: dragFrom < 0 ? -1
         : Math.max(0, Math.min(items.length - 1, Math.round((dragFrom * step + dragDy) / step)))
@@ -72,16 +75,20 @@ ColumnLayout {
         return where
     }
 
+    ColumnLayout {
+    id: col
+    anchors.fill: parent
+    anchors.margins: 8
     spacing: 4
 
     Text {
         Layout.leftMargin: 2
         Layout.bottomMargin: 2
         text: box.title
-        color: Theme.text3
+        color: Theme.text2
         font.family: Theme.font
         font.pixelSize: 12
-        font.weight: Font.DemiBold
+        font.weight: Font.Bold
     }
 
     Menu {
@@ -222,8 +229,8 @@ ColumnLayout {
                             width: parent.width
                             height: parent.height
                             y: row.dragged ? box.dragDy : 0
-                            radius: Theme.radiusSm
-                            color: row.hot || row.dragged ? Theme.surface2 : Theme.surface2Clear
+                            color: row.hot || row.dragged ? Theme.border : Theme.surface
+                            radius: 8
                             border.width: row.activeFocus ? 2 : 0
                             border.color: Theme.primary
                             opacity: row.dragged ? 0.9 : 1
@@ -231,38 +238,22 @@ ColumnLayout {
 
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 6
-                                anchors.rightMargin: 4
-                                spacing: 6
-                                Icon {
-                                    glyph: "grip"
-                                    size: 14
-                                    color: Theme.text3
-                                    opacity: box.items.length > 1 && (row.hot || row.dragged) ? 1 : 0.35
-                                }
-                                // 곡 줄의 번호 자리 (같은 폭)
-                                Item {
-                                    Layout.preferredWidth: 14
-                                    Layout.preferredHeight: 14
-                                    Icon { anchors.centerIn: parent; glyph: row.problem ? "alert" : "monitor"; size: 13; color: row.problem ? Theme.danger : Theme.text3 }
-                                }
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 2
+                                spacing: 2
                                 Text {
                                     Layout.fillWidth: true
                                     text: row.modelData.name
                                     textFormat: Text.PlainText
                                     color: row.problem ? Theme.danger : Theme.text
                                     font.family: Theme.font
-                                    font.pixelSize: 13
+                                    font.pixelSize: 12
                                     font.weight: Font.DemiBold
-                                    elide: Text.ElideMiddle
+                                    elide: Text.ElideRight
                                 }
                                 // 상태: 곡 줄의 '⚠ 줄바꿈'과 같은 모양 (마우스를 올리면 버튼 자리를 내준다)
-                                Row {
-                                    visible: row.state_ !== "" && !row.hot
-                                    spacing: 3
-                                    Icon { glyph: "alert"; size: 12; color: row.problem ? Theme.danger : Theme.warning; anchors.verticalCenter: parent.verticalCenter }
-                                    Text { text: row.state_; color: row.problem ? Theme.danger : Theme.warning; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.DemiBold }
-                                }
+                                // 상태는 ⚠만 (무엇인지는 툴팁)
+                                Icon { visible: row.state_ !== "" && !row.hot; glyph: "alert"; size: 12; color: row.problem ? Theme.danger : Theme.warning; Layout.rightMargin: 4 }
                                 // 보관: 보관한 것은 초록 책갈피가 늘 보이고, 아닌 것은 마우스를 올렸을 때만
                                 AppButton {
                                     id: keepButton
@@ -272,7 +263,7 @@ ColumnLayout {
                                     glyph: on ? "bookmark-fill" : "bookmark"
                                     variant: "ghost"
                                     size: "small"
-                                    implicitHeight: 26
+                                    implicitHeight: 24
                                     tint: on ? Theme.primaryText : "transparent"
                                     onClicked: {
                                         if (locked) return
@@ -293,7 +284,7 @@ ColumnLayout {
                                     glyph: "trash"
                                     variant: "ghost"
                                     size: "small"
-                                    implicitHeight: 26
+                                    implicitHeight: 24
                                     onClicked: box.removeRequested(row.index)
                                     Accessible.name: "'" + row.modelData.name + "' 빼기"
                                     AppToolTip { visible: removeButton.hovered; text: row.modelData.saved ? "목록에서 빼기 (보관한 PPT에는 남아요)" : "빼기" }
@@ -332,7 +323,8 @@ ColumnLayout {
                 id: addButton
                 Layout.fillWidth: true
                 implicitHeight: box.rowHeight
-                text: drop.containsDrag ? "여기에 놓기" : "PPT 넣기"
+                small: true
+                text: drop.containsDrag ? "여기에 놓기" : "양식 추가"
                 lit: drop.containsDrag
                 onClicked: addMenu.opened ? addMenu.close() : box.openAdd()
                 AppToolTip { visible: addButton.hovered && !addMenu.opened; delay: 600; text: "PPT 파일을 끌어다 놓거나 눌러서 골라요" }
@@ -341,8 +333,8 @@ ColumnLayout {
 
         DropArea {
             id: drop
+            parent: box
             anchors.fill: parent
-            anchors.margins: -4
             onEntered: (drag) => { drag.accepted = drag.hasUrls }
             onDropped: (event) => {
                 if (!event.hasUrls) return
@@ -350,5 +342,7 @@ ColumnLayout {
                 box.filesDropped(event.urls)
             }
         }
+    }
+    Item { Layout.fillHeight: true }    // 칸이 옆 칸보다 낮으면 줄을 위에서부터 쌓는다
     }
 }

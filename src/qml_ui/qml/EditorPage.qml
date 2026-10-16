@@ -445,7 +445,7 @@ Item {
     property var attachments: ({ before: [], after: [], slides: 0, problems: 0 })
     property string attachSide: "before"     // 파일 대화상자로 고를 목록
 
-    property var savedPpts: []               // 보관한 PPT ('PPT 넣기' 메뉴)
+    property var savedPpts: []               // 보관한 PPT ('양식 추가' 메뉴)
 
     // 목록 항목: 원본 파일 경로 또는 보관한 PPT { saved: id }
     function attachLists() {
@@ -467,7 +467,7 @@ Item {
         savedPpts = JSON.parse(backend.savedPpts())
         const name = attachments[side][idx].name
         if (toastHost) toastHost.show(res.replaced ? "보관해 둔 '" + name + "' 파일을 새 파일로 바꿨어요"
-                                                   : "'" + name + "' 파일을 보관했어요 · 목록에서 빼도 'PPT 넣기'에서 다시 불러와요")
+                                                   : "'" + name + "' 파일을 보관했어요 · 빼도 '양식 추가'에서 다시 불러와요")
     }
     function unkeepAttachment(side, idx) {
         const res = JSON.parse(backend.unkeepAttachment(side, idx))
@@ -1186,7 +1186,7 @@ Item {
 
     FileDialog {
         id: attachDialog
-        title: page.attachSide === "before" ? "앞에 붙일 PPT" : "뒤에 붙일 PPT"
+        title: page.attachSide === "before" ? "찬양 전 양식" : "찬양 후 양식"
         fileMode: FileDialog.OpenFiles
         nameFilters: ["PowerPoint (*.pptx)"]
         onAccepted: page.addAttachments(page.attachSide, selectedFiles)
@@ -1244,8 +1244,8 @@ Item {
             Rectangle {
                 id: setlistColumn
                 Layout.fillHeight: true
-                Layout.preferredWidth: 230
-                Layout.minimumWidth: 230
+                Layout.preferredWidth: 280
+                Layout.minimumWidth: 280
                 color: Theme.surface
                 Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: Theme.border }
 
