@@ -20,6 +20,7 @@ ColumnLayout {
     property var attachments: ({ before: [], after: [] })    // backend.attachments()
     // 서랍에서 곡을 끌어 오는 중이면 놓을 자리(곡 사이 0~곡 수), 아니면 -1 (EditorPage.moveSongDrag)
     property int externalDrop: -1
+    property string formDropSide: ""      // 양식 보관함에서 끌어 오는 중이면 놓을 칸 ('before' | 'after')
     function gapAt(y) {
         if (!entries.length) return 0
         const ly = list.mapFromItem(panel, 0, y).y + list.contentY
@@ -170,6 +171,7 @@ ColumnLayout {
             Layout.fillHeight: true
             Layout.preferredWidth: 1          // 두 칸을 같은 폭으로
             title: "찬양 전"
+            externalHover: panel.formDropSide === "before"
             items: panel.attachments.before
             onFilesDropped: (urls) => panel.attachDropped("before", urls)
             onBrowseRequested: panel.attachBrowse("before")
@@ -185,6 +187,7 @@ ColumnLayout {
             Layout.fillHeight: true
             Layout.preferredWidth: 1          // 두 칸을 같은 폭으로
             title: "찬양 후"
+            externalHover: panel.formDropSide === "after"
             items: panel.attachments.after
             onFilesDropped: (urls) => panel.attachDropped("after", urls)
             onBrowseRequested: panel.attachBrowse("after")

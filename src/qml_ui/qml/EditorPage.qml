@@ -390,6 +390,9 @@ Item {
     // 놓으면 누를 때와 같이 담고(멜론 곡·프리셋), 새로 담긴 곡을 놓은 자리로 옮긴다.
     // 콘티에 이미 있는 곡의 프리셋은 그 곡의 가사를 바꾸고 순서는 그대로
     property var songDrag: null          // { payload, label }
+    // 양식 보관함의 줄(payload.kind "form")은 찬양 전·후 칸에 놓는다 (곡은 찬양 카드)
+    property string formDropSide: ""     // 'before' | 'after' | ''
+    readonly property bool dragOverTarget: setlistPanel.externalDrop >= 0 || formDropSide !== ""
     function beginSongDrag(payload, label, sx, sy) {
         songDrag = { payload: payload, label: label }
         moveSongDrag(sx, sy)
@@ -398,6 +401,14 @@ Item {
         const p = page.mapFromItem(null, sx, sy)
         dragGhost.x = p.x + 14
         dragGhost.y = p.y + 10
+        if (songDrag && songDrag.payload.kind === "form") {
+            const over = item => {
+                const r = item.mapFromItem(null, sx, sy)
+                return r.x >= 0 && r.y >= 0 && r.x <= item.width && r.y <= item.height
+            }
+            formDropSide = over(setlistPanel.attachBefore) ? "before" : over(setlistPanel.attachAfter) ? "after" : ""
+            return
+        }
         const q = setlistPanel.mapFromItem(null, sx, sy)
         const inside = q.x >= 0 && q.y >= 0 && q.x <= setlistPanel.width && q.y <= setlistPanel.height
         setlistPanel.externalDrop = inside ? setlistPanel.gapAt(q.y) : -1
@@ -405,8 +416,13 @@ Item {
     function endSongDrag(sx, sy) {
         moveSongDrag(sx, sy)
         const at = setlistPanel.externalDrop
+        const side = formDropSide
         const drag = songDrag
         cancelSongDrag()
+        if (drag && drag.payload.kind === "form") {
+            if (side) insertSaved(side, drag.payload.id)
+            return
+        }
         if (at < 0 || !drag) return
         const before = setlist.length
         if (drag.payload.kind === "preset") songDrawer.presetChosen(drag.payload.song, drag.payload.preset)
@@ -415,6 +431,7 @@ Item {
     }
     function cancelSongDrag() {
         songDrag = null
+        formDropSide = ""
         setlistPanel.externalDrop = -1
     }
 
@@ -1280,6 +1297,7 @@ Item {
                 SetlistPanel {
                     id: setlistPanel
                     objectName: "setlistPanel"
+                    formDropSide: page.formDropSide
                     anchors.fill: parent
                     anchors.topMargin: 14
                     anchors.leftMargin: 12
@@ -1911,7 +1929,7 @@ Item {
             id: ghostRow
             anchors.centerIn: parent
             spacing: 6
-            Icon { glyph: "music"; size: 14; color: setlistPanel.externalDrop >= 0 ? Theme.primary : "white"; anchors.verticalCenter: parent.verticalCenter }
+            Icon { glyph: page.songDrag && page.songDrag.payload.kind === "form" ? "library" : "music"; size: 14; color: page.dragOverTarget ? Theme.primary : "white"; anchors.verticalCenter: parent.verticalCenter }
             Text {
                 width: Math.min(implicitWidth, 214)
                 text: page.songDrag ? page.songDrag.label : ""
@@ -1931,8 +1949,6 @@ Item {
         objectName: "songDrawer"
         dragHost: page
         formItems: page.savedPpts
-        formPlaced: setlistPanel.placedSaved
-        onFormInsert: (id, side) => page.insertSaved(side, id)
         onFormDelete: (id) => page.deleteSavedPpt(id)
         onFormRename: (id, name) => page.renameSavedPpt(id, name)
         onFormFilesDropped: (urls) => page.keepFiles(urls)

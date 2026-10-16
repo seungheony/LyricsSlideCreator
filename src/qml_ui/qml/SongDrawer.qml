@@ -26,7 +26,6 @@ Rectangle {
     property string tab: "melon"          // "melon" | "library" | "manual" | "forms"(양식 보관함)
     readonly property bool formsMode: tab === "forms"
     property var formItems: []            // 양식 보관함 (backend.savedPpts)
-    property var formPlaced: ({})         // 보관한 양식 id → '앞' | '뒤'
     property alias forms: formLibrary
     property alias search: searchPanel
     property alias library: library
@@ -37,7 +36,6 @@ Rectangle {
     signal presetChosen(var song, var preset)
     signal manualSubmitted(var info, string text)
     // 양식 보관함
-    signal formInsert(string id, string side)
     signal formDelete(string id)
     signal formRename(string id, string name)
     signal formFilesDropped(var urls)
@@ -316,8 +314,7 @@ Rectangle {
                 id: formLibrary
                 objectName: "formLibrary"
                 items: drawer.formItems
-                placed: drawer.formPlaced
-                onInsertRequested: (id, side) => drawer.formInsert(id, side)
+                dragHost: drawer.dragHost
                 onDeleteRequested: (id) => drawer.formDelete(id)
                 onRenameRequested: (id, name) => drawer.formRename(id, name)
                 onFilesDropped: (urls) => drawer.formFilesDropped(urls)

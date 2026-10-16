@@ -4,28 +4,23 @@ import QtQuick.Layouts
 import "."
 
 // 양식 보관함: 곡 찾기 서랍의 '양식 보관함' 화면 (예배 PPT 패널의 '양식' 제목 옆 보관함 아이콘으로 연다).
-// 보관한 PPT(saved_ppts)를 찬양 전·후에 넣고, 이름을 고치고, 영구 삭제한다(빨간 휴지통 → 확인창, EditorPage).
-// 위 칸에 PPT 파일을 끌어다 놓거나 눌러서 고르면 목록에 넣지 않고 보관함에만 넣는다.
-// 줄 모양은 찬양 보관함(PresetLibrary)의 프리셋 줄과 같다: 이름·날짜, 마우스를 올리면 연필·휴지통.
+// 보관한 PPT(saved_ppts)를 왼쪽 찬양 전·후 칸으로 끌어다 놓아 넣고(SongDragArea → EditorPage), 이름을 고치고,
+// 영구 삭제한다(빨간 휴지통 → 확인창). 위 칸에 PPT 파일을 끌어다 놓거나 눌러서 고르면 보관함에만 넣는다.
+// 줄: 이름 · 연필 · 휴지통 (늘 보인다).
 ColumnLayout {
     id: lib
 
     property var items: []            // 보관한 PPT [{ id, name, saved_at, slides }] (backend.savedPpts)
-    property var placed: ({})         // id → 지금 붙어 있는 곳 ('앞' | '뒤')
     property string focusId: ""       // 줄의 보관함 아이콘으로 왔을 때 강조할 양식
     property string renamingId: ""
     property int sideMargin: 20
+    property var dragHost: null       // 줄을 찬양 전·후 칸으로 끌어다 놓기 (EditorPage)
 
-    signal insertRequested(string id, string side)      // side: 'before' | 'after'
     signal deleteRequested(string id)
     signal renameRequested(string id, string name)
     signal filesDropped(var urls)
     signal browseRequested()
 
-    function dateText(at) {
-        const m = /^(\d+)-(\d+)-(\d+)/.exec(at || "")
-        return m ? Number(m[2]) + "월 " + Number(m[3]) + "일 보관" : ""
-    }
     function reveal() {
         const i = items.findIndex(x => x.id === focusId)
         if (i >= 0) list.positionViewAtIndex(i, ListView.Contain)
@@ -82,7 +77,7 @@ ColumnLayout {
     Text {
         visible: lib.items.length > 0
         Layout.leftMargin: lib.sideMargin + 2
-        text: "보관한 양식 " + lib.items.length + "개"
+        text: "보관한 양식 " + lib.items.length + "개 · 왼쪽 찬양 전·후 칸으로 끌어다 놓아 넣어요"
         color: Theme.text3
         font.family: Theme.font
         font.pixelSize: 12
@@ -133,11 +128,9 @@ ColumnLayout {
         delegate: Item {
             id: row
             required property var modelData
-            readonly property string where: lib.placed[modelData.id] || ""
             readonly property bool renaming: lib.renamingId === modelData.id
-            readonly property bool showTools: hover.hovered || renameButton.activeFocus || deleteButton.activeFocus
             width: ListView.view.width
-            height: 52
+            height: 44
 
             Rectangle {
                 anchors.fill: parent
@@ -149,6 +142,16 @@ ColumnLayout {
                 border.color: Theme.focusBorder
                 Behavior on color { ColorAnimation { duration: Theme.fast } }
                 HoverHandler { id: hover }
+                // 끌어서 찬양 전·후 칸에 놓으면 넣는다
+                SongDragArea {
+                    anchors.fill: parent
+                    z: -1
+                    enabled: !row.renaming
+                    cursorShape: dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                    dragHost: lib.dragHost
+                    payload: ({ kind: "form", id: row.modelData.id, name: row.modelData.name })
+                    dragLabel: row.modelData.name
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -156,29 +159,16 @@ ColumnLayout {
                     anchors.rightMargin: 6
                     spacing: 4
 
-                    ColumnLayout {
+                    Text {
                         visible: !row.renaming
                         Layout.fillWidth: true
-                        spacing: 2
-                        Text {
-                            Layout.fillWidth: true
-                            text: row.modelData.name
-                            textFormat: Text.PlainText
-                            color: Theme.text
-                            font.family: Theme.font
-                            font.pixelSize: 13
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideMiddle
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: lib.dateText(row.modelData.saved_at)
-                                  + (row.where ? " · 찬양 " + (row.where === "앞" ? "전" : "후") + "에 있음" : "")
-                            color: row.where ? Theme.primaryText : Theme.text3
-                            font.family: Theme.font
-                            font.pixelSize: 11
-                            elide: Text.ElideRight
-                        }
+                        text: row.modelData.name
+                        textFormat: Text.PlainText
+                        color: Theme.text
+                        font.family: Theme.font
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideMiddle
                     }
 
                     // 이름 고치기 (Enter 저장, Esc 취소 — SongDrawer.handleEscape)
@@ -203,7 +193,6 @@ ColumnLayout {
                     AppButton {
                         id: renameButton
                         visible: !row.renaming
-                        opacity: row.showTools ? 1 : 0
                         glyph: "pencil"
                         variant: "ghost"
                         size: "small"
@@ -214,7 +203,6 @@ ColumnLayout {
                     AppButton {
                         id: deleteButton
                         visible: !row.renaming
-                        opacity: row.showTools ? 1 : 0
                         glyph: "trash"
                         variant: "ghost"
                         destructive: true
@@ -222,25 +210,6 @@ ColumnLayout {
                         onClicked: lib.deleteRequested(row.modelData.id)
                         Accessible.name: "보관함에서 영구 삭제: " + row.modelData.name
                         AppToolTip { visible: deleteButton.hovered; delay: 400; text: "보관함에서 영구 삭제" }
-                    }
-                    // 찬양 전·후에 넣기 (이미 그쪽에 있으면 ✓)
-                    Repeater {
-                        model: [{ side: "before", label: "찬양 전", key: "앞" }, { side: "after", label: "찬양 후", key: "뒤" }]
-                        delegate: AppButton {
-                            id: putButton
-                            required property var modelData
-                            readonly property bool there: row.where === modelData.key
-                            visible: !row.renaming
-                            Layout.leftMargin: 2
-                            glyph: there ? "check" : "plus"
-                            text: modelData.label
-                            variant: there ? "ghost" : "primary"
-                            size: "small"
-                            enabled: !there
-                            onClicked: lib.insertRequested(row.modelData.id, modelData.side)
-                            Accessible.name: row.modelData.name + " " + modelData.label + "에 넣기"
-                            AppToolTip { visible: putButton.hovered; delay: 400; text: putButton.modelData.label + " 양식에 넣어요" }
-                        }
                     }
                 }
             }

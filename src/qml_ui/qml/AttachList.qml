@@ -14,8 +14,11 @@ Rectangle {
     implicitHeight: col.implicitHeight + 16
     radius: 12
     color: Theme.surface2
+    border.width: externalHover ? 2 : 0
+    border.color: Theme.primary
 
     property string title: ""
+    property bool externalHover: false    // 양식 보관함에서 끌어 온 양식이 이 칸 위에 있다
     property var items: []            // [{ path, name, slides, error, missing, sizeMismatch, stale, saved, id, hasSource }] (backend.describe_attachments)
 
     signal filesDropped(var urls)
@@ -237,8 +240,8 @@ Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: box.rowHeight
                 small: true
-                text: drop.containsDrag ? "여기에 놓기" : "양식 추가"
-                lit: drop.containsDrag
+                text: drop.containsDrag || box.externalHover ? "여기에 놓기" : "양식 추가"
+                lit: drop.containsDrag || box.externalHover
                 onClicked: box.browseRequested()
                 AppToolTip { visible: addButton.hovered; delay: 600; text: "PPT 파일을 끌어다 놓거나 눌러서 골라요 · 보관한 양식은 '양식' 옆 보관함에서" }
             }
