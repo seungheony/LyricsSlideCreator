@@ -281,13 +281,13 @@ Rectangle {
                                 AppButton {
                                     id: removeButton
                                     visible: box.dragFrom < 0 && (row.hot || row.activeFocus || activeFocus || keepButton.activeFocus)
-                                    glyph: "trash"
+                                    glyph: "x"                    // 이번 예배 PPT에서 빼기 (영구 삭제는 휴지통)
                                     variant: "ghost"
                                     size: "small"
                                     implicitHeight: 24
                                     onClicked: box.removeRequested(row.index)
-                                    Accessible.name: "'" + row.modelData.name + "' 빼기"
-                                    AppToolTip { visible: removeButton.hovered; text: row.modelData.saved ? "목록에서 빼기 (보관한 PPT에는 남아요)" : "빼기" }
+                                    Accessible.name: "'" + row.modelData.name + "' 이번 예배 PPT에서 빼기"
+                                    AppToolTip { visible: removeButton.hovered; text: row.modelData.saved ? "이번 예배 PPT에서 빼기 · 보관함에는 남아요" : "이번 예배 PPT에서 빼기 · 원본 파일은 그대로예요" }
                                 }
                             }
 

@@ -505,7 +505,7 @@ Item {
             title: "보관함에서 지울까요?",
             message: "'" + item.name + "' 파일을 보관함에서 지워요." + (where ? " 찬양 " + (where === "앞" ? "전" : "후") + " 양식에서도 빠져요." : "")
                      + " 지운 파일은 되돌릴 수 없어요.",
-            confirmText: "지우기",
+            confirmText: "영구 삭제",
             onConfirm: () => page.doDeleteSavedPpt(id, item)
         })
     }

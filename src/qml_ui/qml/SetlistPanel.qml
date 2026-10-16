@@ -428,19 +428,19 @@ ColumnLayout {
                             onCanceled: panel.endDrag(false)
                         }
 
-                        // 콘티에서 빼기 (다 빼면 빈 상태와 함께 곡 찾기 서랍이 열린다)
+                        // 이번 예배 PPT에서 빼기: × (영구 삭제는 휴지통). 다 빼면 빈 상태와 함께 곡 찾기 서랍이 열린다
                         AppButton {
                             id: removeButton
                             anchors.right: parent.right
                             anchors.rightMargin: 4
                             anchors.verticalCenter: parent.verticalCenter
                             visible: panel.dragFrom < 0 && (area.containsMouse || hovered)
-                            glyph: "trash"
+                            glyph: "x"
                             variant: "ghost"
                             size: "small"
                             onClicked: panel.removeRequested(row.index)
-                            Accessible.name: "'" + row.modelData.title + "' 콘티에서 빼기"
-                            AppToolTip { visible: removeButton.hovered; text: "콘티에서 빼기" }
+                            Accessible.name: "'" + row.modelData.title + "' 이번 예배 PPT에서 빼기"
+                            AppToolTip { visible: removeButton.hovered; text: "이번 예배 PPT에서 빼기 · 저장한 곡과 프리셋은 그대로예요" }
                         }
                     }
                 }

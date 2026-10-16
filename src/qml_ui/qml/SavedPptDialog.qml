@@ -120,12 +120,13 @@ Popup {
                         id: deleteButton
                         glyph: "trash"
                         variant: "ghost"
+                        destructive: true
                         size: "small"
                         onClicked: dialog.deleteRequested(entry.modelData.id)
-                        Accessible.name: "'" + entry.modelData.name + "' 보관함에서 지우기"
+                        Accessible.name: "'" + entry.modelData.name + "' 보관함에서 영구 삭제"
                         AppToolTip {
                             visible: deleteButton.hovered
-                            text: entry.where ? "보관한 PPT를 지워요 (" + entry.where + "에 붙인 것도 빠져요)" : "보관한 PPT를 지워요"
+                            text: entry.where ? "보관함에서 영구 삭제 · 찬양 " + (entry.where === "앞" ? "전" : "후") + " 양식에서도 빠져요" : "보관함에서 영구 삭제"
                         }
                     }
                 }

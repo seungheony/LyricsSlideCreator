@@ -488,12 +488,13 @@ Item {
                                         visible: !item.renaming
                                         opacity: item.showTools ? 1 : 0
                                         glyph: "trash"
-                                        text: item.deleting ? "삭제" : ""
+                                        text: item.deleting ? "영구 삭제" : ""
                                         variant: item.deleting ? "danger" : "ghost"
+                                        destructive: true
                                         size: "small"
                                         onClicked: lib.remove(item.modelData)
-                                        Accessible.name: item.deleting ? "삭제 확인" : "삭제: " + item.label
-                                        AppToolTip { visible: parent.hovered && !item.deleting; delay: 400; text: "삭제 (한 번 더 누르면 지워져요)" }
+                                        Accessible.name: item.deleting ? "영구 삭제 확인" : "영구 삭제: " + item.label
+                                        AppToolTip { visible: parent.hovered && !item.deleting; delay: 400; text: "프리셋 영구 삭제 · 한 번 더 누르면 지워져요" }
                                     }
                                     // 불러오기: 콘티에 있는 곡이면 '이걸로 바꾸기', 아니면 ＋
                                     AppButton {

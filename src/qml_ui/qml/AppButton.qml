@@ -25,8 +25,11 @@ Button {
     Keys.onReturnPressed: click()
     Keys.onEnterPressed: click()
 
-    property color tint: "transparent"      // 글자·아이콘 색을 직접 정할 때 (보관한 PPT의 초록 책갈피 등)
-    readonly property color fg: tint.a > 0 ? tint
+    property color tint: "transparent"      // 글자·아이콘 색을 직접 정할 때 (보관한 PPT의 초록 보관함 아이콘 등)
+    // 영구 삭제 버튼(휴지통): 마우스를 올리면 빨갛게. 목록에서 빼기는 × 아이콘을 쓰고 이것을 켜지 않는다
+    property bool destructive: false
+    readonly property color fg: destructive && hovered && variant === "ghost" ? Theme.danger
+                               : tint.a > 0 ? tint
                                : variant === "primary" ? Theme.primaryText
                                : variant === "danger" ? "white"
                                : variant === "ghost" ? (hovered ? Theme.text : Theme.text2)
@@ -69,6 +72,7 @@ Button {
         color: {
             if (control.variant === "primary") return control.hovered && control.enabled ? Theme.primarySoftHover : Theme.primarySoft
             if (control.variant === "danger") return Theme.danger
+            if (control.variant === "ghost" && control.destructive) return control.hovered ? Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.12) : Theme.surface2Clear
             if (control.variant === "ghost") return control.hovered ? Theme.surface2 : Theme.surface2Clear
             return control.hovered ? Theme.border : Theme.surface2
         }
