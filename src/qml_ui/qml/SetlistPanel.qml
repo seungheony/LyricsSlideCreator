@@ -185,12 +185,23 @@ ColumnLayout {
             onManageRequested: panel.manageSaved()
         }
     }
-    // 찬양 전 칸 아래에서 찬양 후 칸 아래로 이어지는 화살표 (그 사이에 찬양이 들어간다)
+    // 찬양 구역 제목 + 흐름 화살표: 찬양 전 칸에서 내려와 '찬양' 제목을 지나 찬양 후 칸으로 올라간다
+    // (만들어질 PPT 순서 '찬양 전 → 찬양 → 찬양 후'를 그림으로 보인다)
     Item {
         Layout.fillWidth: true
-        Layout.topMargin: -8
+        Layout.topMargin: -10
         Layout.bottomMargin: -4
-        implicitHeight: 24
+        implicitHeight: 30
+        Text {
+            id: songsTitle
+            x: 2
+            y: 13
+            text: "찬양"
+            color: Theme.text3
+            font.family: Theme.font
+            font.pixelSize: 12
+            font.weight: Font.DemiBold
+        }
         Canvas {
             id: flowArrow
             anchors.fill: parent
@@ -200,17 +211,20 @@ ColumnLayout {
             onPaint: {
                 const ctx = getContext("2d")
                 ctx.reset()
-                const x1 = width * 0.25 - 2, x2 = width * 0.75 + 2, y = 16, r = 7
+                const xs = songsTitle.x + songsTitle.width / 2         // 제목 위로 내려오는 짧은 선
+                const mid = songsTitle.y + songsTitle.height / 2
+                const x1 = songsTitle.x + songsTitle.width + 6          // 제목 오른쪽에서 출발
+                const x2 = width * 0.75 + 2, r = 7                      // 찬양 후 칸 가운데로 올라간다
                 ctx.strokeStyle = ink
                 ctx.lineWidth = 1.5
                 ctx.lineCap = "round"
                 ctx.lineJoin = "round"
                 ctx.beginPath()
-                ctx.moveTo(x1, 0)
-                ctx.lineTo(x1, y - r)
-                ctx.quadraticCurveTo(x1, y, x1 + r, y)
-                ctx.lineTo(x2 - r, y)
-                ctx.quadraticCurveTo(x2, y, x2, y - r)
+                ctx.moveTo(xs, 0)
+                ctx.lineTo(xs, songsTitle.y - 2)
+                ctx.moveTo(x1, mid)
+                ctx.lineTo(x2 - r, mid)
+                ctx.quadraticCurveTo(x2, mid, x2, mid - r)
                 ctx.lineTo(x2, 2)
                 ctx.moveTo(x2 - 4, 6)
                 ctx.lineTo(x2, 1)
@@ -218,31 +232,6 @@ ColumnLayout {
                 ctx.stroke()
             }
         }
-        Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: 16 - height / 2
-            width: flowLabel.implicitWidth + 12
-            height: flowLabel.implicitHeight
-            color: Theme.surface
-            Text { id: flowLabel; anchors.centerIn: parent; text: "찬양"; color: Theme.text3; font.family: Theme.font; font.pixelSize: 11; font.weight: Font.Bold }
-        }
-    }
-
-    // 키보드로 고른 줄 (모델이 새로 만들어져도 유지하려고 ListView의 currentIndex를 쓰지 않는다)
-    property int focusRow: -1
-    function moveFocusRow(delta) {
-        focusRow = Math.max(0, Math.min(entries.length - 1, focusRow + delta))
-        list.positionViewAtIndex(focusRow, ListView.Contain)
-    }
-
-    Text {
-        Layout.leftMargin: 2
-        Layout.bottomMargin: -4        // 제목과 카드 사이를 양식과 같게
-        text: "곡"
-        color: Theme.text3
-        font.family: Theme.font
-        font.pixelSize: 12
-        font.weight: Font.DemiBold
     }
 
     // 곡 카드 (양식 칸과 같은 모양). 곡 수만큼만 차지하고 '곡 추가'가 마지막 곡 바로 아래에 온다.
