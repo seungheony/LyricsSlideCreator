@@ -4,16 +4,15 @@ import QtQuick.Layouts
 import "."
 
 // 보관한 PPT 관리: 앱에 보관한 앞·뒤 PPT를 보고 지운다 ('양식 추가' 메뉴의 '보관한 PPT 관리…').
-// 휴지통은 두 번 눌러 지운다(PresetLibrary와 같음). 지우면 앞·뒤 목록에서도 빠진다(EditorPage.deleteSavedPpt).
+// 휴지통을 누르면 확인창으로 한 번 더 묻고 지운다. 지우면 찬양 전·후 양식에서도 빠진다(EditorPage.deleteSavedPpt).
 Popup {
     id: dialog
     property var items: []            // backend.savedPpts()
     property var placed: ({})         // id → '앞' | '뒤'
-    property string armed: ""         // 한 번 누른 휴지통
 
     signal deleteRequested(string id)
 
-    onAboutToShow: { armed = ""; contentItem.forceActiveFocus() }
+    onAboutToShow: contentItem.forceActiveFocus()
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -83,7 +82,6 @@ Popup {
             delegate: Rectangle {
                 id: entry
                 required property var modelData
-                readonly property bool armed: dialog.armed === modelData.id
                 readonly property string where: dialog.placed[modelData.id] || ""
                 width: ListView.view.width
                 height: 50
@@ -120,17 +118,13 @@ Popup {
                     }
                     AppButton {
                         id: deleteButton
-                        glyph: entry.armed ? "" : "trash"
-                        text: entry.armed ? "삭제" : ""
-                        variant: entry.armed ? "danger" : "ghost"
+                        glyph: "trash"
+                        variant: "ghost"
                         size: "small"
-                        onClicked: {
-                            if (entry.armed) { dialog.armed = ""; dialog.deleteRequested(entry.modelData.id) }
-                            else dialog.armed = entry.modelData.id
-                        }
-                        Accessible.name: entry.armed ? "'" + entry.modelData.name + "' 삭제 확인" : "'" + entry.modelData.name + "' 삭제"
+                        onClicked: dialog.deleteRequested(entry.modelData.id)
+                        Accessible.name: "'" + entry.modelData.name + "' 보관함에서 지우기"
                         AppToolTip {
-                            visible: deleteButton.hovered && !entry.armed
+                            visible: deleteButton.hovered
                             text: entry.where ? "보관한 PPT를 지워요 (" + entry.where + "에 붙인 것도 빠져요)" : "보관한 PPT를 지워요"
                         }
                     }

@@ -469,7 +469,18 @@ Item {
         if (toastHost) toastHost.show(res.replaced ? "보관해 둔 '" + name + "' 파일을 새 파일로 바꿨어요"
                                                    : "'" + name + "' 파일을 보관했어요 · 빼도 '양식 추가'에서 다시 불러와요")
     }
+    // 보관을 풀면 보관함에서 지워지므로 한 번 더 묻는다
     function unkeepAttachment(side, idx) {
+        const item = attachments[side][idx]
+        if (!item) return
+        confirmDialog.ask({
+            title: "보관함에서 지울까요?",
+            message: "'" + item.name + "' 파일을 보관함에서 지워요. 이 양식은 원본 파일을 그때그때 읽고, 원본을 지우면 다시 불러올 수 없어요.",
+            confirmText: "보관함에서 지우기",
+            onConfirm: () => page.doUnkeepAttachment(side, idx)
+        })
+    }
+    function doUnkeepAttachment(side, idx) {
         const res = JSON.parse(backend.unkeepAttachment(side, idx))
         if (res.error) { if (toastHost) toastHost.show(res.error); return }
         attachments = res.attachments
@@ -488,6 +499,17 @@ Item {
     }
     function deleteSavedPpt(id) {
         const item = savedPpts.find(i => i.id === id)
+        if (!item) return
+        const where = setlistPanel.placedSaved[id]
+        confirmDialog.ask({
+            title: "보관함에서 지울까요?",
+            message: "'" + item.name + "' 파일을 보관함에서 지워요." + (where ? " 찬양 " + (where === "앞" ? "전" : "후") + " 양식에서도 빠져요." : "")
+                     + " 지운 파일은 되돌릴 수 없어요.",
+            confirmText: "지우기",
+            onConfirm: () => page.doDeleteSavedPpt(id, item)
+        })
+    }
+    function doDeleteSavedPpt(id, item) {
         attachments = JSON.parse(backend.deleteSavedPpt(id))
         savedPpts = JSON.parse(backend.savedPpts())
         if (toastHost && item) toastHost.show("보관한 '" + item.name + "' 파일을 지웠어요")

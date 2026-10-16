@@ -260,7 +260,7 @@ Rectangle {
                                     readonly property bool on: !!row.modelData.saved
                                     readonly property bool locked: on && !row.modelData.hasSource    // 원본이 없어 풀 수 없음
                                     visible: !row.problem && (on || row.hot || row.activeFocus || activeFocus || removeButton.activeFocus)
-                                    glyph: on ? "bookmark-fill" : "bookmark"
+                                    glyph: "library"                  // 저장한 곡(보관함)과 같은 표시
                                     variant: "ghost"
                                     size: "small"
                                     implicitHeight: 24
@@ -270,12 +270,12 @@ Rectangle {
                                         if (on) box.unkeepRequested(row.index)
                                         else box.keepRequested(row.index)
                                     }
-                                    Accessible.name: "'" + row.modelData.name + "' " + (on ? "보관 풀기" : "앱에 보관")
+                                    Accessible.name: "'" + row.modelData.name + "' " + (on ? "보관함에서 지우기" : "보관함에 넣기")
                                     AppToolTip {
                                         visible: keepButton.hovered
-                                        text: !keepButton.on ? "앱에 보관하기 · 원본을 지우거나 목록에서 빼도 넣기 메뉴에서 다시 불러와요"
-                                            : row.modelData.hasSource ? "보관됨 · 누르면 보관을 풀고 원본 파일을 그때그때 읽어요"
-                                            : "보관됨 · 원본 파일이 없어서 보관을 풀 수 없어요"
+                                        text: !keepButton.on ? "보관함에 넣기 · 원본을 지우거나 빼도 '양식 추가'에서 다시 불러와요"
+                                            : row.modelData.hasSource ? "보관함에 있어요 · 누르면 보관함에서 지우고 원본 파일을 그때그때 읽어요"
+                                            : "보관함에 있어요 · 원본 파일이 없어서 보관함에서 지울 수 없어요"
                                     }
                                 }
                                 AppButton {
