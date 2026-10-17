@@ -69,14 +69,15 @@ ApplicationWindow {
     property int detailToken: 0
     property var detailRequests: ({})
 
-    // 멜론 검색 결과에서 곡을 눌렀을 때: 콘티 끝에 담는다. 전에 편집한 곡이면 이어서, 처음이면 자리를 먼저 잡고 가사를 받는다
+    // 멜론 검색 결과에서 곡을 눌렀을 때: 콘티 끝에 담는다. 전에 편집한 곡이면 이어서, 처음이면 자리를 먼저 잡고 가사를 받는다.
+    // 프리셋이 있는 곡은 담을 버전을 '멜론 가사 그대로'로 정한 것이라 남은 편집(프리셋 가사일 수 있음)을 잇지 않고 멜론 가사를 새로 받는다
     function openSong(song) {
         const id = song.song_id
         if (editorPage.setlist.indexOf(id) >= 0) {
             toast.show(editorPage.isLoading(id) ? "가사를 받는 중이에요" : "이미 콘티에 있는 곡이에요")
             return
         }
-        if (editorPage.sessions[id] && !editorPage.isLoading(id)) {
+        if (editorPage.sessions[id] && !editorPage.isLoading(id) && !JSON.parse(backend.presetCounts())[id]) {
             editorPage.addSong(song, null)
             return
         }
